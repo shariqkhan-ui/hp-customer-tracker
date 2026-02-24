@@ -222,6 +222,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
         <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
       </div>
       <button class="btn btn-primary" onclick="saveScriptUrl()">Save</button>
+      <button class="btn" id="testBtn" onclick="testSheetConnection()">Test</button>
     </div>
   </div>
 
@@ -439,18 +440,46 @@ function toggleSetup() {
   c.textContent   = open ? '\u25BC' : '\u25B2';
 }
 
-// ── Save edit: localStorage + GET to Apps Script (GET avoids POST-body drop on Google redirect) ──
+// ── Save edit: localStorage + Apps Script ──
 async function saveToSheet(ticket, field, value) {
   setEdit(ticket, field, value);   // always save locally first
   const url = getScriptUrl();
-  if (!url) { toast('Saved locally \u2713 (no sheet URL configured)', 'info'); return; }
+  if (!url) { toast('Saved locally (configure Sheet URL in sync panel)', 'info'); return; }
+  const fullUrl = url + '?ticketNo=' + encodeURIComponent(ticket) +
+                       '&field='    + encodeURIComponent(field)  +
+                       '&value='    + encodeURIComponent(value);
   try {
-    const qs = new URLSearchParams({ ticketNo: ticket, field, value }).toString();
-    await fetch(url + '?' + qs, { mode: 'no-cors' });
-    toast('Saved to Sheet \u2713', 'success');
+    const res  = await fetch(fullUrl, { redirect: 'follow' });
+    const text = (await res.text()).trim();
+    if (text === 'ok') {
+      toast('Saved to Sheet \u2713', 'success');
+    } else {
+      toast('Sheet replied: ' + text.substring(0, 80), 'error');
+    }
   } catch(e) {
-    toast('Saved locally (sheet unreachable)', 'info');
+    // CORS error likely — try no-cors as fallback (fire-and-forget)
+    try {
+      await fetch(fullUrl, { mode: 'no-cors' });
+      toast('Sent to Sheet (response unreadable due to CORS)', 'info');
+    } catch(e2) {
+      toast('Sheet unreachable: ' + e.message, 'error');
+    }
   }
+}
+
+async function testSheetConnection() {
+  const url = getScriptUrl();
+  if (!url) { toast('Paste the Apps Script URL first', 'error'); return; }
+  const btn = document.getElementById('testBtn');
+  btn.textContent = 'Testing…'; btn.disabled = true;
+  try {
+    const res  = await fetch(url + '?test=1', { redirect: 'follow' });
+    const text = (await res.text()).trim();
+    toast('Sheet responded: ' + text.substring(0, 80), text.startsWith('error') ? 'error' : 'success');
+  } catch(e) {
+    toast('Connection failed: ' + e.message, 'error');
+  }
+  btn.textContent = 'Test'; btn.disabled = false;
 }
 
 // ── Inline edit cell helpers ──
