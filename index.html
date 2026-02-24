@@ -194,6 +194,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <div class="header-right">
     <span id="lastUpdated" style="font-size:11px;color:var(--muted);">Connecting...</span>
     <button class="btn btn-primary" onclick="loadData()">&#x1F504; Refresh</button>
+    <button class="btn" onclick="toggleSyncPanel()" title="Sheet Sync Settings">&#x2699;&#xFE0F;</button>
     <div class="alert-wrap" id="alertWrap">
       <button class="alert-btn" onclick="toggleAlerts()">&#x1F514; <span>Data Errors</span><span class="alert-badge" id="alertBadge">0</span></button>
       <div class="alert-dropdown" id="alertDropdown">
@@ -210,7 +211,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <div id="errorBanner"></div>
 
   <!-- Sync Setup Panel -->
-  <div class="setup-panel" id="setupPanel">
+  <div class="setup-panel" id="setupPanel" style="display:none">
     <div class="setup-body" style="display:flex">
       <div style="flex:1;min-width:260px">
         <div class="filter-label" style="margin-bottom:4px">&#x2699;&#xFE0F; Google Sheet Sync &nbsp;<span id="syncBadge" class="sync-badge nosync">&#x26A0;&#xFE0F; Not configured</span></div>
@@ -416,6 +417,10 @@ function effectiveVal(r, col) {
 }
 
 function getScriptUrl() { return localStorage.getItem(SCRIPT_KEY) || ''; }
+function toggleSyncPanel() {
+  const el = document.getElementById('setupPanel');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
 function saveScriptUrl() {
   const url = document.getElementById('scriptUrlInput').value.trim();
   if (url) localStorage.setItem(SCRIPT_KEY, url); else localStorage.removeItem(SCRIPT_KEY);
@@ -429,31 +434,27 @@ function updateSyncBadge() {
   el.className   = 'sync-badge' + (url ? '' : ' nosync');
 }
 
-// ── Save edit: localStorage + Apps Script ──
+// ── Save edit: localStorage + Apps Script (no-cors avoids CORS/redirect issues) ──
 async function saveToSheet(ticket, field, value) {
   setEdit(ticket, field, value);   // always save locally first
   const url = getScriptUrl();
-  if (!url) { toast('Saved locally (configure Sheet URL in sync panel)', 'info'); return; }
+  if (!url) return;
   const fullUrl = url + '?ticketNo=' + encodeURIComponent(ticket) +
                        '&field='    + encodeURIComponent(field)  +
                        '&value='    + encodeURIComponent(value);
   try {
-    const res  = await fetch(fullUrl, { redirect: 'follow' });
-    const text = (await res.text()).trim();
-    if (text === 'ok') {
-      toast('Saved to Sheet \u2713', 'success');
-    } else {
-      toast('Sheet replied: ' + text.substring(0, 80), 'error');
-    }
+    await fetch(fullUrl, { mode: 'no-cors' });
+    toast('Saved to Sheet \u2713', 'success');
   } catch(e) {
-    // CORS error likely — try no-cors as fallback (fire-and-forget)
-    try {
-      await fetch(fullUrl, { mode: 'no-cors' });
-      toast('Sent to Sheet (response unreadable due to CORS)', 'info');
-    } catch(e2) {
-      toast('Sheet unreachable: ' + e.message, 'error');
-    }
+    toast('Saved locally only', 'info');
   }
+}
+
+// ── Warm up Apps Script on load so edits don't face cold-start delay ──
+function warmupScript() {
+  const url = getScriptUrl();
+  if (!url) return;
+  fetch(url + '?warmup=1', { mode: 'no-cors' }).catch(() => {});
 }
 
 async function testSheetConnection() {
@@ -582,11 +583,13 @@ const MON = {jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,
 function parseDate(s) {
   if (!s || s === '—') return null;
   s = s.trim();
-  let m = s.match(/^(\d{1,2})\/([A-Za-z]{3})\/(\d{4})$/);
+  // DD/Mon/YYYY or DD-Mon-YYYY  (e.g. 26/Dec/2025 or 18-Nov-2025)
+  let m = s.match(/^(\d{1,2})[\/\-]([A-Za-z]{3})[\/\-](\d{4})$/);
   if (m) {
     const mo = MON[m[2].toLowerCase()];
     if (mo !== undefined) return new Date(+m[3], mo, +m[1]);
   }
+  // M/D/YYYY or D-M-YYYY (numeric)
   m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
   if (m) {
     const a = +m[1], b = +m[2], yr = +m[3];
@@ -925,6 +928,7 @@ loadEdits();
   if (url) document.getElementById('scriptUrlInput').value = url;
   updateSyncBadge();
 })();
+warmupScript(); // pre-warm Apps Script on page load so first edit doesn't hit cold-start delay
 loadData();
 </script>
 </body>
