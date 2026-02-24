@@ -209,6 +209,22 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <!-- Error Banner -->
   <div id="errorBanner"></div>
 
+  <!-- Sync Setup Panel -->
+  <div class="setup-panel" id="setupPanel">
+    <div class="setup-title" onclick="toggleSetup()">
+      &#x2699;&#xFE0F; Google Sheet Sync &nbsp;
+      <span id="syncBadge" class="sync-badge nosync">&#x26A0;&#xFE0F; Not configured</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--muted)" id="setupChevron">&#x25BC;</span>
+    </div>
+    <div id="setupBody" class="setup-body" style="display:none">
+      <div style="flex:1;min-width:300px">
+        <div class="filter-label" style="margin-bottom:4px">Apps Script Web App URL</div>
+        <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
+      </div>
+      <button class="btn btn-primary" onclick="saveScriptUrl()">Save</button>
+    </div>
+  </div>
+
   <!-- Filters -->
   <div class="filters-bar">
     <div class="filter-item">
@@ -349,7 +365,8 @@ const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDBrdViLa3uTTh
 let allRows = [], visRows = [], charts = {};
 
 // ── Local Edits + Sheet Sync ──
-const EDITS_KEY = 'hp_local_edits_v1';
+const EDITS_KEY  = 'hp_local_edits_v1';
+const SCRIPT_KEY = 'hp_script_url_v1';
 let localEdits = {};
 
 function loadEdits() {
@@ -401,11 +418,39 @@ function effectiveVal(r, col) {
   return (r[col] || '').trim();
 }
 
-// ── Save edit (localStorage only — Google Sheet is read-only input) ──
-function saveToSheet(ticket, field, value) {
-  setEdit(ticket, field, value);
-  toast('Saved \u2713', 'success');
-  return Promise.resolve();
+function getScriptUrl() { return localStorage.getItem(SCRIPT_KEY) || ''; }
+function saveScriptUrl() {
+  const url = document.getElementById('scriptUrlInput').value.trim();
+  if (url) localStorage.setItem(SCRIPT_KEY, url); else localStorage.removeItem(SCRIPT_KEY);
+  updateSyncBadge();
+  toast(url ? 'Script URL saved' : 'Script URL cleared', url ? 'success' : 'info');
+}
+function updateSyncBadge() {
+  const url = getScriptUrl();
+  const el  = document.getElementById('syncBadge');
+  el.textContent = url ? '\u2705 Syncing to Sheet' : '\u26A0\uFE0F Not configured';
+  el.className   = 'sync-badge' + (url ? '' : ' nosync');
+}
+function toggleSetup() {
+  const b = document.getElementById('setupBody');
+  const c = document.getElementById('setupChevron');
+  const open = b.style.display !== 'none';
+  b.style.display = open ? 'none' : 'flex';
+  c.textContent   = open ? '\u25BC' : '\u25B2';
+}
+
+// ── Save edit: localStorage + GET to Apps Script (GET avoids POST-body drop on Google redirect) ──
+async function saveToSheet(ticket, field, value) {
+  setEdit(ticket, field, value);   // always save locally first
+  const url = getScriptUrl();
+  if (!url) { toast('Saved locally \u2713 (no sheet URL configured)', 'info'); return; }
+  try {
+    const qs = new URLSearchParams({ ticketNo: ticket, field, value }).toString();
+    await fetch(url + '?' + qs, { mode: 'no-cors' });
+    toast('Saved to Sheet \u2713', 'success');
+  } catch(e) {
+    toast('Saved locally (sheet unreachable)', 'info');
+  }
 }
 
 // ── Inline edit cell helpers ──
@@ -817,6 +862,11 @@ function toast(msg, type) {
 
 // ── Init ──
 loadEdits();
+(function() {
+  const url = getScriptUrl();
+  if (url) document.getElementById('scriptUrlInput').value = url;
+  updateSyncBadge();
+})();
 loadData();
 </script>
 </body>
