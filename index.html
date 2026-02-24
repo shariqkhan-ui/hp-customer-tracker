@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>High Pain Customer Tracker</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+:root{--bg:#0e0010;--card:#18001a;--primary:#D9008D;--border:#3a0040;--text:#e0d0e8;--text-dim:#9a85a0;--green:#3fb950;--blue:#388bfd;--red:#f85149;--yellow:#d29922;--radius:10px}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;font-size:14px;min-height:100vh}
+.site-header{position:sticky;top:0;z-index:100;background:rgba(14,0,16,.96);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:12px 24px;display:flex;align-items:center;justify-content:space-between}
+.site-header h1{font-size:1.5rem;font-weight:700;background:linear-gradient(90deg,#D9008D,#ff6ec7,#D9008D);background-size:200%;-webkit-background-clip:text;-webkit-text-fill-color:transparent;animation:shimmer 3s linear infinite}
+@keyframes shimmer{0%{background-position:0%}100%{background-position:200%}}
+.header-right{display:flex;align-items:center;gap:12px}
+.refresh-info{font-size:12px;color:var(--text-dim)}
+.btn{padding:6px 14px;border-radius:6px;border:none;cursor:pointer;font-size:13px;transition:all .2s}
+.btn-ghost{background:transparent;color:var(--text-dim);border:1px solid var(--border)}
+.btn-ghost:hover{border-color:var(--primary);color:var(--primary)}
+.bell-btn{position:relative;background:transparent;border:none;cursor:pointer;font-size:18px;padding:4px}
+.bell-badge{position:absolute;top:0;right:0;background:var(--red);color:#fff;border-radius:50%;width:16px;height:16px;font-size:10px;display:none;align-items:center;justify-content:center}
+.container{max-width:1440px;margin:0 auto;padding:20px 24px}
+.bucket-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:20px}
+.bucket-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;display:flex;align-items:center;gap:14px;transition:border-color .2s}
+.bucket-card:hover{border-color:var(--primary)}
+.bucket-icon{font-size:2rem}
+.bucket-info{flex:1}
+.bucket-count{font-size:2rem;font-weight:700;line-height:1}
+.bucket-label{font-size:12px;color:var(--text-dim);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
+.bucket-card.total .bucket-count{color:var(--primary)}
+.bucket-card.migrated .bucket-count{color:var(--green)}
+.bucket-card.pingup .bucket-count{color:var(--blue)}
+.bucket-card.unresolved .bucket-count{color:var(--red)}
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:20px}
+.kpi-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;text-align:center}
+.kpi-value{font-size:1.4rem;font-weight:700;color:var(--primary)}
+.kpi-label{font-size:11px;color:var(--text-dim);margin-top:3px;text-transform:uppercase;letter-spacing:.4px}
+.filters-section{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:16px}
+.filters-row{display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end}
+.filter-group{display:flex;flex-direction:column;gap:3px}
+.filter-label{font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:.4px}
+select.filter-select{background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;cursor:pointer;min-width:160px}
+select.filter-select:focus{outline:none;border-color:var(--primary)}
+.filter-summary{margin-top:10px;padding:8px 12px;background:rgba(217,0,141,.08);border-radius:6px;font-size:12px;color:var(--text-dim);display:none}
+.filter-summary.active{display:block}
+.filter-summary span{color:var(--primary);font-weight:600}
+.charts-row{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
+.chart-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px}
+.chart-title{font-size:13px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:12px}
+.chart-wrap{position:relative;height:240px}
+.section-title{font-size:13px;font-weight:600;color:var(--text-dim);text-transform:uppercase;letter-spacing:.5px;margin-bottom:10px}
+.day-table-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;margin-bottom:20px}
+table.day-table{width:100%;border-collapse:collapse}
+table.day-table th{padding:10px 14px;background:rgba(217,0,141,.1);color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px;text-align:left;border-bottom:1px solid var(--border)}
+table.day-table td{padding:9px 14px;border-bottom:1px solid rgba(58,0,64,.5);font-size:13px}
+table.day-table tr:last-child td{border-bottom:none}
+table.day-table tr.ftd-row td{background:rgba(217,0,141,.06);font-weight:600}
+table.day-table tr:hover td{background:rgba(255,255,255,.02)}
+.table-toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.table-count{font-size:13px;color:var(--text-dim)}
+.data-table-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:auto;margin-bottom:20px;max-height:520px}
+table.data-table{width:100%;border-collapse:collapse;min-width:1100px}
+table.data-table th{position:sticky;top:0;z-index:2;padding:10px 12px;background:#1e0022;color:var(--text-dim);font-size:11px;text-transform:uppercase;letter-spacing:.5px;text-align:left;border-bottom:1px solid var(--border);white-space:nowrap}
+table.data-table td{padding:8px 12px;border-bottom:1px solid rgba(58,0,64,.4);font-size:12px;vertical-align:middle}
+table.data-table tr:hover td{background:rgba(255,255,255,.02)}
+table.data-table tr:last-child td{border-bottom:none}
+.badge{display:inline-block;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600}
+.badge-green{background:rgba(63,185,80,.15);color:var(--green);border:1px solid rgba(63,185,80,.3)}
+.badge-blue{background:rgba(56,139,253,.15);color:var(--blue);border:1px solid rgba(56,139,253,.3)}
+.badge-red{background:rgba(248,81,73,.15);color:var(--red);border:1px solid rgba(248,81,73,.3)}
+.badge-yellow{background:rgba(210,153,34,.15);color:var(--yellow);border:1px solid rgba(210,153,34,.3)}
+.ticket-link{color:var(--blue);text-decoration:none;font-size:11px}
+.ticket-link:hover{text-decoration:underline}
+.mobile-cell{font-family:monospace;font-size:12px;letter-spacing:.5px}
+.toast-container{position:fixed;bottom:24px;right:24px;z-index:9999;display:flex;flex-direction:column;gap:8px}
+.toast{background:var(--card);border:1px solid var(--border);border-radius:8px;padding:12px 18px;font-size:13px;box-shadow:0 4px 24px rgba(0,0,0,.5);animation:slideIn .3s ease;max-width:340px}
+.toast.success{border-left:3px solid var(--green)}
+.toast.error{border-left:3px solid var(--red)}
+.toast.info{border-left:3px solid var(--blue)}
+@keyframes slideIn{from{transform:translateX(100%);opacity:0}to{transform:translateX(0);opacity:1}}
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:500;display:none;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;max-width:600px;width:90%;max-height:70vh;overflow-y:auto}
+.modal h3{color:var(--primary);margin-bottom:14px}
+.modal .close-btn{float:right;background:transparent;border:none;color:var(--text-dim);font-size:20px;cursor:pointer}
+.error-item{padding:8px 0;border-bottom:1px solid var(--border);font-size:12px}
+.error-item:last-child{border-bottom:none}
+.loader{display:flex;align-items:center;justify-content:center;padding:60px;gap:12px}
+.spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--primary);border-radius:50%;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+.empty-state{text-align:center;padding:60px 20px;color:var(--text-dim)}
+.empty-state .icon{font-size:3rem;margin-bottom:12px}
+@media(max-width:1100px){.kpi-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:768px){.bucket-row{grid-template-columns:repeat(2,1fr)}.charts-row{grid-template-columns:1fr}.kpi-row{grid-template-columns:repeat(2,1fr)}.filters-row{flex-direction:column;align-items:stretch}select.filter-select{min-width:unset}}
+@media(max-width:480px){.bucket-row{grid-template-columns:1fr}}
+.text-green{color:var(--green)}.text-blue{color:var(--blue)}.text-red{color:var(--red)}.text-yellow{color:var(--yellow)}.text-dim{color:var(--text-dim)}.fw-bold{font-weight:700}
+</style>
+</head>
+<body>
+<header class="site-header">
+  <h1>&#x1F4A5; High Pain Customer Tracker</h1>
+  <div class="header-right">
+    <span class="refresh-info" id="lastUpdated">Loading...</span>
+    <button class="btn btn-ghost" onclick="loadData()">&#x21BB; Refresh</button>
+    <button class="bell-btn" onclick="openErrorModal()" title="Data Quality">&#x1F514;<span class="bell-badge" id="bellBadge"></span></button>
+  </div>
+</header>
+<div class="toast-container" id="toastContainer"></div>
+<div class="modal-overlay" id="errorModal">
+  <div class="modal">
+    <button class="close-btn" onclick="closeErrorModal()">&#x2715;</button>
+    <h3>&#x1F514; Data Quality Errors</h3>
+    <div id="errorList"></div>
+  </div>
+</div>
+<div class="container">
+  <div class="bucket-row">
+    <div class="bucket-card total"><div class="bucket-icon">&#x1F4CB;</div><div class="bucket-info"><div class="bucket-count" id="bc-total">&mdash;</div><div class="bucket-label">Total Cases</div></div></div>
+    <div class="bucket-card migrated"><div class="bucket-icon">&#x2705;</div><div class="bucket-info"><div class="bucket-count" id="bc-migrated">&mdash;</div><div class="bucket-label">Migrated</div></div></div>
+    <div class="bucket-card pingup"><div class="bucket-icon">&#x1F4E1;</div><div class="bucket-info"><div class="bucket-count" id="bc-pingup">&mdash;</div><div class="bucket-label">Ping Up</div></div></div>
+    <div class="bucket-card unresolved"><div class="bucket-icon">&#x1F534;</div><div class="bucket-info"><div class="bucket-count" id="bc-unresolved">&mdash;</div><div class="bucket-label">Unresolved</div></div></div>
+  </div>
+  <div class="kpi-row">
+    <div class="kpi-card"><div class="kpi-value" id="kpi-total">&mdash;</div><div class="kpi-label">Total Cases</div></div>
+    <div class="kpi-card"><div class="kpi-value text-green" id="kpi-migpct">&mdash;</div><div class="kpi-label">Migrated %</div></div>
+    <div class="kpi-card"><div class="kpi-value text-blue" id="kpi-pingpct">&mdash;</div><div class="kpi-label">Ping Up %</div></div>
+    <div class="kpi-card"><div class="kpi-value text-red" id="kpi-unresolved">&mdash;</div><div class="kpi-label">Unresolved</div></div>
+    <div class="kpi-card"><div class="kpi-value text-yellow" id="kpi-dupes">&mdash;</div><div class="kpi-label">Duplicates</div></div>
+    <div class="kpi-card"><div class="kpi-value" id="kpi-partners">&mdash;</div><div class="kpi-label">Partners Affected</div></div>
+  </div>
+  <div class="filters-section">
+    <div class="filters-row">
+      <div class="filter-group"><label class="filter-label">Partner</label><select class="filter-select" id="filterPartner" onchange="applyFilters()"><option value="">All Partners</option></select></div>
+      <div class="filter-group"><label class="filter-label">Sub-category</label><select class="filter-select" id="filterSubcat" onchange="applyFilters()"><option value="">All Categories</option></select></div>
+      <div class="filter-group"><label class="filter-label">TAT</label><select class="filter-select" id="filterTat" onchange="applyFilters()"><option value="">All TAT</option></select></div>
+      <div class="filter-group"><label class="filter-label">Status</label>
+        <select class="filter-select" id="filterStatus" onchange="applyFilters()">
+          <option value="">All Statuses</option><option value="Migrated">Migrated</option>
+          <option value="Ping Up">Ping Up</option><option value="Unresolved">Unresolved</option>
+          <option value="Duplicate">Duplicate</option>
+        </select>
+      </div>
+      <div class="filter-group"><label class="filter-label">&nbsp;</label><button class="btn btn-ghost" onclick="clearFilters()">Clear Filters</button></div>
+    </div>
+    <div class="filter-summary" id="filterSummary"></div>
+  </div>
+  <div class="charts-row">
+    <div class="chart-card"><div class="chart-title">Sub-category Breakdown</div><div class="chart-wrap"><canvas id="subcatChart"></canvas></div></div>
+    <div class="chart-card"><div class="chart-title">TAT Distribution</div><div class="chart-wrap"><canvas id="tatChart"></canvas></div></div>
+  </div>
+  <div class="section-title">Day-wise Activity (Last 3 Days + FTD)</div>
+  <div class="day-table-wrap"><table class="day-table"><thead><tr><th>Date</th><th>Cases Added</th><th>Migrated</th><th>Ping Up</th><th>Unresolved</th></tr></thead><tbody id="dayTableBody"><tr><td colspan="5"><div class="loader"><div class="spinner"></div>&nbsp;Loading...</div></td></tr></tbody></table></div>
+  <div class="table-toolbar"><div class="table-count" id="tableCount">Loading records...</div><button class="btn btn-ghost" onclick="downloadCSV()">&#x2B07; Download CSV</button></div>
+  <div class="data-table-wrap"><table class="data-table"><thead><tr><th>#</th><th>Mobile</th><th>Customer Name</th><th>Partner</th><th>Sub-category</th><th>TAT</th><th>Ground Remarks</th><th>Easy Remarks</th><th>Migration Date</th><th>Status</th><th>Ticket</th></tr></thead><tbody id="tableBody"><tr><td colspan="11"><div class="loader"><div class="spinner"></div>&nbsp;Loading data...</div></td></tr></tbody></table></div>
+</div>
+<script>
+/* CONFIG */
+const CSV_URL='https://docs.google.com/spreadsheets/d/e/2PACX-1vSDBrdViLa3uTThiIfIqDSQ1ojwkN7VUi-ZzHOvEn3uZpF4WPpuX_spBLX5ID7KtgbmSK6oIXf0IVQX/pub?gid=0&single=true&output=csv';
+const STORAGE_KEY='hp_cfg_v1';
+const REFRESH_MS=5*60*1000;
+let allRows=[],filteredRows=[],dataErrors=[],charts={},refreshTimer=null;
+
+/* CSV PARSER - handles quoted multi-line fields */
+function parseCSV(text){
+  const rows=[];
+  let col='',row=[],inQ=false;
+  for(let i=0;i<text.length;i++){
+    const ch=text[i],nx=text[i+1];
+    if(inQ){
+      if(ch=='){if(nx=='){col+=';i++;}else inQ=false;}
+      else col+=ch;
+    }else{
+      if(ch==')inQ=true;
+      else if(ch==','){row.push(col.trim());col='';}
+      else if(ch=='
+'){row.push(col.trim());rows.push(row);row=[];col='';}
+      else if(ch!='')col+=ch;
+    }
+  }
+  if(col!==''||row.length>0){row.push(col.trim());rows.push(row);}
+  return rows;
+}
+
+/* DATE PARSER - DD/Mon/YYYY and M/D/YYYY */
+const MON_MAP={jan:0,feb:1,mar:2,apr:3,may:4,jun:5,jul:6,aug:7,sep:8,oct:9,nov:10,dec:11};
+function parseDate(s){
+  if(!s)return null;
+  s=s.trim();
+  let m=s.match(/^(\d{1,2})\/([A-Za-z]{3})\/(\d{4})$/);
+  if(m){const mo=MON_MAP[m[2].toLowerCase()];if(mo!==undefined)return new Date(+m[3],mo,+m[1]);}
+  m=s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+  if(m){let yr=+m[3];if(yr<100)yr+=2000;return new Date(yr,+m[1]-1,+m[2]);}
+  const d=new Date(s);return isNaN(d)?null:d;
+}
+function fmtDate(d){
+  if(!d)return'';
+  return d.toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'});
+}
+function dKey(d){if(!d)return'';return d.toISOString().slice(0,10);}
+
+/* STATUS LOGIC */
+function getStatus(r){
+  if((r[14]||'').trim()!=='')return'Migrated';
+  const g=(r[8]||'').toLowerCase(),e=(r[9]||'').toLowerCase();
+  if(['ping up','internet working','up'].some(kw=>g.includes(kw)||e.includes(kw)))return'Ping Up';
+  if((r[12]||'').trim()==='1'||(r[13]||'').trim()==='1')return'Duplicate';
+  return'Unresolved';
+}
+function isDupe(r){return(r[12]||'').trim()==='1'||(r[13]||'').trim()==='1';}
+
+async function loadData(){
+  showToast('Fetching latest data\u2026','info');
+  try{
+    const res=await fetch(CSV_URL+'&nocache='+Date.now());
+    if(!res.ok)throw new Error('HTTP '+res.status);
+    const txt=await res.text();
+    const rows=parseCSV(txt);
+    if(rows.length<2)throw new Error('No data rows found');
+    allRows=rows.slice(1).filter(r=>r.length>=5&&(r[0]||'').trim()!=='');
+    validateData(allRows);populateFilters(allRows);applyFilters();
+    const now=new Date();
+    document.getElementById('lastUpdated').textContent='Updated '+now.toLocaleTimeString('en-IN');
+    try{localStorage.setItem(STORAGE_KEY,JSON.stringify({lastFetch:now.toISOString()}));}catch(x){}
+    showToast('Loaded '+allRows.length+' records successfully','success');
+    scheduleRefresh();
+  }catch(err){
+    console.error(err);
+    showToast('Load failed: '+err.message,'error');
+    document.getElementById('lastUpdated').textContent='Load failed';
+  }
+}
+
+function validateData(rows){
+  dataErrors=[];
+  rows.forEach((r,i)=>{
+    if(!(r[3]||'').trim())dataErrors.push({row:i+2,field:'Mobile',msg:'Missing mobile',name:r[5]||''});
+    if(!(r[5]||'').trim())dataErrors.push({row:i+2,field:'Name',msg:'Missing name',mobile:r[3]||''});
+  });
+  const badge=document.getElementById('bellBadge');
+  if(dataErrors.length>0){badge.style.display='flex';badge.textContent=dataErrors.length>99?'99+':String(dataErrors.length);}
+  else badge.style.display='none';
+}
+function openErrorModal(){
+  const list=document.getElementById('errorList');
+  if(dataErrors.length===0){
+    list.innerHTML='<p style="color:var(--text-dim)">No issues found.</p>';
+  }else{
+    list.innerHTML=dataErrors.map(e=>'<div class="error-item"><strong>Row '+e.row+'</strong> &mdash; '+esc(e.field)+': '+esc(e.msg)+(e.name?' ('+esc(e.name)+')':'')+(e.mobile?' ('+esc(e.mobile)+')':'')+'</div>').join('');
+  }
+  document.getElementById('errorModal').classList.add('open');
+}
+function closeErrorModal(){document.getElementById('errorModal').classList.remove('open');}
+function populateFilters(rows){
+  const uniq=fn=>[...new Set(rows.map(fn).filter(Boolean))].sort();
+  const pSel=document.getElementById('filterPartner');
+  const sSel=document.getElementById('filterSubcat');
+  const tSel=document.getElementById('filterTat');
+  const sv=[pSel.value,sSel.value,tSel.value];
+  pSel.innerHTML='<option value=>All Partners</option>'+uniq(r=>(r[6]||'').trim()).map(v=>'<option>'+esc(v)+'</option>').join('');
+  sSel.innerHTML='<option value=>All Categories</option>'+uniq(r=>(r[4]||'').trim()).map(v=>'<option>'+esc(v)+'</option>').join('');
+  tSel.innerHTML='<option value=>All TAT</option>'+uniq(r=>(r[7]||'').trim()).map(v=>'<option>'+esc(v)+'</option>').join('');
+  pSel.value=sv[0];sSel.value=sv[1];tSel.value=sv[2];
+}
+function applyFilters(){
+  const p=document.getElementById('filterPartner').value;
+  const s=document.getElementById('filterSubcat').value;
+  const t=document.getElementById('filterTat').value;
+  const st=document.getElementById('filterStatus').value;
+  filteredRows=allRows.filter(r=>{
+    if(p&&(r[6]||'').trim()!==p)return false;
+    if(s&&(r[4]||'').trim()!==s)return false;
+    if(t&&(r[7]||'').trim()!==t)return false;
+    if(st){if(st==='Duplicate'){if(!isDupe(r))return false;}else if(getStatus(r)!==st)return false;}
+    return true;
+  });
+  updateDashboard(filteredRows);
+  updateSummaryBar(p,s,t,st);
+}
+function clearFilters(){
+  ['filterPartner','filterSubcat','filterTat','filterStatus'].forEach(id=>document.getElementById(id).value='');
+  applyFilters();
+}
+function updateSummaryBar(p,s,t,st){
+  const bar=document.getElementById('filterSummary');const parts=[];
+  if(p)parts.push('Partner: <span>'+esc(p)+'</span>');
+  if(s)parts.push('Category: <span>'+esc(s)+'</span>');
+  if(t)parts.push('TAT: <span>'+esc(t)+'</span>');
+  if(st)parts.push('Status: <span>'+esc(st)+'</span>');
+  if(parts.length){bar.innerHTML='Active filters &mdash; '+parts.join(' &nbsp;|&nbsp; ')+' &nbsp;|&nbsp; Showing <span>'+filteredRows.length+'</span> of <span>'+allRows.length+'</span> records';bar.classList.add('active');}
+  else bar.classList.remove('active');
+}
+function updateDashboard(rows){
+  const total=rows.length;
+  const mig=rows.filter(r=>getStatus(r)==='Migrated').length;
+  const pu=rows.filter(r=>getStatus(r)==='Ping Up').length;
+  const unres=rows.filter(r=>getStatus(r)==='Unresolved').length;
+  const dupes=rows.filter(r=>isDupe(r)).length;
+  const partners=new Set(rows.map(r=>(r[6]||'').trim()).filter(Boolean)).size;
+  const T=(id,v)=>document.getElementById(id).textContent=v;
+  T('bc-total',total);T('bc-migrated',mig);T('bc-pingup',pu);T('bc-unresolved',unres);
+  T('kpi-total',total);
+  T('kpi-migpct',total?Math.round(mig/total*100)+'%':'\u2014');
+  T('kpi-pingpct',total?Math.round(pu/total*100)+'%':'\u2014');
+  T('kpi-unresolved',unres);T('kpi-dupes',dupes);T('kpi-partners',partners);
+  updateCharts(rows);updateDayTable(rows);renderTable(rows);
+  document.getElementById('tableCount').textContent='Showing '+rows.length+' records';
+}
+const PALETTE=['#D9008D','#388bfd','#3fb950','#f85149','#d29922','#a371f7','#79c0ff','#56d364','#ffa657','#ff7b72','#e3b341','#58a6ff','#bc8cff','#7ee787','#ffa198'];
+function countMap(rows,fn){const m={};rows.forEach(r=>{const k=fn(r)||'Unknown';m[k]=(m[k]||0)+1;});return m;}
+function makeDoughnut(cid,labels,data,colors){
+  return new Chart(document.getElementById(cid),{
+    type:'doughnut',
+    data:{labels,datasets:[{data,backgroundColor:colors,borderWidth:1,borderColor:'#0e0010'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{
+      legend:{position:'right',labels:{color:'#9a85a0',font:{size:11},boxWidth:12,padding:8}},
+      tooltip:{callbacks:{label:ctx=>' '+ctx.label+': '+ctx.raw+' ('+Math.round(ctx.raw/ctx.dataset.data.reduce((a,b)=>a+b,0)*100)+'%)'}}
+    }}
+  });
+}
+function updateCharts(rows){
+  const scMap=countMap(rows,r=>(r[4]||'').trim()||'Unknown');
+  const tMap=countMap(rows,r=>(r[7]||'').trim()||'Unknown');
+  if(charts.sc){charts.sc.destroy();charts.sc=null;}
+  if(charts.tat){charts.tat.destroy();charts.tat=null;}
+  charts.sc=makeDoughnut('subcatChart',Object.keys(scMap),Object.values(scMap),PALETTE);
+  charts.tat=makeDoughnut('tatChart',Object.keys(tMap),Object.values(tMap),PALETTE.slice(4));
+}
+function updateDayTable(rows){
+  const today=new Date();today.setHours(0,0,0,0);
+  const dateSet=new Set();
+  rows.forEach(r=>{const d=parseDate(r[2]);if(d)dateSet.add(dKey(d));});
+  const past3=[...dateSet].sort().reverse().slice(0,3);
+  function stats(fn){
+    const dr=rows.filter(fn);
+    return{n:dr.length,
+      m:dr.filter(r=>getStatus(r)==='Migrated').length,
+      p:dr.filter(r=>getStatus(r)==='Ping Up').length,
+      u:dr.filter(r=>getStatus(r)==='Unresolved').length};
+  }
+  const ftd=stats(r=>{const d=parseDate(r[2]);return d&&dKey(d)===dKey(today);});
+  const tbody=document.getElementById('dayTableBody');tbody.innerHTML='';
+  function addRow(label,s,isFtd){
+    const tr=document.createElement('tr');if(isFtd)tr.className='ftd-row';
+    tr.innerHTML='<td>'+esc(label)+'</td><td class="fw-bold">'+s.n+'</td>'+
+      '<td class="text-green">'+s.m+'</td><td class="text-blue">'+s.p+'</td>'+
+      '<td class="text-red">'+s.u+'</td>';
+    tbody.appendChild(tr);
+  }
+  addRow('FTD ('+fmtDate(today)+')',ftd,true);
+  past3.forEach(ds=>{
+    const d=new Date(ds+'T00:00:00');
+    addRow(fmtDate(d),stats(r=>{const rd=parseDate(r[2]);return rd&&dKey(rd)===ds;}),false);
+  });
+}
+function renderTable(rows){
+  const tbody=document.getElementById('tableBody');
+  if(!rows.length){
+    tbody.innerHTML='<tr><td colspan="11"><div class="empty-state"><div class="icon">&#x1F4ED;</div>No records match current filters</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML=rows.map((r,i)=>{
+    const st=getStatus(r),du=isDupe(r);
+    const tUrl=(r[11]||'').trim(),tNo=(r[1]||'').trim(),migDate=(r[14]||'').trim();
+    const stBadge=
+      st==='Migrated'   ?'<span class="badge badge-green">Migrated</span>'  :
+      st==='Ping Up'    ?'<span class="badge badge-blue">Ping Up</span>'    :
+      st==='Unresolved' ?'<span class="badge badge-red">Unresolved</span>':
+                         '<span class="badge badge-yellow">Duplicate</span>';
+    const dupeBadge=du?' <span class="badge badge-yellow">Dupe</span>':'';
+    const link=tUrl
+      ?'<a class="ticket-link" href="'+esc(tUrl)+'" target="_blank" rel="noopener">'+esc(tNo||'Open')+' &#x2197;</a>'
+      :(tNo?esc(tNo):'<span class="text-dim">&mdash;</span>');
+    const g=(r[8]||'').trim(),e=(r[9]||'').trim();
+    return '<tr>'+
+      '<td class="text-dim">'+(i+1)+'</td>'+
+      '<td class="mobile-cell">'+esc((r[3]||'').trim()||'\u2014')+'</td>'+
+      '<td>'+esc((r[5]||'').trim()||'\u2014')+'</td>'+
+      '<td>'+esc((r[6]||'').trim()||'\u2014')+'</td>'+
+      '<td>'+esc((r[4]||'').trim()||'\u2014')+'</td>'+
+      '<td style="font-size:11px">'+esc((r[7]||'').trim()||'\u2014')+'</td>'+
+      '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(g)+'">'+esc(g||'\u2014')+'</td>'+
+      '<td style="max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="'+esc(e)+'">'+esc(e||'\u2014')+'</td>'+
+      '<td class="text-green">'+esc(migDate||'\u2014')+'</td>'+
+      '<td>'+stBadge+dupeBadge+'</td>'+
+      '<td>'+link+'</td></tr>';
+  }).join('');
+}
+function downloadCSV(){
+  const H=['#','Mobile','Customer Name','Partner','Sub-category','TAT','Ground Remarks','Easy Remarks','Migration Date','Status','Ticket No','Ticket URL'];
+  const lines=[H.join(',')];
+  filteredRows.forEach((r,i)=>{
+    lines.push([i+1,r[3]||'',r[5]||'',r[6]||'',r[4]||'',r[7]||'',r[8]||'',r[9]||'',r[14]||'',getStatus(r),r[1]||'',r[11]||''].map(v=>'"'+String(v).replace(/"/g,'""')+'"').join(','));
+  });
+  const blob=new Blob([lines.join('
+')],{type:'text/csv;charset=utf-8;'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url;a.download='high-pain-customers-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a);a.click();document.body.removeChild(a);URL.revokeObjectURL(url);
+  showToast('CSV downloaded ('+filteredRows.length+' records)','success');
+}
+function scheduleRefresh(){
+  if(refreshTimer)clearTimeout(refreshTimer);
+  refreshTimer=setTimeout(()=>{showToast('Auto-refreshing...','info');loadData();},REFRESH_MS);
+}
+function showToast(msg,type){
+  const c=document.getElementById('toastContainer');
+  const t=document.createElement('div');
+  t.className='toast '+(type||'info');t.textContent=msg;c.appendChild(t);
+  setTimeout(()=>{t.style.transition='opacity .4s';t.style.opacity='0';setTimeout(()=>t.remove(),400);},3500);
+}
+function esc(s){
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+document.getElementById('errorModal').addEventListener('click',function(e){if(e.target===this)closeErrorModal();});
+loadData();
+</script>
+</body>
+</html>
