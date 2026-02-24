@@ -375,7 +375,7 @@ function getRemarksTs(ticket) {
 //   a) Ground Remarks is empty (no comment at all), OR
 //   b) Remarks exist but are NOT a final resolution (migrated / refund to customer)
 //      AND have not been updated in the last 24 hours
-const RESOLVED_KW = ['migrated', 'refund to customer', 'refunded'];
+const RESOLVED_KW = ['migrated', 'refund to customer', 'refunded', 'ping up', 'internet working'];
 function isCaseNeedsAction(r) {
   const remarks = effectiveVal(r, 8).trim();
   if (!remarks) return true;   // (a) no comment at all
