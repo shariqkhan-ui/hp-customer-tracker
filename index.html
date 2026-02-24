@@ -839,10 +839,10 @@ function renderTable(rows) {
     const st     = getStatus(r);
     const dup    = isDupe(r);
     const ticket = (r[1]||'').trim();
-    const url    = (r[11]||'').trim();
-    const link   = url
-      ? '<a class="ticket-link" href="' + esc(url) + '" target="_blank">&#x1F517; ' + esc(ticket||'Open') + '</a>'
-      : (ticket ? esc(ticket) : '<span style="color:var(--muted)">—</span>');
+    const kaptureUrl = ticket ? 'https://wiomin.kapturecrm.com/nui/helpdesk/view/' + ticket : '';
+    const link   = ticket
+      ? '<a class="ticket-link" href="' + esc(kaptureUrl) + '" target="_blank">&#x1F517; ' + esc(ticket) + '</a>'
+      : '<span style="color:var(--muted)">—</span>';
     return '<tr>' +
       '<td style="color:var(--muted)">' + (i+1) + '</td>' +
       '<td>' + esc((r[3]||'').trim() || '—') + '</td>' +
