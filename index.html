@@ -229,6 +229,10 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <!-- Filters -->
   <div class="filters-bar">
     <div class="filter-item">
+      <div class="filter-label">Case Added Date</div>
+      <select class="filter-input" id="fDate" onchange="applyFilters()"><option value="">All Dates</option></select>
+    </div>
+    <div class="filter-item">
       <div class="filter-label">Partner</div>
       <select class="filter-input" id="fPartner" onchange="applyFilters()"><option value="">All Partners</option></select>
     </div>
@@ -575,6 +579,21 @@ async function loadData() {
 // ── Dropdowns ──
 function populateDropdowns() {
   const uniq = fn => [...new Set(allRows.map(fn).filter(Boolean))].sort();
+  // Date dropdown: sort descending (most recent first)
+  const uniqDatesDesc = () => {
+    const keys = [...new Set(allRows.map(r => dKey(parseDate((r[2]||'').trim()))).filter(Boolean))];
+    return keys.sort().reverse(); // YYYY-MM-DD sorts correctly
+  };
+  const dateSel = document.getElementById('fDate');
+  const savedDate = dateSel.value;
+  const dateKeys = uniqDatesDesc();
+  dateSel.innerHTML = '<option value="">All Dates</option>' +
+    dateKeys.map(dk => {
+      const d = new Date(dk + 'T00:00:00');
+      const label = fmtDate(d);
+      return '<option value="' + dk + '"' + (dk === savedDate ? ' selected' : '') + '>' + label + '</option>';
+    }).join('');
+
   fillSel('fPartner',  'All Partners',   uniq(r => (r[6]||'').trim()));
   fillSel('fSubcat',   'All Categories', uniq(r => (r[4]||'').trim()));
   fillSel('fTat',      'All TAT',        uniq(r => (r[7]||'').trim()));
@@ -589,12 +608,14 @@ function fillSel(id, placeholder, opts) {
 
 // ── Filters ──
 function applyFilters() {
+  const fD  = document.getElementById('fDate').value;
   const fP  = document.getElementById('fPartner').value;
   const fS  = document.getElementById('fSubcat').value;
   const fT  = document.getElementById('fTat').value;
   const fSt = document.getElementById('fStatus').value;
   const fE  = document.getElementById('fEngineer').value;
   visRows = allRows.filter(r => {
+    if (fD  && dKey(parseDate((r[2]||'').trim())) !== fD) return false;
     if (fP  && (r[6]||'').trim() !== fP) return false;
     if (fS  && (r[4]||'').trim() !== fS) return false;
     if (fT  && (r[7]||'').trim() !== fT) return false;
@@ -606,15 +627,16 @@ function applyFilters() {
     return true;
   });
   renderAll();
-  renderFilterSummary(fP, fS, fT, fSt, fE);
+  renderFilterSummary(fD, fP, fS, fT, fSt, fE);
 }
 function clearFilters() {
-  ['fPartner','fSubcat','fTat','fStatus','fEngineer'].forEach(id => document.getElementById(id).value = '');
+  ['fDate','fPartner','fSubcat','fTat','fStatus','fEngineer'].forEach(id => document.getElementById(id).value = '');
   applyFilters();
 }
-function renderFilterSummary(fP, fS, fT, fSt, fE) {
+function renderFilterSummary(fD, fP, fS, fT, fSt, fE) {
   const el = document.getElementById('filterSummary');
   const parts = [];
+  if (fD)  parts.push('Date: <b>' + esc(document.querySelector('#fDate option:checked')?.textContent || fD) + '</b>');
   if (fP)  parts.push('Partner: <b>' + esc(fP) + '</b>');
   if (fS)  parts.push('Category: <b>' + esc(fS) + '</b>');
   if (fT)  parts.push('TAT: <b>' + esc(fT) + '</b>');
