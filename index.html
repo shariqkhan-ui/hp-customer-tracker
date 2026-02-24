@@ -146,6 +146,13 @@ table.main-tbl tbody tr:hover { background: #220020; }
 .alert-tag.err  { background: rgba(248,81,73,.2);  color: var(--red); }
 .alert-empty { padding: 18px 16px; text-align: center; color: var(--muted); font-size: 12px; }
 
+/* Error Banner */
+#errorBanner { display: none; background: rgba(248,81,73,.12); border: 1px solid var(--red);
+  border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; color: var(--red);
+  font-size: 13px; line-height: 1.6; }
+#errorBanner b { color: #ff6b6b; }
+#errorBanner a { color: #ff9999; }
+
 /* Toast */
 #toastArea { position: fixed; bottom: 24px; right: 24px; z-index: 9999;
   display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
@@ -175,6 +182,9 @@ table.main-tbl tbody tr:hover { background: #220020; }
 </div>
 
 <div class="main">
+
+  <!-- Error Banner -->
+  <div id="errorBanner"></div>
 
   <!-- Filters -->
   <div class="filters-bar">
@@ -355,7 +365,8 @@ function isDupe(r) { return (r[12]||'').trim() === '1' || (r[13]||'').trim() ===
 
 // ── Load Data ──
 async function loadData() {
-  toast('Fetching latest data…', 'info');
+  document.getElementById('lastUpdated').textContent = 'Loading…';
+  document.getElementById('errorBanner').style.display = 'none';
   try {
     const res = await fetch(CSV_URL + '&t=' + Date.now());
     if (!res.ok) throw new Error('HTTP ' + res.status);
@@ -370,8 +381,16 @@ async function loadData() {
     toast('Loaded ' + allRows.length + ' records', 'success');
     setTimeout(loadData, 5 * 60 * 1000); // auto-refresh 5 min
   } catch(e) {
-    toast('Load failed: ' + e.message, 'error');
-    document.getElementById('lastUpdated').textContent = 'Load failed';
+    const banner = document.getElementById('errorBanner');
+    banner.style.display = 'block';
+    banner.innerHTML =
+      '<b>⚠ Failed to load data: ' + e.message + '</b><br>' +
+      'This usually happens when the file is opened directly (double-click). <br>' +
+      '<b>Fix:</b> Double-click <b>Launch HP Dashboard.bat</b> to open via local server,<br>' +
+      'or visit: <a href="https://shariqkhan-ui.github.io/hp-customer-tracker/" target="_blank">' +
+      'https://shariqkhan-ui.github.io/hp-customer-tracker/</a>';
+    document.getElementById('lastUpdated').textContent = 'Load failed – see error below';
+    setTimeout(loadData, 30 * 1000); // retry in 30s
   }
 }
 
