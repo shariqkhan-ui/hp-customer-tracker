@@ -219,6 +219,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <button class="btn btn-primary" onclick="saveScriptUrl()" style="align-self:flex-end">Save URL</button>
       <button class="btn btn-primary" id="testBtn" onclick="testSheetConnection()" style="align-self:flex-end;background:var(--blue);border-color:var(--blue)">&#x1F50C; Test Connection</button>
     </div>
+    <div id="testResult" style="display:none;margin-top:10px;font-size:12px;padding:8px 4px;line-height:1.5"></div>
   </div>
 
   <!-- Filters -->
@@ -457,17 +458,44 @@ async function saveToSheet(ticket, field, value) {
 
 async function testSheetConnection() {
   const url = getScriptUrl();
-  if (!url) { toast('Paste the Apps Script URL first', 'error'); return; }
+  const resultEl = document.getElementById('testResult');
+  if (!url) { showTestResult('Paste and save the Apps Script URL first', 'err'); return; }
   const btn = document.getElementById('testBtn');
   btn.textContent = 'Testing…'; btn.disabled = true;
+  showTestResult('Connecting…', 'info');
   try {
-    const res  = await fetch(url + '?test=1', { redirect: 'follow' });
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 12000);
+    const res  = await fetch(url + '?test=1', { redirect: 'follow', signal: controller.signal });
+    clearTimeout(timer);
     const text = (await res.text()).trim();
-    toast('Sheet responded: ' + text.substring(0, 80), text.startsWith('error') ? 'error' : 'success');
+    if (text === 'connected') {
+      showTestResult('✅ Connected! Sheet sync is working.', 'ok');
+    } else {
+      showTestResult('Sheet replied: ' + text.substring(0, 120), 'warn');
+    }
   } catch(e) {
-    toast('Connection failed: ' + e.message, 'error');
+    if (e.name === 'AbortError') {
+      showTestResult('Timed out — check if Apps Script is deployed as "Anyone" access', 'err');
+    } else if (e.message.toLowerCase().includes('cors') || e.message.toLowerCase().includes('failed to fetch')) {
+      // CORS block — try no-cors to at least confirm URL is reachable
+      try {
+        await fetch(url + '?test=1', { mode: 'no-cors' });
+        showTestResult('⚠ URL is reachable but browser blocked the response (CORS). Edits will still be sent to the sheet — try editing a remark to confirm.', 'warn');
+      } catch(e2) {
+        showTestResult('URL not reachable: ' + e2.message, 'err');
+      }
+    } else {
+      showTestResult('Error: ' + e.message, 'err');
+    }
   }
-  btn.textContent = 'Test'; btn.disabled = false;
+  btn.textContent = '🔌 Test Connection'; btn.disabled = false;
+}
+function showTestResult(msg, type) {
+  const el = document.getElementById('testResult');
+  el.style.display = 'block';
+  el.style.color   = type === 'ok' ? 'var(--green)' : type === 'err' ? 'var(--red)' : type === 'warn' ? 'var(--yellow)' : 'var(--muted)';
+  el.textContent   = msg;
 }
 
 // ── Inline edit cell helpers ──
