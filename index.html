@@ -211,18 +211,13 @@ table.main-tbl tbody tr:hover { background: #220020; }
 
   <!-- Sync Setup Panel -->
   <div class="setup-panel" id="setupPanel">
-    <div class="setup-title" onclick="toggleSetup()">
-      &#x2699;&#xFE0F; Google Sheet Sync &nbsp;
-      <span id="syncBadge" class="sync-badge nosync">&#x26A0;&#xFE0F; Not configured</span>
-      <span style="margin-left:auto;font-size:12px;color:var(--muted)" id="setupChevron">&#x25B2;</span>
-    </div>
-    <div id="setupBody" class="setup-body" style="display:flex">
-      <div style="flex:1;min-width:300px">
-        <div class="filter-label" style="margin-bottom:4px">Apps Script Web App URL</div>
+    <div class="setup-body" style="display:flex">
+      <div style="flex:1;min-width:260px">
+        <div class="filter-label" style="margin-bottom:4px">&#x2699;&#xFE0F; Google Sheet Sync &nbsp;<span id="syncBadge" class="sync-badge nosync">&#x26A0;&#xFE0F; Not configured</span></div>
         <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
       </div>
-      <button class="btn btn-primary" onclick="saveScriptUrl()">Save</button>
-      <button class="btn" id="testBtn" onclick="testSheetConnection()">Test</button>
+      <button class="btn btn-primary" onclick="saveScriptUrl()" style="align-self:flex-end">Save URL</button>
+      <button class="btn btn-primary" id="testBtn" onclick="testSheetConnection()" style="align-self:flex-end;background:var(--blue);border-color:var(--blue)">&#x1F50C; Test Connection</button>
     </div>
   </div>
 
@@ -349,7 +344,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Sub-category</th><th>TAT</th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
-            <th>Migration Date (Col O)</th><th>Status</th><th>Ticket</th>
+            <th>Created Date</th><th>Migration Date</th><th>Status</th><th>Ticket</th>
           </tr>
         </thead>
         <tbody id="tBody"></tbody>
@@ -431,13 +426,6 @@ function updateSyncBadge() {
   const el  = document.getElementById('syncBadge');
   el.textContent = url ? '\u2705 Syncing to Sheet' : '\u26A0\uFE0F Not configured';
   el.className   = 'sync-badge' + (url ? '' : ' nosync');
-}
-function toggleSetup() {
-  const b = document.getElementById('setupBody');
-  const c = document.getElementById('setupChevron');
-  const open = b.style.display !== 'none';
-  b.style.display = open ? 'none' : 'flex';
-  c.textContent   = open ? '\u25BC' : '\u25B2';
 }
 
 // ── Save edit: localStorage + Apps Script ──
@@ -807,7 +795,7 @@ function renderTable(rows) {
   document.getElementById('rowCount').textContent = rows.length + ' records';
   const tbody = document.getElementById('tBody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="11" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
     return;
   }
   const statusBadge = s =>
@@ -833,7 +821,8 @@ function renderTable(rows) {
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim()) +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim()) +
-      '<td style="color:var(--green)">' + esc((r[14]||'').trim() || '—') + '</td>' +
+      '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[2]||'').trim())) || '—') + '</td>' +
+      '<td style="color:var(--green)">' + (fmtDate(parseDate((r[14]||'').trim())) || '—') + '</td>' +
       '<td>' + statusBadge(st) + (dup ? ' <span class="badge badge-yellow">Dupe</span>' : '') + '</td>' +
       '<td>' + link + '</td>' +
       '</tr>';
