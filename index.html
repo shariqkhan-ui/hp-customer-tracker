@@ -321,9 +321,9 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <table class="day-table">
       <thead>
         <tr>
-          <th style="text-align:left">Date</th>
+          <th style="text-align:left">Date (Created)</th>
           <th>Cases Added</th>
-          <th>Migrated</th>
+          <th title="Cases migrated on this date (by Migration Date col O)">Migrated on Date</th>
           <th>Ping Up</th>
           <th>Unresolved</th>
         </tr>
@@ -759,18 +759,31 @@ function makeChart(id, rows, keyFn, colors) {
 }
 
 // ── Day-wise Table ──
+// Cases Added  → grouped by Created Date (col 2)
+// Migrated     → grouped by Migration Date (col 14) — shows actual resolution activity per day
+// Ping Up / Unresolved → grouped by Created Date
 function renderDayTable(rows) {
   const tbody = document.getElementById('dayBody');
-  // Get last 3 unique dates from Created Date (col 2)
-  const keys = [...new Set(rows.map(r => dKey(parseDate(r[2]))).filter(Boolean))].sort().reverse().slice(0, 3);
 
-  const stats = (subset) => ({
-    n:    subset.length,
-    mig:  subset.filter(r => getStatus(r) === 'Migrated').length,
-    ping: subset.filter(r => getStatus(r) === 'Ping Up').length,
-    unres:subset.filter(r => getStatus(r) === 'Unresolved').length,
-  });
-  const ftd = stats(rows);
+  // 3 most recent unique CREATED dates
+  const keys = [...new Set(rows.map(r => dKey(parseDate((r[2]||'').trim()))).filter(Boolean))].sort().reverse().slice(0, 3);
+
+  const statsForKey = (dk) => {
+    const created = rows.filter(r => dKey(parseDate((r[2]||'').trim())) === dk);
+    const migrated = rows.filter(r => dKey(parseDate((r[14]||'').trim())) === dk); // migrated ON this date
+    return {
+      n:    created.length,
+      mig:  migrated.length,
+      ping: created.filter(r => getStatus(r) === 'Ping Up').length,
+      unres:created.filter(r => getStatus(r) === 'Unresolved').length,
+    };
+  };
+  const ftd = {
+    n:    rows.length,
+    mig:  rows.filter(r => getStatus(r) === 'Migrated').length,
+    ping: rows.filter(r => getStatus(r) === 'Ping Up').length,
+    unres:rows.filter(r => getStatus(r) === 'Unresolved').length,
+  };
 
   const row = (label, s, isFtd) => `
     <tr class="${isFtd ? 'ftd-row' : ''}">
@@ -784,8 +797,7 @@ function renderDayTable(rows) {
   tbody.innerHTML =
     keys.map(dk => {
       const d = new Date(dk + 'T00:00:00');
-      const subset = rows.filter(r => dKey(parseDate(r[2])) === dk);
-      return row(fmtDate(d), stats(subset), false);
+      return row(fmtDate(d), statsForKey(dk), false);
     }).join('') +
     row('FTD — Final Till Date', ftd, true);
 }
