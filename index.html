@@ -164,20 +164,24 @@ let allRows=[],filteredRows=[],dataErrors=[],charts={},refreshTimer=null;
 function parseCSV(text){
   const rows=[];
   let col='',row=[],inQ=false;
-  for(let i=0;i<text.length;i++){
-    const ch=text[i],nx=text[i+1];
-    if(inQ){
-      if(ch=='){if(nx=='){col+=';i++;}else inQ=false;}
-      else col+=ch;
+  const t=text.replace(/\r\n/g,'\n').replace(/\r/g,'\n');
+  for(let i=0;i<t.length;i++){
+    const ch=t[i];
+    if(ch==='"'){
+      if(inQ&&t[i+1]==='"'){col+='"';i++;}
+      else inQ=!inQ;
+    }else if(ch===','&&!inQ){
+      row.push(col.trim());col='';
+    }else if(ch==='\n'&&!inQ){
+      row.push(col.trim());
+      if(row.some(x=>x!==''))rows.push(row);
+      row=[];col='';
     }else{
-      if(ch==')inQ=true;
-      else if(ch==','){row.push(col.trim());col='';}
-      else if(ch=='
-'){row.push(col.trim());rows.push(row);row=[];col='';}
-      else if(ch!='')col+=ch;
+      col+=ch;
     }
   }
-  if(col!==''||row.length>0){row.push(col.trim());rows.push(row);}
+  row.push(col.trim());
+  if(row.some(x=>x!==''))rows.push(row);
   return rows;
 }
 
@@ -216,7 +220,7 @@ async function loadData(){
     const txt=await res.text();
     const rows=parseCSV(txt);
     if(rows.length<2)throw new Error('No data rows found');
-    allRows=rows.slice(1).filter(r=>r.length>=5&&(r[0]||'').trim()!=='');
+    allRows=rows.slice(1).filter(r=>r.length>=5&&(r[1]||'').trim()!=='');
     validateData(allRows);populateFilters(allRows);applyFilters();
     const now=new Date();
     document.getElementById('lastUpdated').textContent='Updated '+now.toLocaleTimeString('en-IN');
