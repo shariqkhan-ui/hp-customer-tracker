@@ -146,6 +146,29 @@ table.main-tbl tbody tr:hover { background: #220020; }
 .alert-tag.err  { background: rgba(248,81,73,.2);  color: var(--red); }
 .alert-empty { padding: 18px 16px; text-align: center; color: var(--muted); font-size: 12px; }
 
+/* Editable cells */
+.edit-cell { cursor: pointer; position: relative; }
+.edit-cell:hover { background: rgba(217,0,141,.06) !important; }
+.edit-hint { display: none; font-size: 10px; color: var(--primary-light); margin-left: 6px; opacity: .8; }
+.edit-cell:hover .edit-hint { display: inline; }
+.edit-cell.edited .cell-display { color: var(--blue); font-style: italic; }
+.edit-input { width: 100%; min-width: 140px; padding: 5px 7px; background: #12001a;
+  border: 1px solid var(--primary); border-radius: 4px; color: var(--text); font-size: 12px; outline: none; }
+
+/* Setup / sync panel */
+.setup-panel { background: var(--card); border: 1px solid var(--yellow);
+  border-radius: 10px; padding: 12px 18px; margin-bottom: 14px; }
+.setup-title { font-size: 12px; font-weight: 700; color: var(--yellow);
+  text-transform: uppercase; letter-spacing: .06em; cursor: pointer;
+  display: flex; align-items: center; gap: 8px; user-select: none; }
+.setup-body { margin-top: 12px; display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
+.setup-body input { flex: 1; min-width: 300px; padding: 7px 10px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 12px; }
+.setup-body input:focus { outline: none; border-color: var(--primary); }
+.sync-badge { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 10px;
+  background: rgba(63,185,80,.15); color: var(--green); }
+.sync-badge.nosync { background: rgba(210,153,34,.15); color: var(--yellow); }
+
 /* Error Banner */
 #errorBanner { display: none; background: rgba(248,81,73,.12); border: 1px solid var(--red);
   border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; color: var(--red);
@@ -186,6 +209,23 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <!-- Error Banner -->
   <div id="errorBanner"></div>
 
+  <!-- Sync Setup Panel -->
+  <div class="setup-panel" id="setupPanel">
+    <div class="setup-title" onclick="toggleSetup()">
+      &#x2699;&#xFE0F; Google Sheet Sync &nbsp;
+      <span id="syncBadge" class="sync-badge nosync">Not configured — edits saved locally only</span>
+      <span style="margin-left:auto;font-size:12px;color:var(--muted)" id="setupChevron">&#x25BC;</span>
+    </div>
+    <div id="setupBody" class="setup-body" style="display:none">
+      <div style="flex:1;min-width:300px">
+        <div class="filter-label" style="margin-bottom:4px">Apps Script URL (paste after deploying the script in your Google Sheet)</div>
+        <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
+      </div>
+      <button class="btn btn-primary" onclick="saveScriptUrl()">Save URL</button>
+      <button class="btn" onclick="clearScriptUrl()">Clear</button>
+    </div>
+  </div>
+
   <!-- Filters -->
   <div class="filters-bar">
     <div class="filter-item">
@@ -209,6 +249,10 @@ table.main-tbl tbody tr:hover { background: #220020; }
         <option value="Unresolved">Unresolved</option>
         <option value="Duplicate">Duplicate</option>
       </select>
+    </div>
+    <div class="filter-item">
+      <div class="filter-label">Engineer</div>
+      <select class="filter-input" id="fEngineer" onchange="applyFilters()"><option value="">All Engineers</option></select>
     </div>
     <div class="filter-item" style="align-self:flex-end">
       <button class="btn" onclick="clearFilters()">&#x2715; Clear</button>
@@ -289,8 +333,10 @@ table.main-tbl tbody tr:hover { background: #220020; }
         <thead>
           <tr>
             <th>#</th><th>Mobile</th><th>Customer Name</th><th>Partner</th>
-            <th>Sub-category</th><th>TAT</th><th>Ground Remarks (Col I)</th>
-            <th>Easy Remarks</th><th>Migration Date (Col O)</th><th>Status</th><th>Ticket</th>
+            <th>Sub-category</th><th>TAT</th>
+            <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
+            <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
+            <th>Migration Date (Col O)</th><th>Status</th><th>Ticket</th>
           </tr>
         </thead>
         <tbody id="tBody"></tbody>
@@ -305,6 +351,139 @@ table.main-tbl tbody tr:hover { background: #220020; }
 const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDBrdViLa3uTThiIfIqDSQ1ojwkN7VUi-ZzHOvEn3uZpF4WPpuX_spBLX5ID7KtgbmSK6oIXf0IVQX/pub?gid=0&single=true&output=csv';
 
 let allRows = [], visRows = [], charts = {};
+
+// ── Local Edits + Sheet Sync ──
+const EDITS_KEY  = 'hp_local_edits_v1';
+const SCRIPT_KEY = 'hp_script_url_v1';
+let localEdits = {};
+
+function loadEdits() {
+  try { localEdits = JSON.parse(localStorage.getItem(EDITS_KEY) || '{}'); } catch(e) { localEdits = {}; }
+}
+function saveEditsLocal() { localStorage.setItem(EDITS_KEY, JSON.stringify(localEdits)); }
+function getEdit(ticket, field) {
+  return (localEdits[ticket] && localEdits[ticket][field] !== undefined) ? localEdits[ticket][field] : null;
+}
+function setEdit(ticket, field, value) {
+  if (!localEdits[ticket]) localEdits[ticket] = {};
+  localEdits[ticket][field] = value;
+  saveEditsLocal();
+}
+
+function getScriptUrl() { return localStorage.getItem(SCRIPT_KEY) || ''; }
+function saveScriptUrl() {
+  const url = document.getElementById('scriptUrlInput').value.trim();
+  if (url) localStorage.setItem(SCRIPT_KEY, url);
+  else localStorage.removeItem(SCRIPT_KEY);
+  updateSyncBadge();
+  toast(url ? 'Script URL saved — edits will sync to Google Sheet' : 'Script URL cleared', url ? 'success' : 'info');
+}
+function clearScriptUrl() {
+  document.getElementById('scriptUrlInput').value = '';
+  localStorage.removeItem(SCRIPT_KEY);
+  updateSyncBadge();
+  toast('Script URL cleared', 'info');
+}
+function updateSyncBadge() {
+  const url = localStorage.getItem(SCRIPT_KEY) || '';
+  const badge = document.getElementById('syncBadge');
+  badge.textContent = url ? '&#x2705; Syncing to Google Sheet' : 'Not configured — edits saved locally only';
+  badge.className   = url ? 'sync-badge' : 'sync-badge nosync';
+  badge.innerHTML   = badge.textContent; // allow html entities
+  badge.textContent = url ? '\u2705 Syncing to Google Sheet' : 'Not configured \u2014 edits saved locally only';
+  badge.className   = url ? 'sync-badge' : 'sync-badge nosync';
+}
+function toggleSetup() {
+  const body = document.getElementById('setupBody');
+  const chev = document.getElementById('setupChevron');
+  const open = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'flex';
+  chev.textContent   = open ? '\u25BC' : '\u25B2';
+}
+
+// ── Effective value: local edits override sheet data ──
+const COL_FIELD = { 8: 'remarks', 10: 'engineer' };
+function effectiveVal(r, col) {
+  const ticket = (r[1] || '').trim();
+  const field  = COL_FIELD[col];
+  if (ticket && field) {
+    const edit = getEdit(ticket, field);
+    if (edit !== null) return edit;
+  }
+  return (r[col] || '').trim();
+}
+
+// ── Save edit to Sheet via Apps Script ──
+async function saveToSheet(ticket, field, value) {
+  setEdit(ticket, field, value);   // always persist locally
+  const url = getScriptUrl();
+  if (!url) return;                 // no script configured
+  try {
+    await fetch(url, {
+      method: 'POST',
+      mode:   'no-cors',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body:   new URLSearchParams({ ticketNo: ticket, field, value })
+    });
+    toast('Saved to Google Sheet \u2713', 'success');
+  } catch(e) {
+    toast('Saved locally (sheet sync failed)', 'info');
+  }
+}
+
+// ── Inline edit cell helpers ──
+function cellInner(val) {
+  const disp = (val || '').trim()
+    ? '<span class="cell-display">' + esc(val) + '</span>'
+    : '<span class="cell-display" style="color:var(--muted)">&#x2014;</span>';
+  return disp + '<span class="edit-hint">&#x270F;</span>';
+}
+function makeEditCell(ticket, field, orig) {
+  const local    = getEdit(ticket, field);
+  const display  = local !== null ? local : orig;
+  const isEdited = local !== null && local.trim() !== orig.trim();
+  return '<td class="edit-cell' + (isEdited ? ' edited' : '') + '" ' +
+    'data-ticket="' + esc(ticket) + '" data-field="' + esc(field) + '" data-orig="' + esc(orig) + '" ' +
+    'onclick="startEdit(this)" style="max-width:180px">' + cellInner(display) + '</td>';
+}
+function startEdit(td) {
+  if (td.querySelector('input')) return;
+  const ticket = td.dataset.ticket;
+  const field  = td.dataset.field;
+  const orig   = td.dataset.orig;
+  const local  = getEdit(ticket, field);
+  const cur    = local !== null ? local : orig;
+
+  const input = document.createElement('input');
+  input.type      = 'text';
+  input.value     = cur;
+  input.className = 'edit-input';
+  td.innerHTML = '';
+  td.appendChild(input);
+  input.focus();
+  input.select();
+
+  function commit() {
+    const nv = input.value;
+    saveToSheet(ticket, field, nv).then(() => {
+      if (field === 'engineer') populateDropdowns();
+    });
+    const isEdited = nv.trim() !== orig.trim();
+    td.className = 'edit-cell' + (isEdited ? ' edited' : '');
+    td.innerHTML = cellInner(nv);
+    td.onclick   = () => startEdit(td);
+  }
+  input.addEventListener('blur', commit);
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') {
+      const dv = local !== null ? local : orig;
+      td.className = 'edit-cell' + (dv.trim() !== orig.trim() ? ' edited' : '');
+      td.innerHTML = cellInner(dv);
+      td.onclick   = () => startEdit(td);
+    }
+  });
+}
 
 // ── CSV Parser (char-by-char, handles quoted multiline fields) ──
 function parseCSV(text) {
@@ -355,10 +534,9 @@ function dKey(d) { if (!d) return ''; const dd = new Date(d); dd.setHours(0,0,0,
 // ── Status Logic ──
 function getStatus(r) {
   if ((r[14] || '').trim() !== '') return 'Migrated';
-  const g = (r[8] || '').toLowerCase();
-  const e = (r[9] || '').toLowerCase();
+  const g = effectiveVal(r, 8).toLowerCase();
   const pingKw = ['ping up', 'internet working', 'internet up', 'speed up', 'link up'];
-  if (pingKw.some(kw => g.includes(kw) || e.includes(kw))) return 'Ping Up';
+  if (pingKw.some(kw => g.includes(kw))) return 'Ping Up';
   return 'Unresolved';
 }
 function isDupe(r) { return (r[12]||'').trim() === '1' || (r[13]||'').trim() === '1'; }
@@ -397,9 +575,10 @@ async function loadData() {
 // ── Dropdowns ──
 function populateDropdowns() {
   const uniq = fn => [...new Set(allRows.map(fn).filter(Boolean))].sort();
-  fillSel('fPartner', 'All Partners',    uniq(r => (r[6]||'').trim()));
-  fillSel('fSubcat',  'All Categories',  uniq(r => (r[4]||'').trim()));
-  fillSel('fTat',     'All TAT',         uniq(r => (r[7]||'').trim()));
+  fillSel('fPartner',  'All Partners',   uniq(r => (r[6]||'').trim()));
+  fillSel('fSubcat',   'All Categories', uniq(r => (r[4]||'').trim()));
+  fillSel('fTat',      'All TAT',        uniq(r => (r[7]||'').trim()));
+  fillSel('fEngineer', 'All Engineers',  uniq(r => effectiveVal(r, 10)));
 }
 function fillSel(id, placeholder, opts) {
   const saved = document.getElementById(id).value;
@@ -414,10 +593,12 @@ function applyFilters() {
   const fS  = document.getElementById('fSubcat').value;
   const fT  = document.getElementById('fTat').value;
   const fSt = document.getElementById('fStatus').value;
+  const fE  = document.getElementById('fEngineer').value;
   visRows = allRows.filter(r => {
     if (fP  && (r[6]||'').trim() !== fP) return false;
     if (fS  && (r[4]||'').trim() !== fS) return false;
     if (fT  && (r[7]||'').trim() !== fT) return false;
+    if (fE  && effectiveVal(r, 10) !== fE) return false;
     if (fSt) {
       if (fSt === 'Duplicate' && !isDupe(r)) return false;
       if (fSt !== 'Duplicate' && getStatus(r) !== fSt) return false;
@@ -425,18 +606,19 @@ function applyFilters() {
     return true;
   });
   renderAll();
-  renderFilterSummary(fP, fS, fT, fSt);
+  renderFilterSummary(fP, fS, fT, fSt, fE);
 }
 function clearFilters() {
-  ['fPartner','fSubcat','fTat','fStatus'].forEach(id => document.getElementById(id).value = '');
+  ['fPartner','fSubcat','fTat','fStatus','fEngineer'].forEach(id => document.getElementById(id).value = '');
   applyFilters();
 }
-function renderFilterSummary(fP, fS, fT, fSt) {
+function renderFilterSummary(fP, fS, fT, fSt, fE) {
   const el = document.getElementById('filterSummary');
   const parts = [];
   if (fP)  parts.push('Partner: <b>' + esc(fP) + '</b>');
   if (fS)  parts.push('Category: <b>' + esc(fS) + '</b>');
   if (fT)  parts.push('TAT: <b>' + esc(fT) + '</b>');
+  if (fE)  parts.push('Engineer: <b>' + esc(fE) + '</b>');
   if (fSt) parts.push('Status: <b>' + esc(fSt) + '</b>');
   if (parts.length) {
     el.style.display = 'block';
@@ -541,13 +723,13 @@ function renderTable(rows) {
                          '<span class="badge badge-yellow">Duplicate</span>';
 
   tbody.innerHTML = rows.map((r, i) => {
-    const st  = getStatus(r);
-    const dup = isDupe(r);
-    const url = (r[11]||'').trim();
-    const tno = (r[1]||'').trim();
-    const link = url
-      ? '<a class="ticket-link" href="' + esc(url) + '" target="_blank">&#x1F517; ' + esc(tno||'Open') + '</a>'
-      : (tno ? esc(tno) : '<span style="color:var(--muted)">—</span>');
+    const st     = getStatus(r);
+    const dup    = isDupe(r);
+    const ticket = (r[1]||'').trim();
+    const url    = (r[11]||'').trim();
+    const link   = url
+      ? '<a class="ticket-link" href="' + esc(url) + '" target="_blank">&#x1F517; ' + esc(ticket||'Open') + '</a>'
+      : (ticket ? esc(ticket) : '<span style="color:var(--muted)">—</span>');
     return '<tr>' +
       '<td style="color:var(--muted)">' + (i+1) + '</td>' +
       '<td>' + esc((r[3]||'').trim() || '—') + '</td>' +
@@ -555,8 +737,8 @@ function renderTable(rows) {
       '<td style="font-size:12px">' + esc((r[6]||'').trim() || '—') + '</td>' +
       '<td>' + esc((r[4]||'').trim() || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
-      '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc((r[8]||'').trim()) + '">' + esc((r[8]||'').trim() || '—') + '</td>' +
-      '<td style="max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="' + esc((r[9]||'').trim()) + '">' + esc((r[9]||'').trim() || '—') + '</td>' +
+      makeEditCell(ticket, 'remarks',  (r[8]||'').trim()) +
+      makeEditCell(ticket, 'engineer', (r[10]||'').trim()) +
       '<td style="color:var(--green)">' + esc((r[14]||'').trim() || '—') + '</td>' +
       '<td>' + statusBadge(st) + (dup ? ' <span class="badge badge-yellow">Dupe</span>' : '') + '</td>' +
       '<td>' + link + '</td>' +
@@ -626,6 +808,12 @@ function toast(msg, type) {
 }
 
 // ── Init ──
+loadEdits();
+(function initSync() {
+  const url = getScriptUrl();
+  if (url) document.getElementById('scriptUrlInput').value = url;
+  updateSyncBadge();
+})();
 loadData();
 </script>
 </body>
