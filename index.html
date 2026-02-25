@@ -268,7 +268,10 @@ table.main-tbl tbody tr:hover { background: #220020; }
     </div>
     <div class="filter-item">
       <div class="filter-label">Engineer</div>
-      <select class="filter-input" id="fEngineer" onchange="applyFilters()"><option value="">All Engineers</option></select>
+      <select class="filter-input" id="fEngineer" onchange="applyFilters()">
+        <option value="">All Engineers</option>
+        <option value="__na__">NA (Not Assigned)</option>
+      </select>
     </div>
     <div class="filter-item">
       <div class="filter-label">Action Needed</div>
@@ -377,7 +380,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="modal-title">&#x2795; Add New Case</div>
     <div class="modal-grid">
       <div class="modal-field">
-        <label>Ticket No *</label>
+        <label>Kapture Ticket ID *</label>
         <input type="text" id="nc_ticket" placeholder="e.g. 766718331806" />
       </div>
       <div class="modal-field">
@@ -728,7 +731,13 @@ function populateDropdowns() {
   fillSel('fPartner',  'All Partners',   uniq(r => (r[6]||'').trim()));
   fillSel('fSubcat',   'All Categories', uniq(r => (r[4]||'').trim()));
   fillSel('fTat',      'All TAT',        uniq(r => (r[7]||'').trim()));
-  fillSel('fEngineer', 'All Engineers',  uniq(r => effectiveVal(r, 10)));
+  const engSel = document.getElementById('fEngineer');
+  const savedEng = engSel.value;
+  engSel.innerHTML = '<option value="">All Engineers</option>' +
+    '<option value="__na__"' + (savedEng === '__na__' ? ' selected' : '') + '>NA (Not Assigned)</option>' +
+    uniq(r => effectiveVal(r, 10)).map(o =>
+      '<option value="' + esc(o) + '"' + (o === savedEng ? ' selected' : '') + '>' + esc(o) + '</option>'
+    ).join('');
 }
 function fillSel(id, placeholder, opts) {
   const saved = document.getElementById(id).value;
@@ -751,7 +760,8 @@ function applyFilters() {
     if (fP  && (r[6]||'').trim() !== fP) return false;
     if (fS  && (r[4]||'').trim() !== fS) return false;
     if (fT  && (r[7]||'').trim() !== fT) return false;
-    if (fE  && effectiveVal(r, 10) !== fE) return false;
+    if (fE === '__na__' && effectiveVal(r, 10) !== '') return false;
+    else if (fE && fE !== '__na__' && effectiveVal(r, 10) !== fE) return false;
     if (fSt) {
       if (fSt === 'Duplicate' && !isDupe(r)) return false;
       if (fSt !== 'Duplicate' && getStatus(r) !== fSt) return false;
