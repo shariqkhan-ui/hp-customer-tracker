@@ -170,6 +170,12 @@ table.main-tbl tbody tr:hover { background: #220020; }
   background: rgba(63,185,80,.15); color: var(--green); }
 .sync-badge.nosync { background: rgba(210,153,34,.15); color: var(--yellow); }
 
+/* Column filters */
+.col-filter { width:100%; padding:4px 6px; background:var(--bg); border:1px solid var(--border);
+  border-radius:4px; color:var(--text); font-size:11px; font-weight:400; margin-top:4px; box-sizing:border-box; }
+.col-filter:focus { outline:none; border-color:var(--primary); }
+.col-filter::placeholder { color:var(--border); }
+
 /* Error Banner */
 #errorBanner { display: none; background: rgba(248,81,73,.12); border: 1px solid var(--red);
   border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; color: var(--red);
@@ -362,11 +368,32 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <table class="main-tbl">
         <thead>
           <tr>
-            <th>#</th><th>Mobile</th><th>Customer Name</th><th>Partner</th>
-            <th>Sub-category</th><th>TAT</th>
+            <th>#</th>
+            <th>Mobile</th>
+            <th>Customer Name</th>
+            <th>Partner</th>
+            <th>Sub-category</th>
+            <th>TAT</th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
-            <th>Case Added On</th><th>Migration Date</th><th>Status</th><th>Ticket</th>
+            <th>Case Added On</th>
+            <th>Migration Date</th>
+            <th>Status</th>
+            <th>Ticket</th>
+          </tr>
+          <tr>
+            <th></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('mobile',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('name',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('partner',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('subcat',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('caseAdded',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('migDate',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('status',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('ticket',this.value)"></th>
           </tr>
         </thead>
         <tbody id="tBody"></tbody>
@@ -887,6 +914,8 @@ function applyFilters() {
 }
 function clearFilters() {
   ['fDate','fPartner','fSubcat','fTat','fStatus','fEngineer','fAction'].forEach(id => document.getElementById(id).value = '');
+  colFilters = {};
+  document.querySelectorAll('.col-filter').forEach(el => el.value = '');
   applyFilters();
 }
 function renderFilterSummary(fD, fP, fS, fT, fSt, fE, fA) {
@@ -905,6 +934,34 @@ function renderFilterSummary(fD, fP, fS, fT, fSt, fE, fA) {
   } else {
     el.style.display = 'none';
   }
+}
+
+// ── Column Filters ──
+let colFilters = {};
+function setColFilter(key, val) {
+  colFilters[key] = val.trim().toLowerCase();
+  applyColFilters();
+}
+function applyColFilters() {
+  const f = colFilters;
+  const chk = (val, key) => !f[key] || String(val).toLowerCase().includes(f[key]);
+  const filtered = visRows.filter(r => {
+    const ticket = (r[1]||'').trim();
+    if (!chk(r[3],              'mobile'))   return false;
+    if (!chk(r[5],              'name'))     return false;
+    if (!chk(r[6],              'partner'))  return false;
+    if (!chk(r[4],              'subcat'))   return false;
+    if (!chk(r[7],              'tat'))      return false;
+    if (!chk(effectiveVal(r,8), 'remarks'))  return false;
+    if (!chk(effectiveVal(r,10),'engineer')) return false;
+    if (!chk(r[0],              'caseAdded'))return false;
+    if (!chk(effectiveVal(r,14),'migDate'))  return false;
+    if (!chk(getStatus(r),      'status'))   return false;
+    if (!chk(ticket,            'ticket'))   return false;
+    return true;
+  });
+  renderTable(filtered);
+  document.getElementById('rowCount').textContent = filtered.length + ' records';
 }
 
 // ── Render All ──
@@ -931,7 +988,7 @@ function renderAll() {
 
   renderCharts(rows);
   renderDayTable(rows);
-  renderTable(rows);
+  applyColFilters();
 }
 function setText(id, v) { document.getElementById(id).textContent = v; }
 
