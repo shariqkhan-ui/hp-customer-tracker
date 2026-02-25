@@ -582,6 +582,47 @@ function startEdit(td) {
   const local  = getEdit(ticket, field);
   const cur    = local !== null ? local : orig;
 
+  // Migration Date field: show calendar date picker
+  if (field === 'migration_date') {
+    const input = document.createElement('input');
+    input.type      = 'date';
+    input.className = 'edit-input';
+    // Convert DD-Mon-YYYY → YYYY-MM-DD for the date input
+    const parsed = parseDate(cur);
+    if (parsed) {
+      input.value = parsed.getFullYear() + '-' +
+        String(parsed.getMonth()+1).padStart(2,'0') + '-' +
+        String(parsed.getDate()).padStart(2,'0');
+    }
+    td.innerHTML = '';
+    td.appendChild(input);
+    input.focus();
+
+    function commitDate() {
+      let nv = '';
+      if (input.value) {
+        const d = new Date(input.value + 'T00:00:00');
+        nv = String(d.getDate()).padStart(2,'0') + '-' +
+             MONTHS_SHORT[d.getMonth()] + '-' + d.getFullYear();
+      }
+      saveToSheet(ticket, field, nv);
+      const isEdited = nv.trim() !== orig.trim();
+      td.className = 'edit-cell' + (isEdited ? ' edited' : '');
+      td.innerHTML = cellInner(nv);
+      td.onclick   = () => startEdit(td);
+    }
+    input.addEventListener('blur', commitDate);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
+      if (e.key === 'Escape') {
+        td.className = 'edit-cell' + (cur.trim() !== orig.trim() ? ' edited' : '');
+        td.innerHTML = cellInner(cur);
+        td.onclick   = () => startEdit(td);
+      }
+    });
+    return;
+  }
+
   // Engineer field: show dropdown of existing names
   if (field === 'engineer') {
     const names = [...new Set(allRows.map(r => effectiveVal(r, 10)).filter(Boolean))].sort();
