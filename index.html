@@ -1153,12 +1153,37 @@ document.addEventListener('DOMContentLoaded', () => {
   document.getElementById('bulkPaste').addEventListener('input', previewBulk);
 });
 
+// Required headers in exact order (case-insensitive match)
+const BULK_HEADERS = ['kapture ticket id', 'mobile', 'customer name', 'partner', 'sub-category', 'tat', 'case added on'];
+
+function splitLine(line) {
+  return (line.includes('\t') ? line.split('\t') : line.split(','))
+    .map(c => c.trim().replace(/^"|"$/g, ''));
+}
+
+// Returns { ok, error, rows }
 function parseBulkRows(text) {
-  const lines = text.trim().split('\n').filter(l => l.trim());
-  return lines.map(line => {
-    // Handle tab-separated (Excel/Sheets copy) or comma-separated
-    const cols = line.includes('\t') ? line.split('\t') : line.split(',');
-    const get  = i => (cols[i] || '').trim().replace(/^"|"$/g, '');
+  const lines = text.trim().split('\n').map(l => l.trim()).filter(l => l);
+  if (!lines.length) return { ok: false, error: 'No data found.', rows: [] };
+
+  // Validate header row
+  const headerCols = splitLine(lines[0]).map(h => h.toLowerCase());
+  const mismatches = [];
+  for (let i = 0; i < BULK_HEADERS.length - 1; i++) { // last col (Case Added On) is optional
+    if (headerCols[i] !== BULK_HEADERS[i]) {
+      mismatches.push('Col ' + (i+1) + ': expected "' + BULK_HEADERS[i] + '", got "' + (headerCols[i] || '(missing)') + '"');
+    }
+  }
+  if (mismatches.length) {
+    return { ok: false, error: '❌ Wrong format:\n' + mismatches.join('\n'), rows: [] };
+  }
+
+  // Parse data rows (skip header)
+  const today = new Date();
+  const todayFmt = String(today.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[today.getMonth()] + '-' + today.getFullYear();
+  const rows = lines.slice(1).map(line => {
+    const cols = splitLine(line);
+    const get  = i => cols[i] || '';
     return {
       ticket:      get(0),
       mobile:      get(1),
@@ -1166,33 +1191,39 @@ function parseBulkRows(text) {
       partner:     get(3),
       subcat:      get(4),
       tat:         get(5),
-      caseAddedOn: get(6) || (() => {
-        const d = new Date();
-        return String(d.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[d.getMonth()] + '-' + d.getFullYear();
-      })(),
+      caseAddedOn: get(6) || todayFmt,
     };
-  }).filter(r => r.ticket || r.mobile); // skip completely empty rows
+  }).filter(r => r.ticket || r.mobile);
+
+  if (!rows.length) return { ok: false, error: 'Header found but no data rows.', rows: [] };
+  return { ok: true, error: '', rows };
 }
 
 function previewBulk() {
-  const rows = parseBulkRows(document.getElementById('bulkPaste').value);
+  const text = document.getElementById('bulkPaste').value;
   const el   = document.getElementById('bulkPreview');
-  el.textContent = rows.length ? rows.length + ' row(s) ready to add' : '';
-  el.style.color = rows.length ? 'var(--green)' : 'var(--muted)';
+  if (!text.trim()) { el.textContent = ''; return; }
+  const { ok, error, rows } = parseBulkRows(text);
+  if (!ok) {
+    el.style.color   = 'var(--red)';
+    el.style.whiteSpace = 'pre';
+    el.textContent   = error;
+  } else {
+    el.style.color   = 'var(--green)';
+    el.style.whiteSpace = 'normal';
+    el.textContent   = '✅ ' + rows.length + ' row(s) ready to add';
+  }
 }
 
 async function submitBulkAdd() {
-  const rows = parseBulkRows(document.getElementById('bulkPaste').value);
-  if (!rows.length) { toast('Nothing to add — paste some rows first', 'error'); return; }
+  const { ok, error, rows } = parseBulkRows(document.getElementById('bulkPaste').value);
+  if (!ok) { toast(error.split('\n')[0], 'error'); return; }
 
   const btn = document.getElementById('bulkSubmitBtn');
   btn.disabled = true; btn.textContent = 'Adding…';
 
-  const today = new Date();
-  const todayFmt = String(today.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[today.getMonth()] + '-' + today.getFullYear();
-
   rows.forEach(r => {
-    const caseAddedOn = r.caseAddedOn || todayFmt;
+    const caseAddedOn = r.caseAddedOn;
     // col: 0=caseAddedOn, 1=ticket, 2=createdDate(blank), 3=mobile, 4=subcat, 5=name, 6=partner, 7=tat
     const newRow = [caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', ''];
     allRows.unshift(newRow);
