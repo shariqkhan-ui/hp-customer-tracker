@@ -176,6 +176,21 @@ table.main-tbl tbody tr:hover { background: #220020; }
 #errorBanner b { color: #ff6b6b; }
 #errorBanner a { color: #ff9999; }
 
+/* Add Case Modal */
+.modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.75);
+  z-index: 1000; align-items: center; justify-content: center; }
+.modal-overlay.open { display: flex; }
+.modal { background: var(--card); border: 1px solid var(--primary); border-radius: 12px;
+  padding: 24px; width: 520px; max-width: 96vw; max-height: 90vh; overflow-y: auto; }
+.modal-title { font-size: 16px; font-weight: 700; margin-bottom: 18px; color: var(--primary-light); }
+.modal-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.modal-field { display: flex; flex-direction: column; gap: 4px; }
+.modal-field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.modal-field input, .modal-field select { padding: 8px 10px; background: var(--bg);
+  border: 1px solid var(--border); border-radius: 6px; color: var(--text); font-size: 13px; }
+.modal-field input:focus { outline: none; border-color: var(--primary); }
+.modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+
 /* Toast */
 #toastArea { position: fixed; bottom: 24px; right: 24px; z-index: 9999;
   display: flex; flex-direction: column; gap: 8px; pointer-events: none; }
@@ -334,6 +349,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <h3>Customer Records</h3>
       <div style="display:flex;align-items:center;gap:10px;">
         <span class="pill" id="rowCount">0 records</span>
+        <button class="btn btn-primary" onclick="openAddCase()" style="font-size:12px;padding:6px 12px;">&#x2795; Add Case</button>
         <button class="btn btn-primary" onclick="downloadCSV()" style="font-size:12px;padding:6px 12px;">&#x2B07; Download CSV</button>
       </div>
     </div>
@@ -354,6 +370,48 @@ table.main-tbl tbody tr:hover { background: #220020; }
   </div>
 
 </div>
+
+<!-- Add Case Modal -->
+<div class="modal-overlay" id="addCaseModal">
+  <div class="modal">
+    <div class="modal-title">&#x2795; Add New Case</div>
+    <div class="modal-grid">
+      <div class="modal-field">
+        <label>Ticket No *</label>
+        <input type="text" id="nc_ticket" placeholder="e.g. 766718331806" />
+      </div>
+      <div class="modal-field">
+        <label>Mobile Number *</label>
+        <input type="text" id="nc_mobile" placeholder="10-digit number" />
+      </div>
+      <div class="modal-field">
+        <label>Customer Name</label>
+        <input type="text" id="nc_name" placeholder="Full name" />
+      </div>
+      <div class="modal-field">
+        <label>Partner</label>
+        <input type="text" id="nc_partner" placeholder="Partner name" />
+      </div>
+      <div class="modal-field">
+        <label>Sub-category</label>
+        <input type="text" id="nc_subcat" placeholder="Sub-category" />
+      </div>
+      <div class="modal-field">
+        <label>TAT / Aging</label>
+        <input type="text" id="nc_tat" placeholder="e.g. 2 days" />
+      </div>
+      <div class="modal-field">
+        <label>Created Date</label>
+        <input type="date" id="nc_date" />
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeAddCase()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitAddCase()">&#x2795; Add Case</button>
+    </div>
+  </div>
+</div>
+
 <div id="toastArea"></div>
 
 <script>
@@ -797,9 +855,9 @@ function renderDayTable(rows) {
   const t2 = new Date(t0); t2.setDate(t0.getDate() - 2);
 
   const dateRows = [
-    { label: 'Today — '               + fmtDate(t0), dk: dKey(t0) },
-    { label: 'Yesterday — '           + fmtDate(t1), dk: dKey(t1) },
-    { label: 'Day Before Yesterday — '+ fmtDate(t2), dk: dKey(t2) },
+    { label: fmtDate(t0), dk: dKey(t0) },
+    { label: fmtDate(t1), dk: dKey(t1) },
+    { label: fmtDate(t2), dk: dKey(t2) },
   ];
 
   const statsForKey = (dk) => {
@@ -933,6 +991,71 @@ function toast(msg, type) {
   el.textContent = msg;
   area.appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 400); }, 3000);
+}
+
+// ── Add Case Modal ──
+const MONTHS_SHORT = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+
+function openAddCase() {
+  const today = new Date();
+  document.getElementById('nc_date').value =
+    today.getFullYear() + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + String(today.getDate()).padStart(2,'0');
+  ['nc_ticket','nc_mobile','nc_name','nc_partner','nc_subcat','nc_tat'].forEach(id => {
+    document.getElementById(id).value = '';
+  });
+  document.getElementById('addCaseModal').classList.add('open');
+  document.getElementById('nc_ticket').focus();
+}
+function closeAddCase() {
+  document.getElementById('addCaseModal').classList.remove('open');
+}
+document.addEventListener('click', e => {
+  const modal = document.getElementById('addCaseModal');
+  if (e.target === modal) closeAddCase();
+});
+
+async function submitAddCase() {
+  const ticket  = document.getElementById('nc_ticket').value.trim();
+  const mobile  = document.getElementById('nc_mobile').value.trim();
+  const name    = document.getElementById('nc_name').value.trim();
+  const partner = document.getElementById('nc_partner').value.trim();
+  const subcat  = document.getElementById('nc_subcat').value.trim();
+  const tat     = document.getElementById('nc_tat').value.trim();
+  const dateVal = document.getElementById('nc_date').value; // YYYY-MM-DD
+
+  if (!ticket || !mobile) { toast('Ticket No and Mobile are required', 'error'); return; }
+
+  // Format as DD-Mon-YYYY to match sheet format
+  let createdDate = '';
+  if (dateVal) {
+    const d = new Date(dateVal + 'T00:00:00');
+    createdDate = String(d.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[d.getMonth()] + '-' + d.getFullYear();
+  }
+
+  // Build row matching sheet column order (0-14), leave editable/output cols blank
+  const newRow = ['', ticket, createdDate, mobile, subcat, name, partner, tat, '', '', '', '', '', '', ''];
+  allRows.unshift(newRow);
+  buildDupeSet(allRows);
+  populateDropdowns();
+  applyFilters();
+  closeAddCase();
+
+  // Sync to sheet
+  const url = getScriptUrl();
+  if (url) {
+    const q = '?action=addRow' +
+      '&ticketNo='    + encodeURIComponent(ticket)  +
+      '&mobile='      + encodeURIComponent(mobile)  +
+      '&custName='    + encodeURIComponent(name)    +
+      '&partner='     + encodeURIComponent(partner) +
+      '&subcat='      + encodeURIComponent(subcat)  +
+      '&tat='         + encodeURIComponent(tat)     +
+      '&createdDate=' + encodeURIComponent(createdDate);
+    fetch(url + q, { mode: 'no-cors' }).catch(() => {});
+    toast('Case added ✓', 'success');
+  } else {
+    toast('Case added locally (no Script URL configured)', 'info');
+  }
 }
 
 // ── Init ──
