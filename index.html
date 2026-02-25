@@ -791,12 +791,20 @@ function makeChart(id, rows, keyFn, colors) {
 function renderDayTable(rows) {
   const tbody = document.getElementById('dayBody');
 
-  // 3 most recent unique CREATED dates
-  const keys = [...new Set(rows.map(r => dKey(parseDate((r[2]||'').trim()))).filter(Boolean))].sort().reverse().slice(0, 3);
+  // Fixed rows: Today, Yesterday, Day Before Yesterday
+  const t0 = new Date(); t0.setHours(0,0,0,0);
+  const t1 = new Date(t0); t1.setDate(t0.getDate() - 1);
+  const t2 = new Date(t0); t2.setDate(t0.getDate() - 2);
+
+  const dateRows = [
+    { label: 'Today — '               + fmtDate(t0), dk: dKey(t0) },
+    { label: 'Yesterday — '           + fmtDate(t1), dk: dKey(t1) },
+    { label: 'Day Before Yesterday — '+ fmtDate(t2), dk: dKey(t2) },
+  ];
 
   const statsForKey = (dk) => {
-    const created = rows.filter(r => dKey(parseDate((r[2]||'').trim())) === dk);
-    const migrated = rows.filter(r => dKey(parseDate((r[14]||'').trim())) === dk); // migrated ON this date
+    const created  = rows.filter(r => dKey(parseDate((r[2]||'').trim()))  === dk);
+    const migrated = rows.filter(r => dKey(parseDate((r[14]||'').trim())) === dk);
     return {
       n:    created.length,
       mig:  migrated.length,
@@ -804,6 +812,7 @@ function renderDayTable(rows) {
       unres:created.filter(r => getStatus(r) === 'Unresolved').length,
     };
   };
+
   const ftd = {
     n:    rows.length,
     mig:  rows.filter(r => getStatus(r) === 'Migrated').length,
@@ -821,10 +830,7 @@ function renderDayTable(rows) {
     </tr>`;
 
   tbody.innerHTML =
-    keys.map(dk => {
-      const d = new Date(dk + 'T00:00:00');
-      return row(fmtDate(d), statsForKey(dk), false);
-    }).join('') +
+    dateRows.map(({ label, dk }) => row(label, statsForKey(dk), false)).join('') +
     row('FTD — Final Till Date', ftd, true);
 }
 
