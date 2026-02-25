@@ -609,7 +609,14 @@ function getStatus(r) {
   if (pingKw.some(kw => g.includes(kw))) return 'Ping Up';
   return 'Unresolved';
 }
-function isDupe(r) { return (r[12]||'').trim() === '1' || (r[13]||'').trim() === '1'; }
+// Duplicate = same mobile Number (col 3) appears more than once across all rows
+let dupeNumbers = new Set();
+function buildDupeSet(rows) {
+  const counts = {};
+  rows.forEach(r => { const n = (r[3]||'').trim(); if (n) counts[n] = (counts[n]||0) + 1; });
+  dupeNumbers = new Set(Object.keys(counts).filter(k => counts[k] > 1));
+}
+function isDupe(r) { const n = (r[3]||'').trim(); return n !== '' && dupeNumbers.has(n); }
 
 // ── Load Data ──
 async function loadData() {
@@ -622,6 +629,7 @@ async function loadData() {
     const parsed = parseCSV(txt);
     // Skip header row; filter rows with a ticket number (col 1)
     allRows = parsed.slice(1).filter(r => r.length >= 5 && (r[1] || '').trim() !== '');
+    buildDupeSet(allRows); // compute which mobile numbers appear more than once
     document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
     populateDropdowns();
     applyFilters();
