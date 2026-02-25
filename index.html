@@ -465,7 +465,7 @@ function isCaseNeedsAction(r) {
 }
 
 // ── Effective value: local edits override sheet data ──
-const COL_FIELD = { 8: 'remarks', 10: 'engineer' };
+const COL_FIELD = { 8: 'remarks', 10: 'engineer', 14: 'migration_date' };
 function effectiveVal(r, col) {
   const ticket = (r[1] || '').trim();
   const field  = COL_FIELD[col];
@@ -663,7 +663,7 @@ function dKey(d) { if (!d) return ''; const dd = new Date(d); dd.setHours(0,0,0,
 
 // ── Status Logic ──
 function getStatus(r) {
-  if ((r[14] || '').trim() !== '') return 'Migrated';
+  if (effectiveVal(r, 14).trim() !== '') return 'Migrated';
   const g = effectiveVal(r, 8).toLowerCase();
   const pingKw = ['ping up', 'internet working', 'internet up', 'speed up', 'link up'];
   if (pingKw.some(kw => g.includes(kw))) return 'Ping Up';
@@ -873,7 +873,7 @@ function renderDayTable(rows) {
   const statsForKey = (dk) => {
     const created  = rows.filter(r => dKey(parseDate((r[2]||'').trim()))  === dk);
     // Migrated uses allRows — independent of any filter or created date
-    const migrated = allRows.filter(r => dKey(parseDate((r[14]||'').trim())) === dk);
+    const migrated = allRows.filter(r => dKey(parseDate(effectiveVal(r, 14))) === dk);
     return {
       n:    created.length,
       mig:  migrated.length,
@@ -935,7 +935,7 @@ function renderTable(rows) {
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim()) +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim()) +
       '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[2]||'').trim())) || '—') + '</td>' +
-      '<td style="color:var(--green)">' + (fmtDate(parseDate((r[14]||'').trim())) || '—') + '</td>' +
+      makeEditCell(ticket, 'migration_date', (r[14]||'').trim()) +
       '<td>' + statusBadge(st) + (dup ? ' <span class="badge badge-yellow">Dupe</span>' : '') + '</td>' +
       '<td>' + link + '</td>' +
       '</tr>';
