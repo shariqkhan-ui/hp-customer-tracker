@@ -804,7 +804,8 @@ function renderDayTable(rows) {
 
   const statsForKey = (dk) => {
     const created  = rows.filter(r => dKey(parseDate((r[2]||'').trim()))  === dk);
-    const migrated = rows.filter(r => dKey(parseDate((r[14]||'').trim())) === dk);
+    // Migrated uses allRows — independent of any filter or created date
+    const migrated = allRows.filter(r => dKey(parseDate((r[14]||'').trim())) === dk);
     return {
       n:    created.length,
       mig:  migrated.length,
