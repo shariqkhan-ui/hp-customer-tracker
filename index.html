@@ -331,11 +331,11 @@ table.main-tbl tbody tr:hover { background: #220020; }
 
   <!-- Day-wise -->
   <div class="day-card">
-    <div class="chart-title" style="margin-bottom:14px;">&#x1F4CA; Day-wise Activity &nbsp;<span style="color:var(--muted);font-size:10px;font-weight:400;text-transform:none;">by Created Date</span></div>
+    <div class="chart-title" style="margin-bottom:14px;">&#x1F4CA; Day-wise Activity &nbsp;<span style="color:var(--muted);font-size:10px;font-weight:400;text-transform:none;">by Case Added Date</span></div>
     <table class="day-table">
       <thead>
         <tr>
-          <th style="text-align:left">Date (Created)</th>
+          <th style="text-align:left">Date (Case Added)</th>
           <th>Cases Added</th>
           <th title="Cases migrated on this date (by Migration Date col O)">Migrated on Date</th>
           <th>Ping Up</th>
@@ -364,7 +364,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Sub-category</th><th>TAT</th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
-            <th>Created Date</th><th>Migration Date</th><th>Status</th><th>Ticket</th>
+            <th>Case Added On</th><th>Migration Date</th><th>Status</th><th>Ticket</th>
           </tr>
         </thead>
         <tbody id="tBody"></tbody>
@@ -785,7 +785,7 @@ function populateDropdowns() {
   const uniq = fn => [...new Set(allRows.map(fn).filter(Boolean))].sort();
   // Date dropdown: sort descending (most recent first)
   const uniqDatesDesc = () => {
-    const keys = [...new Set(allRows.map(r => dKey(parseDate((r[2]||'').trim()))).filter(Boolean))];
+    const keys = [...new Set(allRows.map(r => dKey(parseDate((r[0]||'').trim()))).filter(Boolean))];
     return keys.sort().reverse(); // YYYY-MM-DD sorts correctly
   };
   const dateSel = document.getElementById('fDate');
@@ -826,7 +826,7 @@ function applyFilters() {
   const fE  = document.getElementById('fEngineer').value;
   const fA  = document.getElementById('fAction').value;
   visRows = allRows.filter(r => {
-    if (fD  && dKey(parseDate((r[2]||'').trim())) !== fD) return false;
+    if (fD  && dKey(parseDate((r[0]||'').trim())) !== fD) return false;
     if (fP  && (r[6]||'').trim() !== fP) return false;
     if (fS  && (r[4]||'').trim() !== fS) return false;
     if (fT  && (r[7]||'').trim() !== fT) return false;
@@ -941,7 +941,7 @@ function renderDayTable(rows) {
   ];
 
   const statsForKey = (dk) => {
-    const created  = rows.filter(r => dKey(parseDate((r[2]||'').trim()))  === dk);
+    const created  = rows.filter(r => dKey(parseDate((r[0]||'').trim()))  === dk);
     // Migrated uses allRows — independent of any filter or created date
     const migrated = allRows.filter(r => dKey(parseDate(effectiveVal(r, 14))) === dk);
     return {
@@ -1004,7 +1004,7 @@ function renderTable(rows) {
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim()) +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim()) +
-      '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[2]||'').trim())) || '—') + '</td>' +
+      '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[0]||'').trim())) || '—') + '</td>' +
       makeEditCell(ticket, 'migration_date', (r[14]||'').trim()) +
       '<td>' + statusBadge(st) + (dup ? ' <span class="badge badge-yellow">Dupe</span>' : '') + '</td>' +
       '<td>' + link + '</td>' +
@@ -1035,7 +1035,7 @@ function generateAlerts() {
   allRows.forEach(r => {
     if (!(r[3]||'').trim()) noMobile++;
     if (!(r[5]||'').trim()) noName++;
-    if ((r[2]||'').trim() && !parseDate((r[2]||'').trim())) badDate++;
+    if ((r[0]||'').trim() && !parseDate((r[0]||'').trim())) badDate++;
   });
   if (noMobile) alerts.push({ tag:'err',  msg: '<b>' + noMobile + ' rows</b> missing <b>Mobile Number</b>' });
   if (noName)   alerts.push({ tag:'warn', msg: '<b>' + noName   + ' rows</b> missing <b>Customer Name</b>' });
