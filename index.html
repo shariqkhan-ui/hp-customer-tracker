@@ -353,6 +353,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div style="display:flex;align-items:center;gap:10px;">
         <span class="pill" id="rowCount">0 records</span>
         <button class="btn btn-primary" onclick="openAddCase()" style="font-size:12px;padding:6px 12px;">&#x2795; Add Case</button>
+        <button class="btn" onclick="openBulkAdd()" style="font-size:12px;padding:6px 12px;">&#x1F4CB; Bulk Add</button>
         <button class="btn btn-primary" onclick="downloadCSV()" style="font-size:12px;padding:6px 12px;">&#x2B07; Download CSV</button>
       </div>
     </div>
@@ -411,6 +412,26 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="modal-actions">
       <button class="btn" onclick="closeAddCase()">Cancel</button>
       <button class="btn btn-primary" onclick="submitAddCase()">&#x2795; Add Case</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bulk Add Modal -->
+<div class="modal-overlay" id="bulkModal">
+  <div class="modal" style="width:660px">
+    <div class="modal-title">&#x1F4CB; Bulk Add Cases</div>
+    <p style="font-size:12px;color:var(--muted);margin-bottom:10px;line-height:1.6">
+      Copy rows from Excel / Google Sheets and paste below.<br>
+      <b style="color:var(--primary-light)">Expected column order:</b>
+      Kapture Ticket ID &nbsp;|&nbsp; Mobile &nbsp;|&nbsp; Customer Name &nbsp;|&nbsp; Partner &nbsp;|&nbsp; Sub-category &nbsp;|&nbsp; TAT &nbsp;|&nbsp; Case Added On (DD-Mon-YYYY)
+    </p>
+    <textarea id="bulkPaste" placeholder="Paste rows here (tab-separated from Excel or comma-separated CSV)..."
+      style="width:100%;height:180px;background:var(--bg);border:1px solid var(--border);border-radius:6px;
+             color:var(--text);font-size:12px;padding:10px;resize:vertical;font-family:monospace"></textarea>
+    <div id="bulkPreview" style="margin-top:8px;font-size:12px;color:var(--muted);min-height:18px"></div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeBulkAdd()">Cancel</button>
+      <button class="btn btn-primary" onclick="submitBulkAdd()" id="bulkSubmitBtn">&#x2795; Add All Cases</button>
     </div>
   </div>
 </div>
@@ -1071,6 +1092,91 @@ function toast(msg, type) {
   el.textContent = msg;
   area.appendChild(el);
   setTimeout(() => { el.style.opacity = '0'; setTimeout(() => el.remove(), 400); }, 3000);
+}
+
+// ── Bulk Add Modal ──
+function openBulkAdd() {
+  document.getElementById('bulkPaste').value = '';
+  document.getElementById('bulkPreview').textContent = '';
+  document.getElementById('bulkModal').classList.add('open');
+  document.getElementById('bulkPaste').focus();
+}
+function closeBulkAdd() {
+  document.getElementById('bulkModal').classList.remove('open');
+}
+document.addEventListener('click', e => {
+  if (e.target === document.getElementById('bulkModal')) closeBulkAdd();
+});
+
+document.addEventListener('DOMContentLoaded', () => {
+  document.getElementById('bulkPaste').addEventListener('input', previewBulk);
+});
+
+function parseBulkRows(text) {
+  const lines = text.trim().split('\n').filter(l => l.trim());
+  return lines.map(line => {
+    // Handle tab-separated (Excel/Sheets copy) or comma-separated
+    const cols = line.includes('\t') ? line.split('\t') : line.split(',');
+    const get  = i => (cols[i] || '').trim().replace(/^"|"$/g, '');
+    return {
+      ticket:      get(0),
+      mobile:      get(1),
+      name:        get(2),
+      partner:     get(3),
+      subcat:      get(4),
+      tat:         get(5),
+      caseAddedOn: get(6) || (() => {
+        const d = new Date();
+        return String(d.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[d.getMonth()] + '-' + d.getFullYear();
+      })(),
+    };
+  }).filter(r => r.ticket || r.mobile); // skip completely empty rows
+}
+
+function previewBulk() {
+  const rows = parseBulkRows(document.getElementById('bulkPaste').value);
+  const el   = document.getElementById('bulkPreview');
+  el.textContent = rows.length ? rows.length + ' row(s) ready to add' : '';
+  el.style.color = rows.length ? 'var(--green)' : 'var(--muted)';
+}
+
+async function submitBulkAdd() {
+  const rows = parseBulkRows(document.getElementById('bulkPaste').value);
+  if (!rows.length) { toast('Nothing to add — paste some rows first', 'error'); return; }
+
+  const btn = document.getElementById('bulkSubmitBtn');
+  btn.disabled = true; btn.textContent = 'Adding…';
+
+  const today = new Date();
+  const todayFmt = String(today.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[today.getMonth()] + '-' + today.getFullYear();
+
+  rows.forEach(r => {
+    const caseAddedOn = r.caseAddedOn || todayFmt;
+    // col: 0=caseAddedOn, 1=ticket, 2=createdDate(blank), 3=mobile, 4=subcat, 5=name, 6=partner, 7=tat
+    const newRow = [caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', ''];
+    allRows.unshift(newRow);
+
+    // Sync to sheet (fire and forget)
+    const url = getScriptUrl();
+    if (url) {
+      const q = '?action=addRow' +
+        '&caseAddedOn=' + encodeURIComponent(caseAddedOn) +
+        '&ticketNo='    + encodeURIComponent(r.ticket)  +
+        '&mobile='      + encodeURIComponent(r.mobile)  +
+        '&custName='    + encodeURIComponent(r.name)    +
+        '&partner='     + encodeURIComponent(r.partner) +
+        '&subcat='      + encodeURIComponent(r.subcat)  +
+        '&tat='         + encodeURIComponent(r.tat);
+      fetch(url + q, { mode: 'no-cors' }).catch(() => {});
+    }
+  });
+
+  buildDupeSet(allRows);
+  populateDropdowns();
+  applyFilters();
+  closeBulkAdd();
+  btn.disabled = false; btn.textContent = '➕ Add All Cases';
+  toast(rows.length + ' cases added ✓', 'success');
 }
 
 // ── Add Case Modal ──
