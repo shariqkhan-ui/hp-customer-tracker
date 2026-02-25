@@ -575,12 +575,43 @@ function makeEditCell(ticket, field, orig) {
     'onclick="startEdit(this)" style="max-width:180px">' + cellInner(display) + '</td>';
 }
 function startEdit(td) {
-  if (td.querySelector('input')) return;
+  if (td.querySelector('input,select')) return;
   const ticket = td.dataset.ticket;
   const field  = td.dataset.field;
   const orig   = td.dataset.orig;
   const local  = getEdit(ticket, field);
   const cur    = local !== null ? local : orig;
+
+  // Engineer field: show dropdown of existing names
+  if (field === 'engineer') {
+    const names = [...new Set(allRows.map(r => effectiveVal(r, 10)).filter(Boolean))].sort();
+    const sel = document.createElement('select');
+    sel.className = 'edit-input';
+    sel.innerHTML = '<option value="">— Select —</option>' +
+      names.map(n => '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>').join('');
+    td.innerHTML = '';
+    td.appendChild(sel);
+    sel.focus();
+
+    function commitSel() {
+      const nv = sel.value;
+      saveToSheet(ticket, field, nv).then(() => populateDropdowns());
+      const isEdited = nv.trim() !== orig.trim();
+      td.className = 'edit-cell' + (isEdited ? ' edited' : '');
+      td.innerHTML = cellInner(nv);
+      td.onclick = () => startEdit(td);
+    }
+    sel.addEventListener('change', commitSel);
+    sel.addEventListener('blur', commitSel);
+    sel.addEventListener('keydown', e => {
+      if (e.key === 'Escape') {
+        td.className = 'edit-cell' + (cur.trim() !== orig.trim() ? ' edited' : '');
+        td.innerHTML = cellInner(cur);
+        td.onclick = () => startEdit(td);
+      }
+    });
+    return;
+  }
 
   const input = document.createElement('input');
   input.type      = 'text';
@@ -593,9 +624,7 @@ function startEdit(td) {
 
   function commit() {
     const nv = input.value;
-    saveToSheet(ticket, field, nv).then(() => {
-      if (field === 'engineer') populateDropdowns();
-    });
+    saveToSheet(ticket, field, nv);
     const isEdited = nv.trim() !== orig.trim();
     td.className = 'edit-cell' + (isEdited ? ' edited' : '');
     td.innerHTML = cellInner(nv);
