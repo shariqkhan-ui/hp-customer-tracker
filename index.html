@@ -404,7 +404,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
         <input type="text" id="nc_tat" placeholder="e.g. 2 days" />
       </div>
       <div class="modal-field">
-        <label>Created Date</label>
+        <label>Case Added On</label>
         <input type="date" id="nc_date" />
       </div>
     </div>
@@ -1113,7 +1113,8 @@ async function submitAddCase() {
   }
 
   // Build row matching sheet column order (0-14), leave editable/output cols blank
-  const newRow = ['', ticket, createdDate, mobile, subcat, name, partner, tat, '', '', '', '', '', '', ''];
+  // col 0 = Case Added On, col 1 = Ticket, col 2 = Created Date (blank), col 3 = Mobile...
+  const newRow = [createdDate, ticket, '', mobile, subcat, name, partner, tat, '', '', '', '', '', '', ''];
   allRows.unshift(newRow);
   buildDupeSet(allRows);
   populateDropdowns();
@@ -1130,7 +1131,7 @@ async function submitAddCase() {
       '&partner='     + encodeURIComponent(partner) +
       '&subcat='      + encodeURIComponent(subcat)  +
       '&tat='         + encodeURIComponent(tat)     +
-      '&createdDate=' + encodeURIComponent(createdDate);
+      '&caseAddedOn=' + encodeURIComponent(createdDate);
     fetch(url + q, { mode: 'no-cors' }).catch(() => {});
     toast('Case added ✓', 'success');
   } else {
