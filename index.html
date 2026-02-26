@@ -239,12 +239,12 @@ table.main-tbl tbody tr:hover { background: #220020; }
 <body>
 
 <div class="header">
-  <div class="header-logo">High Pain Customer Tracker</div>
+  <div class="header-logo" id="headerLogo" onclick="handleLogoClick()" style="cursor:default;user-select:none">High Pain Customer Tracker</div>
   <div class="header-right">
     <span id="lastUpdated" style="font-size:11px;color:var(--muted);">Connecting...</span>
     <button class="btn btn-primary" onclick="loadData()">&#x1F504; Refresh</button>
-    <button class="btn" onclick="openAuditModal()" title="Audit Trail" style="background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">&#x1F4CB; Audit Trail</button>
-    <button class="btn" onclick="toggleSyncPanel()" title="Sheet Sync Settings">&#x2699;&#xFE0F;</button>
+    <button class="btn" id="auditBtn" onclick="openAuditModal()" title="Audit Trail" style="display:none;background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">&#x1F4CB; Audit Trail</button>
+    <button class="btn" id="settingsBtn" onclick="toggleSyncPanel()" title="Sheet Sync Settings" style="display:none">&#x2699;&#xFE0F;</button>
     <div class="alert-wrap" id="alertWrap">
       <button class="alert-btn" onclick="toggleAlerts()">&#x1F514; <span>Data Errors</span><span class="alert-badge" id="alertBadge">0</span></button>
       <div class="alert-dropdown" id="alertDropdown">
@@ -1572,6 +1572,25 @@ const USER_KEY      = 'hp_user_name_v1';
 const AUDIT_KEY     = 'hp_audit_log_v1';
 const AUDIT_PIN_KEY = 'hp_audit_pin_v1';
 
+let _logoClicks = 0, _logoTimer = null;
+function handleLogoClick() {
+  _logoClicks++;
+  clearTimeout(_logoTimer);
+  _logoTimer = setTimeout(() => { _logoClicks = 0; }, 600);
+  if (_logoClicks >= 3) {
+    _logoClicks = 0;
+    const pin = localStorage.getItem(AUDIT_PIN_KEY);
+    if (!pin) { revealAdminButtons(); return; }
+    const entered = window.prompt('Enter PIN to access admin controls:');
+    if (entered === null) return;
+    if (entered === pin) { revealAdminButtons(); toast('Admin controls unlocked', 'success'); }
+    else { toast('Incorrect PIN', 'error'); }
+  }
+}
+function revealAdminButtons() {
+  document.getElementById('auditBtn').style.display = '';
+  document.getElementById('settingsBtn').style.display = '';
+}
 function getUser() { return localStorage.getItem(USER_KEY) || 'Unknown'; }
 function saveUserName() {
   const name = document.getElementById('userNameInput').value.trim();
@@ -1649,6 +1668,8 @@ loadEdits();
   const url = getScriptUrl();
   if (url) document.getElementById('scriptUrlInput').value = url;
   updateSyncBadge();
+  // Show admin buttons if no PIN set yet (first-time setup)
+  if (!localStorage.getItem(AUDIT_PIN_KEY)) revealAdminButtons();
 })();
 warmupScript(); // pre-warm Apps Script on page load so first edit doesn't hit cold-start delay
 (function() {
