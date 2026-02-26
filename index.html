@@ -976,7 +976,8 @@ function getStatus(r) {
   const g = effectiveVal(r, 8).toLowerCase();
   const subcat = effectiveVal(r, 4).toLowerCase();
   const pingKw = ['ping up', 'internet working', 'internet up', 'speed up', 'link up'];
-  if (subcat.includes('internet supply down') && pingKw.some(kw => g.includes(kw))) return 'Ping Up';
+  const pingSubcats = ['internet supply down', 'recharge done but no internet'];
+  if (pingSubcats.some(s => subcat.includes(s)) && pingKw.some(kw => g.includes(kw))) return 'Ping Up';
   return 'Unresolved';
 }
 // Duplicate = same mobile Number (col 3) appears more than once across all rows
