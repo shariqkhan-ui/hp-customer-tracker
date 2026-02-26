@@ -262,17 +262,21 @@ table.main-tbl tbody tr:hover { background: #220020; }
 
   <!-- Sync Setup Panel -->
   <div class="setup-panel" id="setupPanel" style="display:none">
-    <div class="setup-body" style="display:flex">
-      <div style="min-width:180px">
-        <div class="filter-label" style="margin-bottom:4px">&#x1F464; Your Name (for audit trail)</div>
-        <input type="text" id="userNameInput" placeholder="Enter your name..." style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;width:100%" />
+    <!-- Row 1: Identity & Audit PIN -->
+    <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px">
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:180px">
+        <div class="filter-label">&#x1F464; Your Name (for audit trail)</div>
+        <input type="text" id="userNameInput" placeholder="Enter your name..." style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;min-width:180px" />
       </div>
-      <button class="btn btn-primary" onclick="saveUserName()" style="align-self:flex-end">Save Name</button>
-      <div style="min-width:160px">
-        <div class="filter-label" style="margin-bottom:4px">&#x1F512; Audit Trail PIN</div>
-        <input type="password" id="auditPinInput" placeholder="Set a PIN..." style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;width:100%" />
+      <button class="btn btn-primary" onclick="saveUserName()">Save Name</button>
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:160px">
+        <div class="filter-label">&#x1F512; Audit Trail PIN (only you can view audit log)</div>
+        <input type="password" id="auditPinInput" placeholder="Set a PIN..." style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;min-width:160px" />
       </div>
-      <button class="btn" onclick="saveAuditPin()" style="align-self:flex-end;background:rgba(217,0,141,.15);border-color:var(--primary);color:var(--primary-light)">Set PIN</button>
+      <button class="btn" onclick="saveAuditPin()" style="background:rgba(217,0,141,.15);border-color:var(--primary);color:var(--primary-light)">Set PIN</button>
+    </div>
+    <!-- Row 2: Google Sheet Sync -->
+    <div class="setup-body" style="margin-top:0">
       <div style="flex:1;min-width:220px">
         <div class="filter-label" style="margin-bottom:4px">&#x2699;&#xFE0F; Google Sheet Sync &nbsp;<span id="syncBadge" class="sync-badge nosync">&#x26A0;&#xFE0F; Not configured</span></div>
         <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
