@@ -1668,8 +1668,8 @@ loadEdits();
   const url = getScriptUrl();
   if (url) document.getElementById('scriptUrlInput').value = url;
   updateSyncBadge();
-  // Show admin buttons if no PIN set yet (first-time setup)
-  if (!localStorage.getItem(AUDIT_PIN_KEY)) revealAdminButtons();
+  // Show admin buttons if PIN is already saved on this device (i.e. this is the owner's browser)
+  if (localStorage.getItem(AUDIT_PIN_KEY)) revealAdminButtons();
 })();
 warmupScript(); // pre-warm Apps Script on page load so first edit doesn't hit cold-start delay
 (function() {
