@@ -776,6 +776,47 @@ function startEdit(td) {
   const local  = getEdit(ticket, field);
   const cur    = local !== null ? local : orig;
 
+  // Ground Remarks field: show predefined dropdown
+  if (field === 'remarks') {
+    const REMARKS_OPTIONS = [
+      'Migrated',
+      'No Overlapping Partner/Refund',
+      'Resolved by Old Partner',
+      'Migration is in Progress',
+      'Cx not contactable/Reachable',
+      'Migration not possible/Refund'
+    ];
+    const sel = document.createElement('select');
+    sel.className = 'edit-input';
+    sel.innerHTML = '<option value="">— Select —</option>' +
+      REMARKS_OPTIONS.map(function(o) {
+        return '<option value="' + esc(o) + '"' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>';
+      }).join('');
+    td.innerHTML = '';
+    td.appendChild(sel);
+    sel.focus();
+
+    function commitRemarks() {
+      const nv = sel.value;
+      addAuditEntry(ticket, field, cur, nv);
+      saveToSheet(ticket, field, nv);
+      const isEdited = nv.trim() !== orig.trim();
+      td.className = 'edit-cell' + (isEdited ? ' edited' : '');
+      td.innerHTML = cellInner(nv);
+      td.onclick = () => startEdit(td);
+    }
+    sel.addEventListener('change', commitRemarks);
+    sel.addEventListener('blur', commitRemarks);
+    sel.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        td.className = 'edit-cell' + (cur.trim() !== orig.trim() ? ' edited' : '');
+        td.innerHTML = cellInner(cur);
+        td.onclick = () => startEdit(td);
+      }
+    });
+    return;
+  }
+
   // Migration Date field: show calendar date picker
   if (field === 'migration_date') {
     const input = document.createElement('input');
