@@ -243,6 +243,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <div class="header-right">
     <span id="lastUpdated" style="font-size:11px;color:var(--muted);">Connecting...</span>
     <button class="btn btn-primary" onclick="loadData()">&#x1F504; Refresh</button>
+    <button class="btn" onclick="openAuditModal()" title="Audit Trail" style="background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">&#x1F4CB; Audit Trail</button>
     <button class="btn" onclick="toggleSyncPanel()" title="Sheet Sync Settings">&#x2699;&#xFE0F;</button>
     <div class="alert-wrap" id="alertWrap">
       <button class="alert-btn" onclick="toggleAlerts()">&#x1F514; <span>Data Errors</span><span class="alert-badge" id="alertBadge">0</span></button>
@@ -262,7 +263,17 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <!-- Sync Setup Panel -->
   <div class="setup-panel" id="setupPanel" style="display:none">
     <div class="setup-body" style="display:flex">
-      <div style="flex:1;min-width:260px">
+      <div style="min-width:180px">
+        <div class="filter-label" style="margin-bottom:4px">&#x1F464; Your Name (for audit trail)</div>
+        <input type="text" id="userNameInput" placeholder="Enter your name..." style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;width:100%" />
+      </div>
+      <button class="btn btn-primary" onclick="saveUserName()" style="align-self:flex-end">Save Name</button>
+      <div style="min-width:160px">
+        <div class="filter-label" style="margin-bottom:4px">&#x1F512; Audit Trail PIN</div>
+        <input type="password" id="auditPinInput" placeholder="Set a PIN..." style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;width:100%" />
+      </div>
+      <button class="btn" onclick="saveAuditPin()" style="align-self:flex-end;background:rgba(217,0,141,.15);border-color:var(--primary);color:var(--primary-light)">Set PIN</button>
+      <div style="flex:1;min-width:220px">
         <div class="filter-label" style="margin-bottom:4px">&#x2699;&#xFE0F; Google Sheet Sync &nbsp;<span id="syncBadge" class="sync-badge nosync">&#x26A0;&#xFE0F; Not configured</span></div>
         <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
       </div>
@@ -533,6 +544,36 @@ table.main-tbl tbody tr:hover { background: #220020; }
   </div>
 </div>
 
+<!-- Audit Trail Modal -->
+<div class="modal-overlay" id="auditModal">
+  <div class="modal" style="width:800px;max-height:85vh;display:flex;flex-direction:column">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+      <div class="modal-title" style="margin:0">&#x1F4CB; Audit Trail — Edit History</div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-primary" onclick="downloadAuditCSV()" style="font-size:12px;padding:6px 12px">&#x2B07; Download CSV</button>
+        <button class="btn" onclick="closeAuditModal()" style="font-size:12px">Close</button>
+      </div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:10px" id="auditCount"></div>
+    <div style="overflow-y:auto;flex:1">
+      <table style="width:100%;border-collapse:collapse;font-size:12px" id="auditTable">
+        <thead>
+          <tr style="background:#0a0009">
+            <th style="padding:8px 10px;text-align:left;color:var(--muted);border-bottom:2px solid var(--border);white-space:nowrap">Date &amp; Time</th>
+            <th style="padding:8px 10px;text-align:left;color:var(--muted);border-bottom:2px solid var(--border)">Edited By</th>
+            <th style="padding:8px 10px;text-align:left;color:var(--muted);border-bottom:2px solid var(--border)">Ticket</th>
+            <th style="padding:8px 10px;text-align:left;color:var(--muted);border-bottom:2px solid var(--border)">Field</th>
+            <th style="padding:8px 10px;text-align:left;color:var(--muted);border-bottom:2px solid var(--border)">Old Value</th>
+            <th style="padding:8px 10px;text-align:left;color:var(--muted);border-bottom:2px solid var(--border)">New Value</th>
+          </tr>
+        </thead>
+        <tbody id="auditBody"></tbody>
+      </table>
+      <div id="auditEmpty" style="text-align:center;padding:30px;color:var(--muted);display:none">No edits recorded yet</div>
+    </div>
+  </div>
+</div>
+
 <!-- Bulk Add Modal -->
 <div class="modal-overlay" id="bulkModal">
   <div class="modal" style="width:660px">
@@ -754,6 +795,7 @@ function startEdit(td) {
         nv = String(d.getDate()).padStart(2,'0') + '-' +
              MONTHS_SHORT[d.getMonth()] + '-' + d.getFullYear();
       }
+      addAuditEntry(ticket, field, cur, nv);
       saveToSheet(ticket, field, nv);
       const isEdited = nv.trim() !== orig.trim();
       td.className = 'edit-cell' + (isEdited ? ' edited' : '');
@@ -785,6 +827,7 @@ function startEdit(td) {
 
     function commitSel() {
       const nv = sel.value;
+      addAuditEntry(ticket, field, cur, nv);
       saveToSheet(ticket, field, nv).then(() => populateDropdowns());
       const isEdited = nv.trim() !== orig.trim();
       td.className = 'edit-cell' + (isEdited ? ' edited' : '');
@@ -814,6 +857,7 @@ function startEdit(td) {
 
   function commit() {
     const nv = input.value;
+    addAuditEntry(ticket, field, cur, nv);
     saveToSheet(ticket, field, nv);
     const isEdited = nv.trim() !== orig.trim();
     td.className = 'edit-cell' + (isEdited ? ' edited' : '');
@@ -1519,6 +1563,82 @@ async function submitAddCase() {
   }
 }
 
+// ── Audit Trail ──
+const USER_KEY      = 'hp_user_name_v1';
+const AUDIT_KEY     = 'hp_audit_log_v1';
+const AUDIT_PIN_KEY = 'hp_audit_pin_v1';
+
+function getUser() { return localStorage.getItem(USER_KEY) || 'Unknown'; }
+function saveUserName() {
+  const name = document.getElementById('userNameInput').value.trim();
+  if (name) { localStorage.setItem(USER_KEY, name); toast('Name saved: ' + name, 'success'); }
+  else { toast('Enter a name first', 'error'); }
+}
+function saveAuditPin() {
+  const pin = document.getElementById('auditPinInput').value.trim();
+  if (!pin) { toast('Enter a PIN first', 'error'); return; }
+  localStorage.setItem(AUDIT_PIN_KEY, pin);
+  document.getElementById('auditPinInput').value = '';
+  toast('Audit PIN set \u2713 — only you can open the audit trail now', 'success');
+}
+function getAuditLog() {
+  try { return JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]'); } catch(e) { return []; }
+}
+function addAuditEntry(ticket, field, oldVal, newVal) {
+  if (String(oldVal||'').trim() === String(newVal||'').trim()) return;
+  const log = getAuditLog();
+  log.push({ ts: Date.now(), user: getUser(), ticket: String(ticket||''), field: String(field||''), oldVal: String(oldVal||''), newVal: String(newVal||'') });
+  if (log.length > 10000) log.splice(0, log.length - 10000);
+  localStorage.setItem(AUDIT_KEY, JSON.stringify(log));
+}
+function openAuditModal() {
+  const pin = localStorage.getItem(AUDIT_PIN_KEY);
+  if (pin) {
+    const entered = window.prompt('Enter Audit Trail PIN to continue:');
+    if (entered === null) return;
+    if (entered !== pin) { toast('Incorrect PIN — access denied', 'error'); return; }
+  }
+  renderAuditLog();
+  document.getElementById('auditModal').classList.add('open');
+}
+function closeAuditModal() { document.getElementById('auditModal').classList.remove('open'); }
+function renderAuditLog() {
+  const log = getAuditLog().slice().reverse();
+  const tbody = document.getElementById('auditBody');
+  const empty = document.getElementById('auditEmpty');
+  document.getElementById('auditCount').textContent = log.length + ' edit(s) recorded';
+  if (!log.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  const FIELD_LABEL = { remarks: 'Ground Remarks', engineer: 'Engineer Name', migration_date: 'Migration Date' };
+  tbody.innerHTML = log.map(function(e) {
+    const dt = new Date(e.ts).toLocaleString('en-IN');
+    const fl = FIELD_LABEL[e.field] || e.field;
+    return '<tr style="border-bottom:1px solid #1a0018">' +
+      '<td style="padding:8px 10px;color:var(--muted);white-space:nowrap">' + esc(dt) + '</td>' +
+      '<td style="padding:8px 10px;color:var(--blue)">' + esc(e.user) + '</td>' +
+      '<td style="padding:8px 10px;color:var(--primary-light)">' + esc(e.ticket) + '</td>' +
+      '<td style="padding:8px 10px">' + esc(fl) + '</td>' +
+      '<td style="padding:8px 10px;color:var(--red)">' + esc(e.oldVal || '\u2014') + '</td>' +
+      '<td style="padding:8px 10px;color:var(--green)">' + esc(e.newVal || '\u2014') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+function downloadAuditCSV() {
+  const log = getAuditLog().slice().reverse();
+  const q = function(v) { return '"' + String(v||'').replace(/"/g,'""') + '"'; };
+  const lines = [
+    ['Date & Time','Edited By','Ticket','Field','Old Value','New Value'].map(q).join(','),
+    ...log.map(function(e) {
+      return [new Date(e.ts).toLocaleString('en-IN'), e.user, e.ticket, e.field, e.oldVal||'', e.newVal||''].map(q).join(',');
+    })
+  ];
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'audit-trail-' + new Date().toISOString().slice(0,10) + '.csv';
+  a.click(); URL.revokeObjectURL(a.href);
+}
+
 // ── Init ──
 loadEdits();
 (function() {
@@ -1527,6 +1647,10 @@ loadEdits();
   updateSyncBadge();
 })();
 warmupScript(); // pre-warm Apps Script on page load so first edit doesn't hit cold-start delay
+(function() {
+  const saved = localStorage.getItem(USER_KEY);
+  if (saved) document.getElementById('userNameInput').value = saved;
+})();
 loadData();
 </script>
 </body>
