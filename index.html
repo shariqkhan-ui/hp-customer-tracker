@@ -410,7 +410,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
     </div>
     <div class="status-card pingup">
       <div class="status-count" id="sPingCount">—</div>
-      <div class="status-label">&#x1F4E1; Ping Up</div>
+      <div class="status-label">&#x1F4E1; Ping Up (Only Internet Supply Down)</div>
     </div>
     <div class="status-card unresolved">
       <div class="status-count" id="sUnresCount">—</div>
@@ -422,7 +422,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <div class="kpi-grid">
     <div class="kpi-card"><div class="kpi-val" id="kTotal">—</div><div class="kpi-lbl">Total</div></div>
     <div class="kpi-card"><div class="kpi-val" style="color:var(--green)" id="kMigPct">—</div><div class="kpi-lbl">Migrated %</div></div>
-    <div class="kpi-card"><div class="kpi-val" style="color:var(--blue)" id="kPingPct">—</div><div class="kpi-lbl">Ping Up %</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--blue)" id="kPingPct">—</div><div class="kpi-lbl">Ping Up % (Internet Supply Down)</div></div>
     <div class="kpi-card"><div class="kpi-val" style="color:var(--red)" id="kUnres">—</div><div class="kpi-lbl">Unresolved</div></div>
     <div class="kpi-card"><div class="kpi-val" style="color:var(--yellow)" id="kDupes">—</div><div class="kpi-lbl">Duplicates</div></div>
     <div class="kpi-card"><div class="kpi-val" id="kPartners">—</div><div class="kpi-lbl">Partners Affected</div></div>
@@ -784,7 +784,8 @@ function startEdit(td) {
       'Resolved by Old Partner',
       'Migration is in Progress',
       'Cx not contactable/Reachable',
-      'Migration not possible/Refund'
+      'Migration not possible/Refund',
+      'Customer not interested in Migration'
     ];
     const sel = document.createElement('select');
     sel.className = 'edit-input';
@@ -973,8 +974,9 @@ function dKey(d) { if (!d) return ''; const dd = new Date(d); dd.setHours(0,0,0,
 function getStatus(r) {
   if (effectiveVal(r, 14).trim() !== '') return 'Migrated';
   const g = effectiveVal(r, 8).toLowerCase();
+  const subcat = effectiveVal(r, 4).toLowerCase();
   const pingKw = ['ping up', 'internet working', 'internet up', 'speed up', 'link up'];
-  if (pingKw.some(kw => g.includes(kw))) return 'Ping Up';
+  if (subcat.includes('internet supply down') && pingKw.some(kw => g.includes(kw))) return 'Ping Up';
   return 'Unresolved';
 }
 // Duplicate = same mobile Number (col 3) appears more than once across all rows
