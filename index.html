@@ -1226,7 +1226,7 @@ function renderTable(rows) {
     const st     = getStatus(r);
     const dup    = isDupe(r);
     const ticket = (r[1]||'').trim();
-    const kaptureUrl = ticket ? 'https://wiomin.kapturecrm.com/nui/helpdesk/view/' + ticket : '';
+    const kaptureUrl = ticket ? 'https://wiomin.kapturecrm.com/nui/tickets/assigned_to_me/5/-1/0/detail/957486452/' + ticket + '?query=' + ticket : '';
     const link   = ticket
       ? '<a class="ticket-link" href="' + esc(kaptureUrl) + '" target="_blank">&#x1F517; ' + esc(ticket) + '</a>'
       : '<span style="color:var(--muted)">—</span>';
