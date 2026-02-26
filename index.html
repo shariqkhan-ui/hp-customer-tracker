@@ -170,6 +170,33 @@ table.main-tbl tbody tr:hover { background: #220020; }
   background: rgba(63,185,80,.15); color: var(--green); }
 .sync-badge.nosync { background: rgba(210,153,34,.15); color: var(--yellow); }
 
+/* Multi-select filter dropdowns */
+.ms-wrap { position: relative; min-width: 160px; }
+.ms-btn  { padding: 7px 10px; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; color: var(--text); font-size: 13px; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  user-select: none; white-space: nowrap; }
+.ms-btn:hover, .ms-btn.active { border-color: var(--primary); }
+.ms-arrow { font-size: 10px; color: var(--muted); transition: transform .15s; flex-shrink:0; }
+.ms-btn.open .ms-arrow { transform: rotate(180deg); }
+.ms-dropdown { display: none; position: absolute; top: calc(100% + 4px); left: 0;
+  min-width: 210px; background: var(--card); border: 1px solid var(--primary);
+  border-radius: 8px; box-shadow: 0 8px 24px rgba(0,0,0,.6); z-index: 600; overflow: hidden; }
+.ms-dropdown.open { display: block; }
+.ms-search input { width: 100%; padding: 8px 10px; background: var(--bg); border: none;
+  border-bottom: 1px solid var(--border); color: var(--text); font-size: 12px; outline: none; }
+.ms-options { max-height: 200px; overflow-y: auto; }
+.ms-opt { display: flex; align-items: center; gap: 8px; padding: 7px 12px;
+  font-size: 12px; cursor: pointer; }
+.ms-opt:hover { background: rgba(217,0,141,.08); }
+.ms-opt input[type=checkbox] { accent-color: var(--primary); cursor: pointer; flex-shrink:0; }
+.ms-footer { display: flex; gap: 6px; padding: 7px 10px; border-top: 1px solid var(--border); }
+.ms-footer button { font-size: 11px; padding: 3px 8px; border-radius: 4px;
+  border: 1px solid var(--border); background: var(--bg); color: var(--muted); cursor: pointer; }
+.ms-footer button:hover { color: var(--text); border-color: var(--primary); }
+.ms-count { background: var(--primary); color: #fff; font-size: 10px; font-weight: 800;
+  padding: 1px 6px; border-radius: 10px; flex-shrink: 0; }
+
 /* Column filters */
 .col-filter { width:100%; padding:4px 6px; background:var(--bg); border:1px solid var(--border);
   border-radius:4px; color:var(--text); font-size:11px; font-weight:400; margin-top:4px; box-sizing:border-box; }
@@ -249,36 +276,98 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <div class="filters-bar">
     <div class="filter-item">
       <div class="filter-label">Case Added Date</div>
-      <select class="filter-input" id="fDate" onchange="applyFilters()"><option value="">All Dates</option></select>
+      <div class="ms-wrap" id="ms_fDate">
+        <div class="ms-btn" id="ms_btn_fDate" onclick="toggleMs('fDate')">
+          <span class="ms-label">All Dates</span><span class="ms-arrow">&#9660;</span>
+        </div>
+        <div class="ms-dropdown" id="ms_drop_fDate">
+          <div class="ms-search"><input type="text" placeholder="Search..." oninput="filterMsOpts(this,'fDate')"></div>
+          <div class="ms-options" id="ms_opts_fDate"></div>
+          <div class="ms-footer">
+            <button onclick="clearMs('fDate')">Clear</button>
+            <button onclick="selectAllMs('fDate')">All</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="filter-item">
       <div class="filter-label">Partner</div>
-      <select class="filter-input" id="fPartner" onchange="applyFilters()"><option value="">All Partners</option></select>
+      <div class="ms-wrap" id="ms_fPartner">
+        <div class="ms-btn" id="ms_btn_fPartner" onclick="toggleMs('fPartner')">
+          <span class="ms-label">All Partners</span><span class="ms-arrow">&#9660;</span>
+        </div>
+        <div class="ms-dropdown" id="ms_drop_fPartner">
+          <div class="ms-search"><input type="text" placeholder="Search..." oninput="filterMsOpts(this,'fPartner')"></div>
+          <div class="ms-options" id="ms_opts_fPartner"></div>
+          <div class="ms-footer">
+            <button onclick="clearMs('fPartner')">Clear</button>
+            <button onclick="selectAllMs('fPartner')">All</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="filter-item">
       <div class="filter-label">Sub-category</div>
-      <select class="filter-input" id="fSubcat" onchange="applyFilters()"><option value="">All Categories</option></select>
+      <div class="ms-wrap" id="ms_fSubcat">
+        <div class="ms-btn" id="ms_btn_fSubcat" onclick="toggleMs('fSubcat')">
+          <span class="ms-label">All Categories</span><span class="ms-arrow">&#9660;</span>
+        </div>
+        <div class="ms-dropdown" id="ms_drop_fSubcat">
+          <div class="ms-search"><input type="text" placeholder="Search..." oninput="filterMsOpts(this,'fSubcat')"></div>
+          <div class="ms-options" id="ms_opts_fSubcat"></div>
+          <div class="ms-footer">
+            <button onclick="clearMs('fSubcat')">Clear</button>
+            <button onclick="selectAllMs('fSubcat')">All</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="filter-item">
       <div class="filter-label">TAT</div>
-      <select class="filter-input" id="fTat" onchange="applyFilters()"><option value="">All TAT</option></select>
+      <div class="ms-wrap" id="ms_fTat">
+        <div class="ms-btn" id="ms_btn_fTat" onclick="toggleMs('fTat')">
+          <span class="ms-label">All TAT</span><span class="ms-arrow">&#9660;</span>
+        </div>
+        <div class="ms-dropdown" id="ms_drop_fTat">
+          <div class="ms-search"><input type="text" placeholder="Search..." oninput="filterMsOpts(this,'fTat')"></div>
+          <div class="ms-options" id="ms_opts_fTat"></div>
+          <div class="ms-footer">
+            <button onclick="clearMs('fTat')">Clear</button>
+            <button onclick="selectAllMs('fTat')">All</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="filter-item">
       <div class="filter-label">Status</div>
-      <select class="filter-input" id="fStatus" onchange="applyFilters()">
-        <option value="">All Statuses</option>
-        <option value="Migrated">Migrated</option>
-        <option value="Ping Up">Ping Up</option>
-        <option value="Unresolved">Unresolved</option>
-        <option value="Duplicate">Duplicate</option>
-      </select>
+      <div class="ms-wrap" id="ms_fStatus">
+        <div class="ms-btn" id="ms_btn_fStatus" onclick="toggleMs('fStatus')">
+          <span class="ms-label">All Statuses</span><span class="ms-arrow">&#9660;</span>
+        </div>
+        <div class="ms-dropdown" id="ms_drop_fStatus">
+          <div class="ms-options" id="ms_opts_fStatus"></div>
+          <div class="ms-footer">
+            <button onclick="clearMs('fStatus')">Clear</button>
+            <button onclick="selectAllMs('fStatus')">All</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="filter-item">
       <div class="filter-label">Engineer</div>
-      <select class="filter-input" id="fEngineer" onchange="applyFilters()">
-        <option value="">All Engineers</option>
-        <option value="__na__">NA (Not Assigned)</option>
-      </select>
+      <div class="ms-wrap" id="ms_fEngineer">
+        <div class="ms-btn" id="ms_btn_fEngineer" onclick="toggleMs('fEngineer')">
+          <span class="ms-label">All Engineers</span><span class="ms-arrow">&#9660;</span>
+        </div>
+        <div class="ms-dropdown" id="ms_drop_fEngineer">
+          <div class="ms-search"><input type="text" placeholder="Search..." oninput="filterMsOpts(this,'fEngineer')"></div>
+          <div class="ms-options" id="ms_opts_fEngineer"></div>
+          <div class="ms-footer">
+            <button onclick="clearMs('fEngineer')">Clear</button>
+            <button onclick="selectAllMs('fEngineer')">All</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="filter-item">
       <div class="filter-label">Action Needed</div>
@@ -840,94 +929,150 @@ async function loadData() {
   }
 }
 
+// ── Multi-Select Filter Logic ──
+const MS_IDS = ['fDate','fPartner','fSubcat','fTat','fStatus','fEngineer'];
+const MS_LABELS = { fDate:'All Dates', fPartner:'All Partners', fSubcat:'All Categories', fTat:'All TAT', fStatus:'All Statuses', fEngineer:'All Engineers' };
+const msState = {}; MS_IDS.forEach(id => msState[id] = new Set());
+
+function toggleMs(id) {
+  const drop = document.getElementById('ms_drop_' + id);
+  const btn  = document.getElementById('ms_btn_' + id);
+  const isOpen = drop.classList.contains('open');
+  MS_IDS.forEach(oid => {
+    document.getElementById('ms_drop_' + oid).classList.remove('open');
+    document.getElementById('ms_btn_' + oid).classList.remove('open');
+  });
+  if (!isOpen) {
+    drop.classList.add('open'); btn.classList.add('open');
+    const si = drop.querySelector('.ms-search input');
+    if (si) { si.value = ''; filterMsOpts(si, id); si.focus(); }
+  }
+}
+function filterMsOpts(input, id) {
+  const q = input.value.toLowerCase();
+  document.querySelectorAll('#ms_opts_' + id + ' .ms-opt').forEach(o => {
+    o.style.display = o.dataset.val.toLowerCase().includes(q) ? '' : 'none';
+  });
+}
+function toggleMsOpt(id, val) {
+  if (msState[id].has(val)) msState[id].delete(val); else msState[id].add(val);
+  updateMsBtn(id); applyFilters();
+}
+function clearMs(id) {
+  msState[id].clear();
+  document.querySelectorAll('#ms_opts_' + id + ' input[type=checkbox]').forEach(cb => cb.checked = false);
+  updateMsBtn(id); applyFilters();
+}
+function selectAllMs(id) {
+  document.querySelectorAll('#ms_opts_' + id + ' .ms-opt:not([style*="none"])').forEach(o => {
+    msState[id].add(o.dataset.val);
+    o.querySelector('input').checked = true;
+  });
+  updateMsBtn(id); applyFilters();
+}
+function updateMsBtn(id) {
+  const sel = msState[id];
+  const btn = document.getElementById('ms_btn_' + id);
+  const lbl = btn.querySelector('.ms-label');
+  let cnt   = btn.querySelector('.ms-count');
+  if (sel.size === 0) {
+    lbl.textContent = MS_LABELS[id];
+    if (cnt) cnt.remove();
+    btn.classList.remove('active');
+  } else {
+    const arr = [...sel];
+    lbl.textContent = arr[0] + (arr.length > 1 ? '…' : '');
+    if (!cnt) { cnt = document.createElement('span'); cnt.className = 'ms-count'; btn.insertBefore(cnt, btn.querySelector('.ms-arrow')); }
+    cnt.textContent = sel.size;
+    btn.classList.add('active');
+  }
+}
+function populateMsOpts(id, values) {
+  const opts = document.getElementById('ms_opts_' + id);
+  if (!opts) return;
+  opts.innerHTML = values.map(v =>
+    '<div class="ms-opt" data-val="' + esc(v) + '" onclick="toggleMsOpt(\'' + id + '\',\'' + esc(v).replace(/'/g,"\\'") + '\')">' +
+    '<input type="checkbox"' + (msState[id].has(v) ? ' checked' : '') + ' onclick="event.stopPropagation();toggleMsOpt(\'' + id + '\',\'' + esc(v).replace(/'/g,"\\'") + '\')">' +
+    '<span>' + esc(v) + '</span></div>'
+  ).join('');
+}
+document.addEventListener('click', e => {
+  if (!e.target.closest('.ms-wrap'))
+    MS_IDS.forEach(id => { document.getElementById('ms_drop_'+id).classList.remove('open'); document.getElementById('ms_btn_'+id).classList.remove('open'); });
+});
+
 // ── Dropdowns ──
 function populateDropdowns() {
   const uniq = fn => [...new Set(allRows.map(fn).filter(Boolean))].sort();
-  // Date dropdown: sort descending (most recent first)
-  const uniqDatesDesc = () => {
-    const keys = [...new Set(allRows.map(r => dKey(parseDate((r[0]||'').trim()))).filter(Boolean))];
-    return keys.sort().reverse(); // YYYY-MM-DD sorts correctly
-  };
-  const dateSel = document.getElementById('fDate');
-  const savedDate = dateSel.value;
-  const dateKeys = uniqDatesDesc();
-  dateSel.innerHTML = '<option value="">All Dates</option>' +
-    dateKeys.map(dk => {
-      const d = new Date(dk + 'T00:00:00');
-      const label = fmtDate(d);
-      return '<option value="' + dk + '"' + (dk === savedDate ? ' selected' : '') + '>' + label + '</option>';
-    }).join('');
-
-  fillSel('fPartner',  'All Partners',   uniq(r => (r[6]||'').trim()));
-  fillSel('fSubcat',   'All Categories', uniq(r => (r[4]||'').trim()));
-  fillSel('fTat',      'All TAT',        uniq(r => (r[7]||'').trim()));
-  const engSel = document.getElementById('fEngineer');
-  const savedEng = engSel.value;
-  engSel.innerHTML = '<option value="">All Engineers</option>' +
-    '<option value="__na__"' + (savedEng === '__na__' ? ' selected' : '') + '>NA (Not Assigned)</option>' +
-    uniq(r => effectiveVal(r, 10)).map(o =>
-      '<option value="' + esc(o) + '"' + (o === savedEng ? ' selected' : '') + '>' + esc(o) + '</option>'
+  // Dates sorted descending, shown as formatted labels
+  const dateKeys = [...new Set(allRows.map(r => dKey(parseDate((r[0]||'').trim()))).filter(Boolean))].sort().reverse();
+  const dateLabels = dateKeys.map(dk => fmtDate(new Date(dk + 'T00:00:00')));
+  // Build date opts manually with formatted labels
+  const dateEl = document.getElementById('ms_opts_fDate');
+  if (dateEl) {
+    dateEl.innerHTML = dateKeys.map((dk, i) =>
+      '<div class="ms-opt" data-val="' + esc(dk) + '" onclick="toggleMsOpt(\'fDate\',\'' + esc(dk) + '\')">' +
+      '<input type="checkbox"' + (msState.fDate.has(dk) ? ' checked' : '') + ' onclick="event.stopPropagation();toggleMsOpt(\'fDate\',\'' + esc(dk) + '\')">' +
+      '<span>' + esc(dateLabels[i]) + '</span></div>'
     ).join('');
-}
-function fillSel(id, placeholder, opts) {
-  const saved = document.getElementById(id).value;
-  document.getElementById(id).innerHTML =
-    '<option value="">' + placeholder + '</option>' +
-    opts.map(o => '<option value="' + esc(o) + '"' + (o === saved ? ' selected' : '') + '>' + esc(o) + '</option>').join('');
+  }
+  populateMsOpts('fPartner',  uniq(r => (r[6]||'').trim()));
+  populateMsOpts('fSubcat',   uniq(r => (r[4]||'').trim()));
+  populateMsOpts('fTat',      uniq(r => (r[7]||'').trim()));
+  populateMsOpts('fStatus',   ['Migrated','Ping Up','Unresolved','Duplicate']);
+  populateMsOpts('fEngineer', ['NA (Not Assigned)', ...uniq(r => effectiveVal(r, 10))]);
 }
 
 // ── Filters ──
 function applyFilters() {
-  const fD  = document.getElementById('fDate').value;
-  const fP  = document.getElementById('fPartner').value;
-  const fS  = document.getElementById('fSubcat').value;
-  const fT  = document.getElementById('fTat').value;
-  const fSt = document.getElementById('fStatus').value;
-  const fE  = document.getElementById('fEngineer').value;
-  const fA  = document.getElementById('fAction').value;
+  const fA = document.getElementById('fAction').value;
   visRows = allRows.filter(r => {
-    if (fD  && dKey(parseDate((r[0]||'').trim())) !== fD) return false;
-    if (fP  && (r[6]||'').trim() !== fP) return false;
-    if (fS  && (r[4]||'').trim() !== fS) return false;
-    if (fT  && (r[7]||'').trim() !== fT) return false;
-    if (fE === '__na__' && effectiveVal(r, 10) !== '') return false;
-    else if (fE && fE !== '__na__' && effectiveVal(r, 10) !== fE) return false;
-    if (fSt) {
-      if (fSt === 'Duplicate' && !isDupe(r)) return false;
-      if (fSt !== 'Duplicate' && getStatus(r) !== fSt) return false;
+    if (msState.fDate.size > 0    && !msState.fDate.has(dKey(parseDate((r[0]||'').trim())))) return false;
+    if (msState.fPartner.size > 0 && !msState.fPartner.has((r[6]||'').trim())) return false;
+    if (msState.fSubcat.size > 0  && !msState.fSubcat.has((r[4]||'').trim())) return false;
+    if (msState.fTat.size > 0     && !msState.fTat.has((r[7]||'').trim())) return false;
+    if (msState.fStatus.size > 0) {
+      const st = getStatus(r); const dup = isDupe(r);
+      const pass = [...msState.fStatus].some(v => v === 'Duplicate' ? dup : st === v);
+      if (!pass) return false;
+    }
+    if (msState.fEngineer.size > 0) {
+      const eng = effectiveVal(r, 10);
+      const wantNA = msState.fEngineer.has('NA (Not Assigned)');
+      const others = [...msState.fEngineer].filter(v => v !== 'NA (Not Assigned)');
+      if (!(wantNA && eng === '') && !others.includes(eng)) return false;
     }
     if (fA) {
-      const rem  = effectiveVal(r, 8).trim();
-      const rl   = rem.toLowerCase();
-      const ticket = (r[1]||'').trim();
-      const ts   = getRemarksTs(ticket);
-      const stale24 = ts < (Date.now() - 24 * 60 * 60 * 1000);
+      const rem = effectiveVal(r, 8).trim();
+      const rl  = rem.toLowerCase();
+      const ts  = getRemarksTs((r[1]||'').trim());
       const resolved = RESOLVED_KW.some(kw => rl.includes(kw));
       if (fA === 'no_comment'   && rem !== '') return false;
-      if (fA === 'stale'        && (rem === '' || resolved || !stale24)) return false;
       if (fA === 'needs_action' && !isCaseNeedsAction(r)) return false;
     }
     return true;
   });
   renderAll();
-  renderFilterSummary(fD, fP, fS, fT, fSt, fE, fA);
+  renderFilterSummary();
 }
 function clearFilters() {
-  ['fDate','fPartner','fSubcat','fTat','fStatus','fEngineer','fAction'].forEach(id => document.getElementById(id).value = '');
+  MS_IDS.forEach(id => { msState[id].clear(); updateMsBtn(id); });
+  document.getElementById('fAction').value = '';
   colFilters = {};
   document.querySelectorAll('.col-filter').forEach(el => el.value = '');
   applyFilters();
 }
-function renderFilterSummary(fD, fP, fS, fT, fSt, fE, fA) {
+function renderFilterSummary() {
   const el = document.getElementById('filterSummary');
   const parts = [];
-  if (fD)  parts.push('Date: <b>' + esc(document.querySelector('#fDate option:checked')?.textContent || fD) + '</b>');
-  if (fP)  parts.push('Partner: <b>' + esc(fP) + '</b>');
-  if (fS)  parts.push('Category: <b>' + esc(fS) + '</b>');
-  if (fT)  parts.push('TAT: <b>' + esc(fT) + '</b>');
-  if (fE)  parts.push('Engineer: <b>' + esc(fE) + '</b>');
-  if (fSt) parts.push('Status: <b>' + esc(fSt) + '</b>');
-  if (fA)  parts.push('Action: <b>' + esc(document.querySelector('#fAction option:checked')?.textContent || fA) + '</b>');
+  MS_IDS.forEach(id => {
+    if (msState[id].size > 0) {
+      const label = id.replace('f','').replace(/([A-Z])/g,' $1').trim();
+      parts.push(label + ': <b>' + [...msState[id]].join(', ') + '</b>');
+    }
+  });
+  const fA = document.getElementById('fAction').value;
+  if (fA) parts.push('Action: <b>' + esc(document.querySelector('#fAction option:checked')?.textContent || fA) + '</b>');
   if (parts.length) {
     el.style.display = 'block';
     el.innerHTML = parts.join(' &nbsp;·&nbsp; ') + ' &nbsp;·&nbsp; Showing <b>' + visRows.length + '</b> of <b>' + allRows.length + '</b> records';
