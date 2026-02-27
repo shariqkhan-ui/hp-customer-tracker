@@ -799,10 +799,7 @@ function startEdit(td) {
       const nv = sel.value;
       addAuditEntry(ticket, field, cur, nv);
       saveToSheet(ticket, field, nv);
-      const isEdited = nv.trim() !== orig.trim();
-      td.className = 'edit-cell' + (isEdited ? ' edited' : '');
-      td.innerHTML = cellInner(nv);
-      td.onclick = () => startEdit(td);
+      applyFilters();
     }
     sel.addEventListener('change', commitRemarks);
     sel.addEventListener('blur', commitRemarks);
@@ -841,10 +838,7 @@ function startEdit(td) {
       }
       addAuditEntry(ticket, field, cur, nv);
       saveToSheet(ticket, field, nv);
-      const isEdited = nv.trim() !== orig.trim();
-      td.className = 'edit-cell' + (isEdited ? ' edited' : '');
-      td.innerHTML = cellInner(nv);
-      td.onclick   = () => startEdit(td);
+      applyFilters();
     }
     input.addEventListener('blur', commitDate);
     input.addEventListener('keydown', e => {
@@ -873,10 +867,7 @@ function startEdit(td) {
       const nv = sel.value;
       addAuditEntry(ticket, field, cur, nv);
       saveToSheet(ticket, field, nv).then(() => populateDropdowns());
-      const isEdited = nv.trim() !== orig.trim();
-      td.className = 'edit-cell' + (isEdited ? ' edited' : '');
-      td.innerHTML = cellInner(nv);
-      td.onclick = () => startEdit(td);
+      applyFilters();
     }
     sel.addEventListener('change', commitSel);
     sel.addEventListener('blur', commitSel);
@@ -903,10 +894,7 @@ function startEdit(td) {
     const nv = input.value;
     addAuditEntry(ticket, field, cur, nv);
     saveToSheet(ticket, field, nv);
-    const isEdited = nv.trim() !== orig.trim();
-    td.className = 'edit-cell' + (isEdited ? ' edited' : '');
-    td.innerHTML = cellInner(nv);
-    td.onclick   = () => startEdit(td);
+    applyFilters();
   }
   input.addEventListener('blur', commit);
   input.addEventListener('keydown', e => {
