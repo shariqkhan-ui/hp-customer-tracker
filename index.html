@@ -1031,9 +1031,20 @@ async function loadData() {
   document.getElementById('lastUpdated').textContent = 'Loading…';
   document.getElementById('errorBanner').style.display = 'none';
   try {
-    const res = await fetch(CSV_URL + '&t=' + Date.now());
-    if (!res.ok) throw new Error('HTTP ' + res.status);
-    const txt = await res.text();
+    // Try Apps Script first (live data, no cache). Fall back to published CSV.
+    let txt = null;
+    const scriptUrl = getScriptUrl();
+    if (scriptUrl) {
+      try {
+        const r = await fetch(scriptUrl + '?action=getData', { redirect: 'follow' });
+        if (r.ok) { const t = await r.text(); if (t && t.length > 100) txt = t; }
+      } catch(e) {}
+    }
+    if (!txt) {
+      const res = await fetch(CSV_URL + '&t=' + Date.now());
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      txt = await res.text();
+    }
     const parsed = parseCSV(txt);
     // Skip header row; filter rows with a ticket number (col 1)
     const sheetRows = parsed.slice(1).filter(r => r.length >= 5 && (r[1] || '').trim() !== '');
@@ -1044,7 +1055,7 @@ async function loadData() {
     applyFilters();
     generateAlerts();
     toast('Loaded ' + allRows.length + ' records', 'success');
-    setTimeout(loadData, 5 * 60 * 1000); // auto-refresh 5 min
+    setTimeout(loadData, 60 * 1000); // auto-refresh every 1 min
   } catch(e) {
     const banner = document.getElementById('errorBanner');
     banner.style.display = 'block';
