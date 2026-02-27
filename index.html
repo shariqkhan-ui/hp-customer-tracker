@@ -619,6 +619,7 @@ let allRows = [], visRows = [], charts = {};
 // ── Local Edits + Sheet Sync ──
 const EDITS_KEY  = 'hp_local_edits_v1';
 const SCRIPT_KEY = 'hp_script_url_v1';
+const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzHA4BaHwDN9zcltWEYUZtq0rxrA35EaHtASsnWGdSZcpb5o7k1oRA27IUTqqhpd09m/exec';
 const LOCAL_ROWS_KEY = 'hp_local_rows_v1';
 function getLocalRows() {
   try { return JSON.parse(localStorage.getItem(LOCAL_ROWS_KEY) || '[]'); } catch(e) { return []; }
@@ -687,7 +688,7 @@ function effectiveVal(r, col) {
   return (r[col] || '').trim();
 }
 
-function getScriptUrl() { return localStorage.getItem(SCRIPT_KEY) || ''; }
+function getScriptUrl() { return localStorage.getItem(SCRIPT_KEY) || DEFAULT_SCRIPT_URL; }
 function toggleSyncPanel() {
   const el = document.getElementById('setupPanel');
   el.style.display = el.style.display === 'none' ? 'block' : 'none';
