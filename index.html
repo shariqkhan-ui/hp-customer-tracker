@@ -1144,6 +1144,10 @@ function applyFilters() {
     }
     return true;
   });
+  visRows.sort(function(a, b) {
+    const da = parseDate((a[0]||'').trim()), db = parseDate((b[0]||'').trim());
+    return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
+  });
   renderAll();
   renderFilterSummary();
 }
