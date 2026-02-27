@@ -612,14 +612,14 @@ table.main-tbl tbody tr:hover { background: #220020; }
 <div id="toastArea"></div>
 
 <script>
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vSDBrdViLa3uTThiIfIqDSQ1ojwkN7VUi-ZzHOvEn3uZpF4WPpuX_spBLX5ID7KtgbmSK6oIXf0IVQX/pub?gid=0&single=true&output=csv';
+const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTdg0LFh7uTRIcQkT0PK656CrE8dFDoKUgceXx5YNpD3Syhr4y16pShGb3GRQJSg4xBe4SugV3eF1XD/pub?gid=0&single=true&output=csv';
 
 let allRows = [], visRows = [], charts = {};
 
 // ── Local Edits + Sheet Sync ──
 const EDITS_KEY  = 'hp_local_edits_v1';
 const SCRIPT_KEY = 'hp_script_url_v1';
-const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbzHA4BaHwDN9zcltWEYUZtq0rxrA35EaHtASsnWGdSZcpb5o7k1oRA27IUTqqhpd09m/exec';
+const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbywrkricZjT_ZpQcbpfdb3UfBM2DDs78j4fOHBiWoDMCU70FaAZLoskfwhx8EdANNfK8g/exec';
 const LOCAL_ROWS_KEY = 'hp_local_rows_v1';
 function getLocalRows() {
   try { return JSON.parse(localStorage.getItem(LOCAL_ROWS_KEY) || '[]'); } catch(e) { return []; }
