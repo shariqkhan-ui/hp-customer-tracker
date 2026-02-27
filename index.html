@@ -243,6 +243,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <div class="header-right">
     <span id="lastUpdated" style="font-size:11px;color:var(--muted);">Connecting...</span>
     <button class="btn btn-primary" onclick="loadData()">&#x1F504; Refresh</button>
+    <button class="btn" id="syncAllBtn" onclick="syncAllEdits()" title="Push all your saved remarks to Google Sheet so everyone can see them" style="background:rgba(63,185,80,.15);border-color:var(--green);color:var(--green)">&#x2B06; Sync All Edits</button>
     <button class="btn" id="auditBtn" onclick="openAuditModal()" title="Audit Trail" style="display:none;background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">&#x1F4CB; Audit Trail</button>
     <button class="btn" id="settingsBtn" onclick="toggleSyncPanel()" title="Sheet Sync Settings" style="display:none">&#x2699;&#xFE0F;</button>
     <div class="alert-wrap" id="alertWrap">
@@ -720,6 +721,39 @@ async function saveToSheet(ticket, field, value) {
   } catch(e) {
     toast('Saved locally only', 'info');
   }
+}
+
+// ── Sync ALL localStorage edits to Google Sheet ──
+async function syncAllEdits() {
+  const url = getScriptUrl();
+  if (!url) { toast('No Apps Script URL configured', 'error'); return; }
+  const edits = localEdits;
+  const tickets = Object.keys(edits);
+  if (!tickets.length) { toast('No saved edits to sync', 'info'); return; }
+
+  const btn = document.getElementById('syncAllBtn');
+  btn.disabled = true;
+  btn.textContent = 'Syncing…';
+
+  const fields = ['remarks', 'engineer', 'migration_date'];
+  let count = 0;
+  for (const ticket of tickets) {
+    for (const field of fields) {
+      const value = edits[ticket][field];
+      if (value === undefined || value === null) continue;
+      const fullUrl = url + '?ticketNo=' + encodeURIComponent(ticket) +
+                           '&field='    + encodeURIComponent(field)  +
+                           '&value='    + encodeURIComponent(value);
+      try { await fetch(fullUrl, { mode: 'no-cors' }); } catch(e) {}
+      count++;
+      // small delay to avoid hammering Apps Script
+      await new Promise(r => setTimeout(r, 200));
+    }
+  }
+
+  btn.disabled = false;
+  btn.textContent = '\u2B06 Sync All Edits';
+  toast(count + ' edit(s) pushed to Sheet \u2713', 'success');
 }
 
 // ── Warm up Apps Script on load so edits don't face cold-start delay ──
