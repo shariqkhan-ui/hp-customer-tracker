@@ -619,6 +619,23 @@ let allRows = [], visRows = [], charts = {};
 // ── Local Edits + Sheet Sync ──
 const EDITS_KEY  = 'hp_local_edits_v1';
 const SCRIPT_KEY = 'hp_script_url_v1';
+const LOCAL_ROWS_KEY = 'hp_local_rows_v1';
+function getLocalRows() {
+  try { return JSON.parse(localStorage.getItem(LOCAL_ROWS_KEY) || '[]'); } catch(e) { return []; }
+}
+function addLocalRow(row) {
+  const rows = getLocalRows();
+  rows.unshift(row);
+  localStorage.setItem(LOCAL_ROWS_KEY, JSON.stringify(rows));
+}
+function mergeLocalRows(sheetRows) {
+  const local = getLocalRows();
+  if (!local.length) return sheetRows;
+  // Avoid duplicates: skip local rows whose ticket already exists in sheet data
+  const sheetTickets = new Set(sheetRows.map(r => (r[1]||'').trim()).filter(Boolean));
+  const newOnly = local.filter(r => !sheetTickets.has((r[1]||'').trim()));
+  return [...newOnly, ...sheetRows];
+}
 let localEdits = {};
 
 function loadEdits() {
@@ -985,7 +1002,8 @@ async function loadData() {
     const txt = await res.text();
     const parsed = parseCSV(txt);
     // Skip header row; filter rows with a ticket number (col 1)
-    allRows = parsed.slice(1).filter(r => r.length >= 5 && (r[1] || '').trim() !== '');
+    const sheetRows = parsed.slice(1).filter(r => r.length >= 5 && (r[1] || '').trim() !== '');
+    allRows = mergeLocalRows(sheetRows);
     buildDupeSet(allRows); // compute which mobile numbers appear more than once
     document.getElementById('lastUpdated').textContent = 'Updated: ' + new Date().toLocaleTimeString();
     populateDropdowns();
@@ -1512,6 +1530,7 @@ async function submitBulkAdd() {
     const caseAddedOn = r.caseAddedOn;
     // col: 0=caseAddedOn, 1=ticket, 2=createdDate(blank), 3=mobile, 4=subcat, 5=name, 6=partner, 7=tat
     const newRow = [caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', ''];
+    addLocalRow(newRow);
     allRows.unshift(newRow);
 
     // Sync to sheet (fire and forget)
@@ -1579,6 +1598,7 @@ async function submitAddCase() {
   // Build row matching sheet column order (0-14), leave editable/output cols blank
   // col 0 = Case Added On, col 1 = Ticket, col 2 = Created Date (blank), col 3 = Mobile...
   const newRow = [createdDate, ticket, '', mobile, subcat, name, partner, tat, '', '', '', '', '', '', ''];
+  addLocalRow(newRow);
   allRows.unshift(newRow);
   buildDupeSet(allRows);
   populateDropdowns();
