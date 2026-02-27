@@ -242,6 +242,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <div class="header-logo" id="headerLogo" onclick="handleLogoClick()" style="cursor:default;user-select:none">High Pain Customer Tracker</div>
   <div class="header-right">
     <span id="lastUpdated" style="font-size:11px;color:var(--muted);">Connecting...</span>
+    <span id="userBadge" onclick="changeMyName()" title="Click to change your name" style="font-size:11px;color:var(--muted);cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--card2)"></span>
     <button class="btn btn-primary" onclick="loadData()">&#x1F504; Refresh</button>
 <button class="btn" id="auditBtn" onclick="openAuditModal()" title="Audit Trail" style="display:none;background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">&#x1F4CB; Audit Trail</button>
     <button class="btn" id="settingsBtn" onclick="toggleSyncPanel()" title="Sheet Sync Settings" style="display:none">&#x2699;&#xFE0F;</button>
@@ -505,6 +506,16 @@ table.main-tbl tbody tr:hover { background: #220020; }
     </div>
   </div>
 
+</div>
+
+<!-- Name Prompt Modal -->
+<div class="modal-overlay" id="namePromptModal" style="display:flex">
+  <div class="modal" style="max-width:360px;text-align:center">
+    <div class="modal-title">&#x1F464; Who are you?</div>
+    <p style="color:var(--muted);font-size:13px;margin:10px 0 16px">Enter your name so the dashboard shows only your assigned cases.</p>
+    <input type="text" id="namePromptInput" placeholder="Enter your name..." style="width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;margin-bottom:14px" onkeydown="if(event.key==='Enter')saveNamePrompt()" />
+    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveNamePrompt()">Continue</button>
+  </div>
 </div>
 
 <!-- Add Case Modal -->
@@ -1191,6 +1202,15 @@ function applyFilters() {
       if (fA === 'no_comment'   && rem !== '') return false;
       if (fA === 'needs_action' && !isCaseNeedsAction(r)) return false;
     }
+    // Engineer view: non-admin users only see their own cases + unassigned
+    const isAdmin = !!localStorage.getItem(AUDIT_PIN_KEY);
+    if (!isAdmin) {
+      const myName = (localStorage.getItem(USER_KEY) || '').trim().toLowerCase();
+      if (myName) {
+        const eng = effectiveVal(r, 10).trim().toLowerCase();
+        if (eng !== '' && eng !== myName) return false;
+      }
+    }
     return true;
   });
   visRows.sort(function(a, b) {
@@ -1697,9 +1717,35 @@ function revealAdminButtons() {
   });
 }
 function getUser() { return localStorage.getItem(USER_KEY) || 'Unknown'; }
+function updateUserBadge() {
+  const name = localStorage.getItem(USER_KEY) || '';
+  const badge = document.getElementById('userBadge');
+  if (name) { badge.textContent = '\uD83D\uDC64 ' + name; badge.style.color = 'var(--primary-light)'; }
+  else { badge.textContent = '\uD83D\uDC64 Set your name'; badge.style.color = 'var(--muted)'; }
+}
+function saveNamePrompt() {
+  const name = document.getElementById('namePromptInput').value.trim();
+  if (!name) { toast('Please enter your name', 'error'); return; }
+  localStorage.setItem(USER_KEY, name);
+  document.getElementById('namePromptModal').style.display = 'none';
+  updateUserBadge();
+  applyFilters();
+  toast('Welcome, ' + name + '!', 'success');
+}
+function changeMyName() {
+  const current = localStorage.getItem(USER_KEY) || '';
+  const newName = window.prompt('Enter your name:', current);
+  if (newName === null) return;
+  const n = newName.trim();
+  if (!n) { toast('Name cannot be empty', 'error'); return; }
+  localStorage.setItem(USER_KEY, n);
+  updateUserBadge();
+  applyFilters();
+  toast('Name updated: ' + n, 'success');
+}
 function saveUserName() {
   const name = document.getElementById('userNameInput').value.trim();
-  if (name) { localStorage.setItem(USER_KEY, name); toast('Name saved: ' + name, 'success'); }
+  if (name) { localStorage.setItem(USER_KEY, name); updateUserBadge(); toast('Name saved: ' + name, 'success'); }
   else { toast('Enter a name first', 'error'); }
 }
 function saveAuditPin() {
@@ -1807,7 +1853,11 @@ setTimeout(function() {
 }, 3000); // wait 3s after page load before syncing
 (function() {
   const saved = localStorage.getItem(USER_KEY);
-  if (saved) document.getElementById('userNameInput').value = saved;
+  if (saved) {
+    document.getElementById('userNameInput').value = saved;
+    document.getElementById('namePromptModal').style.display = 'none';
+  }
+  updateUserBadge();
 })();
 loadData();
 </script>
