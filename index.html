@@ -463,8 +463,8 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <h3>Customer Records</h3>
       <div style="display:flex;align-items:center;gap:10px;">
         <span class="pill" id="rowCount">0 records</span>
-        <button class="btn btn-primary" onclick="openAddCase()" style="font-size:12px;padding:6px 12px;">&#x2795; Add Case</button>
-        <button class="btn" onclick="openBulkAdd()" style="font-size:12px;padding:6px 12px;">&#x1F4CB; Bulk Add</button>
+        <button class="btn btn-primary" id="addCaseBtn" onclick="openAddCase()" style="display:none;font-size:12px;padding:6px 12px;">&#x2795; Add Case</button>
+        <button class="btn" id="bulkAddBtn" onclick="openBulkAdd()" style="display:none;font-size:12px;padding:6px 12px;">&#x1F4CB; Bulk Add</button>
         <button class="btn btn-primary" onclick="downloadCSV()" style="font-size:12px;padding:6px 12px;">&#x2B07; Download CSV</button>
       </div>
     </div>
@@ -1644,8 +1644,9 @@ function handleLogoClick() {
   }
 }
 function revealAdminButtons() {
-  document.getElementById('auditBtn').style.display = '';
-  document.getElementById('settingsBtn').style.display = '';
+  ['auditBtn','settingsBtn','addCaseBtn','bulkAddBtn'].forEach(function(id) {
+    document.getElementById(id).style.display = '';
+  });
 }
 function getUser() { return localStorage.getItem(USER_KEY) || 'Unknown'; }
 function saveUserName() {
