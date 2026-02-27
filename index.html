@@ -243,8 +243,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <div class="header-right">
     <span id="lastUpdated" style="font-size:11px;color:var(--muted);">Connecting...</span>
     <button class="btn btn-primary" onclick="loadData()">&#x1F504; Refresh</button>
-    <button class="btn" id="syncAllBtn" onclick="syncAllEdits()" title="Push all your saved remarks to Google Sheet so everyone can see them" style="background:rgba(63,185,80,.15);border-color:var(--green);color:var(--green)">&#x2B06; Sync All Edits</button>
-    <button class="btn" id="auditBtn" onclick="openAuditModal()" title="Audit Trail" style="display:none;background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">&#x1F4CB; Audit Trail</button>
+<button class="btn" id="auditBtn" onclick="openAuditModal()" title="Audit Trail" style="display:none;background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">&#x1F4CB; Audit Trail</button>
     <button class="btn" id="settingsBtn" onclick="toggleSyncPanel()" title="Sheet Sync Settings" style="display:none">&#x2699;&#xFE0F;</button>
     <div class="alert-wrap" id="alertWrap">
       <button class="alert-btn" onclick="toggleAlerts()">&#x1F514; <span>Data Errors</span><span class="alert-badge" id="alertBadge">0</span></button>
@@ -1767,6 +1766,34 @@ loadEdits();
   if (localStorage.getItem(AUDIT_PIN_KEY)) revealAdminButtons();
 })();
 warmupScript(); // pre-warm Apps Script on page load so first edit doesn't hit cold-start delay
+// Auto-sync all saved edits silently on page load (no button needed)
+setTimeout(function() {
+  const url = getScriptUrl();
+  if (!url) return;
+  const edits = localEdits;
+  const tickets = Object.keys(edits);
+  if (!tickets.length) return;
+  const fields = ['remarks', 'engineer', 'migration_date'];
+  let i = 0;
+  const pairs = [];
+  tickets.forEach(function(ticket) {
+    fields.forEach(function(field) {
+      const value = edits[ticket][field];
+      if (value !== undefined && value !== null) pairs.push({ ticket, field, value });
+    });
+  });
+  function sendNext() {
+    if (i >= pairs.length) return;
+    const p = pairs[i++];
+    const fullUrl = url + '?ticketNo=' + encodeURIComponent(p.ticket) +
+                         '&field='    + encodeURIComponent(p.field)  +
+                         '&value='    + encodeURIComponent(p.value);
+    fetch(fullUrl, { mode: 'no-cors' }).catch(function(){}).finally(function() {
+      setTimeout(sendNext, 300);
+    });
+  }
+  sendNext();
+}, 3000); // wait 3s after page load before syncing
 (function() {
   const saved = localStorage.getItem(USER_KEY);
   if (saved) document.getElementById('userNameInput').value = saved;
