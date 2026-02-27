@@ -463,8 +463,8 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <h3>Customer Records</h3>
       <div style="display:flex;align-items:center;gap:10px;">
         <span class="pill" id="rowCount">0 records</span>
-        <button class="btn btn-primary" id="addCaseBtn" onclick="openAddCase()" style="display:none;font-size:12px;padding:6px 12px;">&#x2795; Add Case</button>
-        <button class="btn" id="bulkAddBtn" onclick="openBulkAdd()" style="display:none;font-size:12px;padding:6px 12px;">&#x1F4CB; Bulk Add</button>
+        <button class="btn btn-primary" onclick="openAddCase()" style="font-size:12px;padding:6px 12px;">&#x2795; Add Case</button>
+        <button class="btn" onclick="openBulkAdd()" style="font-size:12px;padding:6px 12px;">&#x1F4CB; Bulk Add</button>
         <button class="btn btn-primary" onclick="downloadCSV()" style="font-size:12px;padding:6px 12px;">&#x2B07; Download CSV</button>
       </div>
     </div>
@@ -1550,10 +1550,16 @@ async function submitBulkAdd() {
 
   buildDupeSet(allRows);
   populateDropdowns();
+  // Clear any active column filters so newly added rows are always visible
+  colFilters = {};
+  document.querySelectorAll('.col-filter').forEach(function(el) { el.value = ''; });
   applyFilters();
   closeBulkAdd();
   btn.disabled = false; btn.textContent = '➕ Add All Cases';
-  toast(rows.length + ' cases added ✓', 'success');
+  // Scroll table into view
+  const tbl = document.getElementById('dataTable');
+  if (tbl) tbl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  toast(rows.length + ' case(s) added \u2713 — showing at top of table', 'success');
 }
 
 // ── Add Case Modal ──
@@ -1644,7 +1650,7 @@ function handleLogoClick() {
   }
 }
 function revealAdminButtons() {
-  ['auditBtn','settingsBtn','addCaseBtn','bulkAddBtn'].forEach(function(id) {
+  ['auditBtn','settingsBtn'].forEach(function(id) {
     document.getElementById(id).style.display = '';
   });
 }
