@@ -509,12 +509,15 @@ table.main-tbl tbody tr:hover { background: #220020; }
 </div>
 
 <!-- Name Prompt Modal -->
-<div class="modal-overlay" id="namePromptModal" style="display:flex">
+<div class="modal-overlay" id="namePromptModal" style="display:none">
   <div class="modal" style="max-width:360px;text-align:center">
     <div class="modal-title">&#x1F464; Who are you?</div>
-    <p style="color:var(--muted);font-size:13px;margin:10px 0 16px">Enter your name so the dashboard shows only your assigned cases.</p>
-    <input type="text" id="namePromptInput" placeholder="Enter your name..." style="width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;margin-bottom:14px" onkeydown="if(event.key==='Enter')saveNamePrompt()" />
-    <button class="btn btn-primary" style="width:100%;justify-content:center" onclick="saveNamePrompt()">Continue</button>
+    <p style="color:var(--muted);font-size:13px;margin:10px 0 16px">Select your name to see only your assigned cases.</p>
+    <select id="namePromptSelect" style="width:100%;padding:9px 12px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:14px;margin-bottom:14px">
+      <option value="">— Select your name —</option>
+    </select>
+    <button class="btn btn-primary" style="width:100%;justify-content:center;margin-bottom:8px" onclick="saveNamePrompt()">Continue</button>
+    <button class="btn" style="width:100%;justify-content:center;font-size:12px" onclick="skipNamePrompt()">Skip — View All Cases</button>
   </div>
 </div>
 
@@ -1076,6 +1079,7 @@ async function loadData() {
     populateDropdowns();
     applyFilters();
     generateAlerts();
+    showNamePromptIfNeeded();
     toast('Loaded ' + allRows.length + ' records', 'success');
     setTimeout(loadData, 60 * 1000); // auto-refresh every 1 min
   } catch(e) {
@@ -1734,25 +1738,42 @@ function updateUserBadge() {
   if (name) { badge.textContent = '\uD83D\uDC64 ' + name; badge.style.color = 'var(--primary-light)'; }
   else { badge.textContent = '\uD83D\uDC64 Set your name'; badge.style.color = 'var(--muted)'; }
 }
+function showNamePromptIfNeeded() {
+  // Don't show for admin (has PIN)
+  if (localStorage.getItem(AUDIT_PIN_KEY)) return;
+  // Don't show if name already saved
+  if (localStorage.getItem(USER_KEY)) return;
+  // Get engineer names from loaded data
+  const engNames = [...new Set(allRows.map(r => effectiveVal(r, 10)).filter(Boolean))].sort();
+  if (!engNames.length) return;
+  const sel = document.getElementById('namePromptSelect');
+  sel.innerHTML = '<option value="">— Select your name —</option>' +
+    engNames.map(n => '<option value="' + esc(n) + '">' + esc(n) + '</option>').join('');
+  document.getElementById('namePromptModal').style.display = 'flex';
+}
 function saveNamePrompt() {
-  const name = document.getElementById('namePromptInput').value.trim();
-  if (!name) { toast('Please enter your name', 'error'); return; }
+  const name = document.getElementById('namePromptSelect').value;
+  if (!name) { toast('Please select your name', 'error'); return; }
   localStorage.setItem(USER_KEY, name);
   document.getElementById('namePromptModal').style.display = 'none';
   updateUserBadge();
   applyFilters();
   toast('Welcome, ' + name + '!', 'success');
 }
-function changeMyName() {
-  const current = localStorage.getItem(USER_KEY) || '';
-  const newName = window.prompt('Enter your name:', current);
-  if (newName === null) return;
-  const n = newName.trim();
-  if (!n) { toast('Name cannot be empty', 'error'); return; }
-  localStorage.setItem(USER_KEY, n);
+function skipNamePrompt() {
+  document.getElementById('namePromptModal').style.display = 'none';
+  localStorage.removeItem(USER_KEY);
   updateUserBadge();
-  applyFilters();
-  toast('Name updated: ' + n, 'success');
+}
+function changeMyName() {
+  // Re-show the prompt modal with current engineer names
+  const saved = localStorage.getItem(USER_KEY);
+  localStorage.removeItem(USER_KEY);
+  showNamePromptIfNeeded();
+  if (saved) {
+    const sel = document.getElementById('namePromptSelect');
+    if (sel) sel.value = saved;
+  }
 }
 function saveUserName() {
   const name = document.getElementById('userNameInput').value.trim();
