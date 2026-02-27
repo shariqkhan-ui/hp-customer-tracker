@@ -917,24 +917,32 @@ function startEdit(td) {
   // Engineer field: show dropdown of existing names
   if (field === 'engineer') {
     const names = [...new Set(allRows.map(r => effectiveVal(r, 10)).filter(Boolean))].sort();
-    const sel = document.createElement('select');
-    sel.className = 'edit-input';
-    sel.innerHTML = '<option value="">— Select —</option>' +
-      names.map(n => '<option value="' + esc(n) + '"' + (n === cur ? ' selected' : '') + '>' + esc(n) + '</option>').join('');
+    const listId = 'eng_list_' + Date.now();
+    const inp = document.createElement('input');
+    inp.type = 'text'; inp.value = cur; inp.className = 'edit-input';
+    inp.setAttribute('list', listId);
+    inp.placeholder = 'Type engineer name…';
+    const dl = document.createElement('datalist');
+    dl.id = listId;
+    dl.innerHTML = names.map(n => '<option value="' + esc(n) + '">').join('');
     td.innerHTML = '';
-    td.appendChild(sel);
-    sel.focus();
+    td.appendChild(inp);
+    td.appendChild(dl);
+    inp.focus(); inp.select();
 
-    function commitSel() {
-      const nv = sel.value;
+    let committed = false;
+    function commitEng() {
+      if (committed) return; committed = true;
+      const nv = inp.value.trim();
       addAuditEntry(ticket, field, cur, nv);
       saveToSheet(ticket, field, nv).then(() => populateDropdowns());
       applyFilters();
     }
-    sel.addEventListener('change', commitSel);
-    sel.addEventListener('blur', commitSel);
-    sel.addEventListener('keydown', e => {
+    inp.addEventListener('blur', commitEng);
+    inp.addEventListener('keydown', e => {
+      if (e.key === 'Enter')  { e.preventDefault(); inp.blur(); }
       if (e.key === 'Escape') {
+        committed = true;
         td.className = 'edit-cell' + (cur.trim() !== orig.trim() ? ' edited' : '');
         td.innerHTML = cellInner(cur);
         td.onclick = () => startEdit(td);
