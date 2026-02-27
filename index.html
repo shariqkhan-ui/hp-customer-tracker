@@ -423,8 +423,8 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="kpi-card"><div class="kpi-val" id="kTotal">—</div><div class="kpi-lbl">Total</div></div>
     <div class="kpi-card"><div class="kpi-val" style="color:var(--green)" id="kMigPct">—</div><div class="kpi-lbl">Migrated %</div></div>
     <div class="kpi-card"><div class="kpi-val" style="color:var(--blue)" id="kPingPct">—</div><div class="kpi-lbl">Ping Up % (ISD &amp; RDNI)</div></div>
-    <div class="kpi-card"><div class="kpi-val" style="color:var(--red)" id="kUnres">—</div><div class="kpi-lbl">Unresolved</div></div>
-    <div class="kpi-card"><div class="kpi-val" style="color:var(--yellow)" id="kDupes">—</div><div class="kpi-lbl">Duplicates</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--red)" id="kUnres">—</div><div style="font-size:11px;color:var(--red);opacity:.7;margin-top:2px" id="kUnresPct"></div><div class="kpi-lbl">Unresolved</div></div>
+    <div class="kpi-card"><div class="kpi-val" style="color:var(--yellow)" id="kDupes">—</div><div style="font-size:11px;color:var(--yellow);opacity:.7;margin-top:2px" id="kDupesPct"></div><div class="kpi-lbl">Duplicates</div></div>
     <div class="kpi-card"><div class="kpi-val" id="kPartners">—</div><div class="kpi-lbl">Partners Affected</div></div>
   </div>
 
@@ -1221,8 +1221,10 @@ function renderAll() {
   setText('kTotal',   total);
   setText('kMigPct',  pct(mig));
   setText('kPingPct', pct(ping));
-  setText('kUnres',   unres);
-  setText('kDupes',   dupes);
+  setText('kUnres',    unres);
+  setText('kUnresPct', total ? '(' + Math.round(unres / total * 100) + '% of total)' : '');
+  setText('kDupes',    dupes);
+  setText('kDupesPct', total ? '(' + Math.round(dupes / total * 100) + '% of total)' : '');
   setText('kPartners',partners);
 
   renderCharts(rows);
