@@ -1004,7 +1004,7 @@ function parseDate(s) {
   return null;
 }
 function today0() { const d = new Date(); d.setHours(0,0,0,0); return d; }
-function fmtDate(d) { return d ? d.toLocaleDateString('en-IN', {day:'2-digit', month:'short', year:'numeric'}) : '—'; }
+function fmtDate(d) { if (!d) return '—'; return String(d.getDate()).padStart(2,'0')+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+d.getFullYear(); }
 function dKey(d) { if (!d) return ''; const dd = new Date(d); dd.setHours(0,0,0,0); return dd.getFullYear()+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getDate()).padStart(2,'0'); }
 
 // ── Status Logic ──
