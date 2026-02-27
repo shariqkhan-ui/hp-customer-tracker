@@ -1526,12 +1526,25 @@ async function submitBulkAdd() {
   const btn = document.getElementById('bulkSubmitBtn');
   btn.disabled = true; btn.textContent = 'Adding…';
 
+  const scriptUrl = getScriptUrl();
   rows.forEach(r => {
     const caseAddedOn = r.caseAddedOn;
     // col: 0=caseAddedOn, 1=ticket, 2=createdDate(blank), 3=mobile, 4=subcat, 5=name, 6=partner, 7=tat
     const newRow = [caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', ''];
     addLocalRow(newRow);
     allRows.unshift(newRow);
+    // Sync to Google Sheet so all users can see it
+    if (scriptUrl) {
+      const q = '?action=addRow' +
+        '&caseAddedOn=' + encodeURIComponent(caseAddedOn) +
+        '&ticketNo='    + encodeURIComponent(r.ticket)  +
+        '&mobile='      + encodeURIComponent(r.mobile)  +
+        '&custName='    + encodeURIComponent(r.name)    +
+        '&partner='     + encodeURIComponent(r.partner) +
+        '&subcat='      + encodeURIComponent(r.subcat)  +
+        '&tat='         + encodeURIComponent(r.tat);
+      fetch(scriptUrl + q, { mode: 'no-cors' }).catch(() => {});
+    }
   });
 
   buildDupeSet(allRows);
@@ -1596,6 +1609,20 @@ async function submitAddCase() {
   populateDropdowns();
   applyFilters();
   closeAddCase();
+
+  // Sync to Google Sheet so all users can see it
+  const url = getScriptUrl();
+  if (url) {
+    const q = '?action=addRow' +
+      '&ticketNo='    + encodeURIComponent(ticket)  +
+      '&mobile='      + encodeURIComponent(mobile)  +
+      '&custName='    + encodeURIComponent(name)    +
+      '&partner='     + encodeURIComponent(partner) +
+      '&subcat='      + encodeURIComponent(subcat)  +
+      '&tat='         + encodeURIComponent(tat)     +
+      '&caseAddedOn=' + encodeURIComponent(createdDate);
+    fetch(url + q, { mode: 'no-cors' }).catch(() => {});
+  }
   toast('Case added \u2713', 'success');
 }
 
