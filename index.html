@@ -760,9 +760,16 @@ function cellInner(val) {
     : '<span class="cell-display" style="color:var(--muted)">&#x2014;</span>';
   return disp + '<span class="edit-hint">&#x270F;</span>';
 }
+const REMARKS_OPTIONS = [
+  'Migrated','No Overlapping Partner/Refund','Resolved by Old Partner',
+  'Migration is in Progress','Cx not contactable/Reachable',
+  'Migration not possible/Refund','Customer not interested in Migration'
+];
 function makeEditCell(ticket, field, orig) {
   const local    = getEdit(ticket, field);
-  const display  = local !== null ? local : orig;
+  let display    = local !== null ? local : orig;
+  // For remarks: only show value if it's one of the predefined options, else treat as blank
+  if (field === 'remarks' && !REMARKS_OPTIONS.includes(display.trim())) display = '';
   const isEdited = local !== null && local.trim() !== orig.trim();
   return '<td class="edit-cell' + (isEdited ? ' edited' : '') + '" ' +
     'data-ticket="' + esc(ticket) + '" data-field="' + esc(field) + '" data-orig="' + esc(orig) + '" ' +
@@ -778,15 +785,6 @@ function startEdit(td) {
 
   // Ground Remarks field: show predefined dropdown
   if (field === 'remarks') {
-    const REMARKS_OPTIONS = [
-      'Migrated',
-      'No Overlapping Partner/Refund',
-      'Resolved by Old Partner',
-      'Migration is in Progress',
-      'Cx not contactable/Reachable',
-      'Migration not possible/Refund',
-      'Customer not interested in Migration'
-    ];
     const sel = document.createElement('select');
     sel.className = 'edit-input';
     sel.innerHTML = '<option value="">— Select —</option>' +
