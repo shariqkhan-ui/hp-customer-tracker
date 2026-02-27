@@ -739,10 +739,10 @@ async function testSheetConnection() {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 12000);
-    const res  = await fetch(url + '?test=1', { redirect: 'follow', signal: controller.signal });
+    const res  = await fetch(url + '?warmup=1', { redirect: 'follow', signal: controller.signal });
     clearTimeout(timer);
     const text = (await res.text()).trim();
-    if (text === 'connected') {
+    if (text === 'ok' || text === 'connected') {
       showTestResult('✅ Connected! Sheet sync is working.', 'ok');
     } else {
       showTestResult('Sheet replied: ' + text.substring(0, 120), 'warn');
@@ -753,7 +753,7 @@ async function testSheetConnection() {
     } else if (e.message.toLowerCase().includes('cors') || e.message.toLowerCase().includes('failed to fetch')) {
       // CORS block — try no-cors to at least confirm URL is reachable
       try {
-        await fetch(url + '?test=1', { mode: 'no-cors' });
+        await fetch(url + '?warmup=1', { mode: 'no-cors' });
         showTestResult('⚠ URL is reachable but browser blocked the response (CORS). Edits will still be sent to the sheet — try editing a remark to confirm.', 'warn');
       } catch(e2) {
         showTestResult('URL not reachable: ' + e2.message, 'err');
