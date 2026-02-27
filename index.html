@@ -936,7 +936,10 @@ function startEdit(td) {
       const nv = inp.value.trim();
       addAuditEntry(ticket, field, cur, nv);
       saveToSheet(ticket, field, nv).then(() => populateDropdowns());
-      applyFilters();
+      // Update cell directly so value shows immediately without re-filtering rows
+      td.className = 'edit-cell' + (nv.trim() !== orig.trim() ? ' edited' : '');
+      td.innerHTML = cellInner(nv);
+      td.onclick = () => startEdit(td);
     }
     inp.addEventListener('blur', commitEng);
     inp.addEventListener('keydown', e => {
