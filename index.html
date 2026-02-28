@@ -1165,15 +1165,6 @@ function applyFilters() {
       if (fA === 'no_comment'   && rem !== '') return false;
       if (fA === 'needs_action' && !isCaseNeedsAction(r)) return false;
     }
-    // Engineer view: non-admin users only see their own cases + unassigned
-    const isAdmin = !!localStorage.getItem(AUDIT_PIN_KEY);
-    if (!isAdmin) {
-      const myName = (localStorage.getItem(USER_KEY) || '').trim().toLowerCase();
-      if (myName) {
-        const eng = effectiveVal(r, 10).trim().toLowerCase();
-        if (eng !== '' && eng !== myName) return false;
-      }
-    }
     return true;
   });
   visRows.sort(function(a, b) {
