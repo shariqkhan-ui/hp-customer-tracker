@@ -284,6 +284,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       </div>
       <button class="btn btn-primary" onclick="saveScriptUrl()" style="align-self:flex-end">Save URL</button>
       <button class="btn btn-primary" id="testBtn" onclick="testSheetConnection()" style="align-self:flex-end;background:var(--blue);border-color:var(--blue)">&#x1F50C; Test Connection</button>
+      <button class="btn btn-primary" id="testWriteBtn" onclick="testWrite()" style="align-self:flex-end;background:var(--green);border-color:var(--green)">&#x270D; Test Write</button>
     </div>
     <div id="testResult" style="display:none;margin-top:10px;font-size:12px;padding:8px 4px;line-height:1.5"></div>
   </div>
@@ -727,7 +728,10 @@ async function saveToSheet(ticket, field, value) {
   const fullUrl = url + '?ticketNo=' + encodeURIComponent(ticket) +
                        '&field='    + encodeURIComponent(field)  +
                        '&value='    + encodeURIComponent(value);
-  fireBeacon(fullUrl);  // image beacon: zero CORS issues, guaranteed to fire
+  // Fire via 3 methods so at least one reaches Apps Script regardless of browser/network
+  fireBeacon(fullUrl);                               // 1. image beacon (no CORS)
+  fetch(fullUrl, { mode: 'no-cors' }).catch(() => {}); // 2. fetch no-cors (no CORS)
+  try { new XMLHttpRequest(); var x=new XMLHttpRequest(); x.open('GET',fullUrl,true); x.send(); } catch(e){} // 3. XHR
   toast('Saved \u2713', 'success');
 }
 
@@ -818,6 +822,39 @@ function showTestResult(msg, type) {
   el.style.display = 'block';
   el.style.color   = type === 'ok' ? 'var(--green)' : type === 'err' ? 'var(--red)' : type === 'warn' ? 'var(--yellow)' : 'var(--muted)';
   el.textContent   = msg;
+}
+
+// ── Test Write: sends a real write to Apps Script and reads response to confirm ──
+async function testWrite() {
+  const url = getScriptUrl();
+  const btn = document.getElementById('testWriteBtn');
+  if (!url) { showTestResult('No Apps Script URL configured', 'err'); return; }
+  btn.textContent = 'Testing…'; btn.disabled = true;
+  showTestResult('Sending test write…', 'info');
+  // Use a real ticket from allRows so the write has a target row
+  const testTicket = allRows.length > 0 ? (allRows[0][1]||'').trim() : '';
+  if (!testTicket) { showTestResult('No data loaded — load data first', 'err'); btn.textContent = '✍ Test Write'; btn.disabled = false; return; }
+  const testUrl = url + '?ticketNo=' + encodeURIComponent(testTicket) +
+                       '&field=remarks&value=' + encodeURIComponent((allRows[0][8]||'').trim() || 'test');
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 15000);
+    const res = await fetch(testUrl, { redirect: 'follow', signal: controller.signal });
+    const text = (await res.text()).trim();
+    if (text === 'ok') {
+      showTestResult('✅ Write confirmed! Apps Script received and wrote to sheet. (' + testTicket + ')', 'ok');
+    } else {
+      showTestResult('Apps Script replied: ' + text.substring(0,120) + ' (ticket: ' + testTicket + ')', 'warn');
+    }
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      showTestResult('Write timed out — Apps Script not responding (15s)', 'err');
+    } else {
+      // CORS block on reading response — but write may still have gone through via beacon
+      showTestResult('⚠ Cannot confirm write (CORS on this browser) — but writes still fire via beacon. Check the sheet manually.', 'warn');
+    }
+  }
+  btn.textContent = '✍ Test Write'; btn.disabled = false;
 }
 
 // ── Inline edit cell helpers ──
