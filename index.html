@@ -1536,15 +1536,22 @@ async function submitBulkAdd() {
   const btn = document.getElementById('bulkSubmitBtn');
   btn.disabled = true; btn.textContent = 'Adding…';
 
+  // Insert all rows into Supabase first — then update local UI
+  const inserts = rows.map(r => ({
+    case_added_on: r.caseAddedOn, ticket_no: r.ticket, mobile: r.mobile,
+    subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat
+  }));
+  const { error } = await db.from('cases').insert(inserts);
+  if (error) {
+    toast('ERROR saving to database: ' + error.message, 'error');
+    btn.disabled = false; btn.textContent = '➕ Add All Cases';
+    return;
+  }
+
   rows.forEach(r => {
-    const caseAddedOn = r.caseAddedOn;
-    // col: 0=caseAddedOn, 1=ticket, 2=createdDate(blank), 3=mobile, 4=subcat, 5=name, 6=partner, 7=tat
-    const newRow = [caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', ''];
+    const newRow = [r.caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', ''];
     addLocalRow(newRow);
     allRows.unshift(newRow);
-    // Save to Supabase so all users see it instantly
-    db.from('cases').insert({ case_added_on: caseAddedOn, ticket_no: r.ticket, mobile: r.mobile, subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat })
-      .then(function(res) { if (res.error) console.warn('Supabase insert error:', res.error.message); });
   });
 
   buildDupeSet(allRows);
@@ -1558,7 +1565,7 @@ async function submitBulkAdd() {
   // Scroll table into view
   const tbl = document.getElementById('dataTable');
   if (tbl) tbl.scrollIntoView({ behavior: 'smooth', block: 'start' });
-  toast(rows.length + ' case(s) added \u2713 — showing at top of table', 'success');
+  toast(rows.length + ' case(s) added \u2713 — saved to database', 'success');
 }
 
 // ── Add Case Modal ──
@@ -1600,7 +1607,23 @@ async function submitAddCase() {
     createdDate = String(d.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[d.getMonth()] + '-' + d.getFullYear();
   }
 
-  // Build row matching sheet column order (0-14), leave editable/output cols blank
+  // Save to Supabase FIRST — only update UI if insert succeeds
+  const { error } = await db.from('cases').insert({
+    case_added_on: createdDate, ticket_no: ticket, mobile, subcat, cust_name: name, partner, tat
+  });
+
+  if (error) {
+    const msg = error.message || String(error);
+    // Duplicate ticket is the most common failure
+    if (msg.toLowerCase().includes('unique') || msg.toLowerCase().includes('duplicate') || msg.includes('23505')) {
+      toast('ERROR: Ticket ' + ticket + ' already exists in the database', 'error');
+    } else {
+      toast('ERROR saving to database: ' + msg, 'error');
+    }
+    return; // Do NOT add to local UI — case was not saved
+  }
+
+  // Insert succeeded — now update local UI
   // col 0 = Case Added On, col 1 = Ticket, col 2 = Created Date (blank), col 3 = Mobile...
   const newRow = [createdDate, ticket, '', mobile, subcat, name, partner, tat, '', '', '', '', '', '', ''];
   addLocalRow(newRow);
@@ -1609,11 +1632,7 @@ async function submitAddCase() {
   populateDropdowns();
   applyFilters();
   closeAddCase();
-
-  // Save to Supabase so all users see it instantly
-  db.from('cases').insert({ case_added_on: createdDate, ticket_no: ticket, mobile, subcat, cust_name: name, partner, tat })
-    .then(function(r) { if (r.error) toast('Supabase sync error: ' + r.error.message, 'error'); });
-  toast('Case added \u2713', 'success');
+  toast('Case added \u2713 — saved to database', 'success');
 }
 
 // ── Audit Trail ──
