@@ -840,12 +840,24 @@ const REMARKS_OPTIONS = [
   'Migration is in Progress','Cx not contactable/Reachable',
   'Migration not possible/Refund','Customer not interested in Migration'
 ];
+// Show local edit only if made within last 2 min OR sheet is empty (same rule as effectiveVal)
+function resolveDisplay(ticket, field, sheetVal) {
+  const local = getEdit(ticket, field);
+  if (local !== null) {
+    const ts = (localEdits[ticket] && localEdits[ticket][field + '_ts']) || 0;
+    if (ts > Date.now() - 2 * 60 * 1000 || sheetVal.trim() === '') return local;
+  }
+  return sheetVal;
+}
 function makeEditCell(ticket, field, orig) {
-  const local    = getEdit(ticket, field);
-  let display    = local !== null ? local : orig;
+  let display    = resolveDisplay(ticket, field, orig);
   // For remarks: only show value if it's one of the predefined options, else treat as blank
   if (field === 'remarks' && !REMARKS_OPTIONS.includes(display.trim())) display = '';
-  const isEdited = local !== null && local.trim() !== orig.trim();
+  // Mark as edited only if local edit is still "active" (recent or sheet empty) and differs from sheet
+  const local    = getEdit(ticket, field);
+  const ts       = local !== null ? ((localEdits[ticket] && localEdits[ticket][field + '_ts']) || 0) : 0;
+  const active   = local !== null && (ts > Date.now() - 2 * 60 * 1000 || orig.trim() === '');
+  const isEdited = active && local.trim() !== orig.trim();
   return '<td class="edit-cell' + (isEdited ? ' edited' : '') + '" ' +
     'data-ticket="' + esc(ticket) + '" data-field="' + esc(field) + '" data-orig="' + esc(orig) + '" ' +
     'onclick="startEdit(this)" style="max-width:180px">' + cellInner(display) + '</td>';
@@ -855,8 +867,7 @@ function startEdit(td) {
   const ticket = td.dataset.ticket;
   const field  = td.dataset.field;
   const orig   = td.dataset.orig;
-  const local  = getEdit(ticket, field);
-  const cur    = local !== null ? local : orig;
+  const cur    = resolveDisplay(ticket, field, orig);
 
   // Ground Remarks field: show predefined dropdown
   if (field === 'remarks') {
