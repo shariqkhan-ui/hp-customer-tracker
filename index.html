@@ -663,7 +663,8 @@ function getEdit(ticket, field) {
 function setEdit(ticket, field, value) {
   if (!localEdits[ticket]) localEdits[ticket] = {};
   localEdits[ticket][field] = value;
-  if (field === 'remarks') localEdits[ticket]['remarks_ts'] = Date.now(); // track when remark was last edited
+  localEdits[ticket][field + '_ts'] = Date.now(); // timestamp every field edit
+  if (field === 'remarks') localEdits[ticket]['remarks_ts'] = Date.now();
   saveEditsLocal();
 }
 function getRemarksTs(ticket) {
@@ -690,16 +691,22 @@ function isCaseNeedsAction(r) {
   return true;  // unresolved comment, no recent update
 }
 
-// ── Effective value: local edits override sheet data ──
+// ── Effective value: prefer sheet data unless local edit is very recent (< 2 min) ──
 const COL_FIELD = { 8: 'remarks', 10: 'engineer', 14: 'migration_date' };
 function effectiveVal(r, col) {
-  const ticket = (r[1] || '').trim();
-  const field  = COL_FIELD[col];
+  const ticket    = (r[1] || '').trim();
+  const field     = COL_FIELD[col];
+  const sheetVal  = (r[col] || '').trim();
   if (ticket && field) {
     const edit = getEdit(ticket, field);
-    if (edit !== null) return edit;
+    if (edit !== null) {
+      const ts       = (localEdits[ticket] && localEdits[ticket][field + '_ts']) || 0;
+      const twoMinAgo = Date.now() - 2 * 60 * 1000;
+      // Use local edit only if: edited on this machine within last 2 min, OR sheet still has no value
+      if (ts > twoMinAgo || sheetVal === '') return edit;
+    }
   }
-  return (r[col] || '').trim();
+  return sheetVal;
 }
 
 function getScriptUrl() { return localStorage.getItem(SCRIPT_KEY) || DEFAULT_SCRIPT_URL; }
@@ -1743,6 +1750,8 @@ function showNamePromptIfNeeded() {
   if (localStorage.getItem(AUDIT_PIN_KEY)) return;
   // Don't show if name already saved
   if (localStorage.getItem(USER_KEY)) return;
+  // Don't show if user already skipped on this machine
+  if (localStorage.getItem('hp_skip_prompt_v1')) return;
   // Get engineer names from loaded data
   const engNames = [...new Set(allRows.map(r => effectiveVal(r, 10)).filter(Boolean))].sort();
   if (!engNames.length) return;
@@ -1762,7 +1771,7 @@ function saveNamePrompt() {
 }
 function skipNamePrompt() {
   document.getElementById('namePromptModal').style.display = 'none';
-  localStorage.removeItem(USER_KEY);
+  localStorage.setItem('hp_skip_prompt_v1', '1'); // never show again on this machine
   updateUserBadge();
 }
 function changeMyName() {
