@@ -245,7 +245,6 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <span id="userBadge" onclick="changeMyName()" title="Click to change your name" style="font-size:11px;color:var(--muted);cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--card2)"></span>
     <button class="btn btn-primary" onclick="loadData()">&#x1F504; Refresh</button>
 <button class="btn" id="auditBtn" onclick="openAuditModal()" title="Audit Trail" style="display:none;background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">&#x1F4CB; Audit Trail</button>
-    <button class="btn" id="settingsBtn" onclick="toggleSyncPanel()" title="Sheet Sync Settings" style="display:none">&#x2699;&#xFE0F;</button>
     <div class="alert-wrap" id="alertWrap">
       <button class="alert-btn" onclick="toggleAlerts()">&#x1F514; <span>Data Errors</span><span class="alert-badge" id="alertBadge">0</span></button>
       <div class="alert-dropdown" id="alertDropdown">
@@ -276,17 +275,6 @@ table.main-tbl tbody tr:hover { background: #220020; }
       </div>
       <button class="btn" onclick="saveAuditPin()" style="background:rgba(217,0,141,.15);border-color:var(--primary);color:var(--primary-light)">Set PIN</button>
     </div>
-    <!-- Row 2: Google Sheet Sync -->
-    <div class="setup-body" style="margin-top:0">
-      <div style="flex:1;min-width:220px">
-        <div class="filter-label" style="margin-bottom:4px">&#x2699;&#xFE0F; Google Sheet Sync &nbsp;<span id="syncBadge" class="sync-badge nosync">&#x26A0;&#xFE0F; Not configured</span></div>
-        <input type="url" id="scriptUrlInput" placeholder="https://script.google.com/macros/s/.../exec" />
-      </div>
-      <button class="btn btn-primary" onclick="saveScriptUrl()" style="align-self:flex-end">Save URL</button>
-      <button class="btn btn-primary" id="testBtn" onclick="testSheetConnection()" style="align-self:flex-end;background:var(--blue);border-color:var(--blue)">&#x1F50C; Test Connection</button>
-      <button class="btn btn-primary" id="testWriteBtn" onclick="testWrite()" style="align-self:flex-end;background:var(--green);border-color:var(--green)">&#x270D; Test Write</button>
-    </div>
-    <div id="testResult" style="display:none;margin-top:10px;font-size:12px;padding:8px 4px;line-height:1.5"></div>
   </div>
 
   <!-- Filters -->
@@ -627,14 +615,10 @@ table.main-tbl tbody tr:hover { background: #220020; }
 <div id="toastArea"></div>
 
 <script>
-const CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vTdg0LFh7uTRIcQkT0PK656CrE8dFDoKUgceXx5YNpD3Syhr4y16pShGb3GRQJSg4xBe4SugV3eF1XD/pub?gid=0&single=true&output=csv';
-
 let allRows = [], visRows = [], charts = {};
 
 // ── Local Edits + Sheet Sync ──
 const EDITS_KEY  = 'hp_local_edits_v1';
-const SCRIPT_KEY = 'hp_script_url_v1';
-const DEFAULT_SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbywrkricZjT_ZpQcbpfdb3UfBM2DDs78j4fOHBiWoDMCU70FaAZLoskfwhx8EdANNfK8g/exec';
 const LOCAL_ROWS_KEY = 'hp_local_rows_v1';
 function getLocalRows() {
   try { return JSON.parse(localStorage.getItem(LOCAL_ROWS_KEY) || '[]'); } catch(e) { return []; }
@@ -695,167 +679,26 @@ function isCaseNeedsAction(r) {
 // ── Effective value: always read directly from row (allRows is patched on save) ──
 function effectiveVal(r, col) { return (r[col] || '').trim(); }
 
-function getScriptUrl() { return localStorage.getItem(SCRIPT_KEY) || DEFAULT_SCRIPT_URL; }
-function toggleSyncPanel() {
-  const el = document.getElementById('setupPanel');
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
-}
-function saveScriptUrl() {
-  const url = document.getElementById('scriptUrlInput').value.trim();
-  if (url) localStorage.setItem(SCRIPT_KEY, url); else localStorage.removeItem(SCRIPT_KEY);
-  updateSyncBadge();
-  toast(url ? 'Script URL saved' : 'Script URL cleared', url ? 'success' : 'info');
-}
-function updateSyncBadge() {
-  const url = getScriptUrl();
-  const el  = document.getElementById('syncBadge');
-  el.textContent = url ? '\u2705 Syncing to Sheet' : '\u26A0\uFE0F Not configured';
-  el.className   = 'sync-badge' + (url ? '' : ' nosync');
-}
 
-// ── Save edit: patch allRows in memory + localStorage + Apps Script beacon ──
+// ── Save edit: patch allRows in memory + write to sheet via Apps Script ──
 const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14 };
 async function saveToSheet(ticket, field, value) {
-  setEdit(ticket, field, value);   // keep for auto-sync on page reload
-  // Patch allRows in memory so current user sees change instantly without waiting for refresh
+  setEdit(ticket, field, value);
+  // Patch allRows in memory so current user sees change instantly
   const ci = EDIT_COL[field];
   if (ci !== undefined) {
     const row = allRows.find(r => (r[1]||'').trim() === ticket);
     if (row) row[ci] = value;
   }
-  const url = getScriptUrl();
-  if (!url) return;
-  const fullUrl = url + '?ticketNo=' + encodeURIComponent(ticket) +
-                       '&field='    + encodeURIComponent(field)  +
-                       '&value='    + encodeURIComponent(value);
-  // Fire via 3 methods so at least one reaches Apps Script regardless of browser/network
-  fireBeacon(fullUrl);                               // 1. image beacon (no CORS)
-  fetch(fullUrl, { mode: 'no-cors' }).catch(() => {}); // 2. fetch no-cors (no CORS)
-  try { new XMLHttpRequest(); var x=new XMLHttpRequest(); x.open('GET',fullUrl,true); x.send(); } catch(e){} // 3. XHR
   toast('Saved \u2713', 'success');
+  google.script.run
+    .withFailureHandler(function(e) {
+      toast('Sync error: ' + (e.message || 'unknown'), 'error');
+    })
+    .saveEdit(ticket, field, value);
 }
 
-// ── Sync ALL localStorage edits to Google Sheet ──
-async function syncAllEdits() {
-  const url = getScriptUrl();
-  if (!url) { toast('No Apps Script URL configured', 'error'); return; }
-  const edits = localEdits;
-  const tickets = Object.keys(edits);
-  if (!tickets.length) { toast('No saved edits to sync', 'info'); return; }
 
-  const btn = document.getElementById('syncAllBtn');
-  btn.disabled = true;
-  btn.textContent = 'Syncing…';
-
-  const fields = ['remarks', 'engineer', 'migration_date'];
-  let count = 0;
-  for (const ticket of tickets) {
-    for (const field of fields) {
-      const value = edits[ticket][field];
-      if (value === undefined || value === null) continue;
-      const fullUrl = url + '?ticketNo=' + encodeURIComponent(ticket) +
-                           '&field='    + encodeURIComponent(field)  +
-                           '&value='    + encodeURIComponent(value);
-      fireBeacon(fullUrl);
-      count++;
-      // small delay to avoid hammering Apps Script
-      await new Promise(r => setTimeout(r, 200));
-    }
-  }
-
-  btn.disabled = false;
-  btn.textContent = '\u2B06 Sync All Edits';
-  toast(count + ' edit(s) pushed to Sheet \u2713', 'success');
-}
-
-// ── Image beacon: fire-and-forget GET, bypasses all CORS restrictions ──
-// Used for all write operations (edit, addRow) — 100% reliable cross-origin
-function fireBeacon(url) {
-  const img = new Image();
-  img.src = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
-}
-
-// ── Warm up Apps Script on load so edits don't face cold-start delay ──
-function warmupScript() {
-  const url = getScriptUrl();
-  if (!url) return;
-  fireBeacon(url + '?warmup=1');
-}
-
-async function testSheetConnection() {
-  const url = getScriptUrl();
-  const resultEl = document.getElementById('testResult');
-  if (!url) { showTestResult('Paste and save the Apps Script URL first', 'err'); return; }
-  const btn = document.getElementById('testBtn');
-  btn.textContent = 'Testing…'; btn.disabled = true;
-  showTestResult('Connecting…', 'info');
-  try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 12000);
-    const res  = await fetch(url + '?warmup=1', { redirect: 'follow', signal: controller.signal });
-    clearTimeout(timer);
-    const text = (await res.text()).trim();
-    if (text === 'ok' || text === 'connected') {
-      showTestResult('✅ Connected! Sheet sync is working.', 'ok');
-    } else {
-      showTestResult('Sheet replied: ' + text.substring(0, 120), 'warn');
-    }
-  } catch(e) {
-    if (e.name === 'AbortError') {
-      showTestResult('Timed out — check if Apps Script is deployed as "Anyone" access', 'err');
-    } else if (e.message.toLowerCase().includes('cors') || e.message.toLowerCase().includes('failed to fetch')) {
-      // CORS block — try no-cors to at least confirm URL is reachable
-      try {
-        await fetch(url + '?warmup=1', { mode: 'no-cors' });
-        showTestResult('⚠ URL is reachable but browser blocked the response (CORS). Edits will still be sent to the sheet — try editing a remark to confirm.', 'warn');
-      } catch(e2) {
-        showTestResult('URL not reachable: ' + e2.message, 'err');
-      }
-    } else {
-      showTestResult('Error: ' + e.message, 'err');
-    }
-  }
-  btn.textContent = '🔌 Test Connection'; btn.disabled = false;
-}
-function showTestResult(msg, type) {
-  const el = document.getElementById('testResult');
-  el.style.display = 'block';
-  el.style.color   = type === 'ok' ? 'var(--green)' : type === 'err' ? 'var(--red)' : type === 'warn' ? 'var(--yellow)' : 'var(--muted)';
-  el.textContent   = msg;
-}
-
-// ── Test Write: sends a real write to Apps Script and reads response to confirm ──
-async function testWrite() {
-  const url = getScriptUrl();
-  const btn = document.getElementById('testWriteBtn');
-  if (!url) { showTestResult('No Apps Script URL configured', 'err'); return; }
-  btn.textContent = 'Testing…'; btn.disabled = true;
-  showTestResult('Sending test write…', 'info');
-  // Use a real ticket from allRows so the write has a target row
-  const testTicket = allRows.length > 0 ? (allRows[0][1]||'').trim() : '';
-  if (!testTicket) { showTestResult('No data loaded — load data first', 'err'); btn.textContent = '✍ Test Write'; btn.disabled = false; return; }
-  const testUrl = url + '?ticketNo=' + encodeURIComponent(testTicket) +
-                       '&field=remarks&value=' + encodeURIComponent((allRows[0][8]||'').trim() || 'test');
-  try {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 15000);
-    const res = await fetch(testUrl, { redirect: 'follow', signal: controller.signal });
-    const text = (await res.text()).trim();
-    if (text === 'ok') {
-      showTestResult('✅ Write confirmed! Apps Script received and wrote to sheet. (' + testTicket + ')', 'ok');
-    } else {
-      showTestResult('Apps Script replied: ' + text.substring(0,120) + ' (ticket: ' + testTicket + ')', 'warn');
-    }
-  } catch(e) {
-    if (e.name === 'AbortError') {
-      showTestResult('Write timed out — Apps Script not responding (15s)', 'err');
-    } else {
-      // CORS block on reading response — but write may still have gone through via beacon
-      showTestResult('⚠ Cannot confirm write (CORS on this browser) — but writes still fire via beacon. Check the sheet manually.', 'warn');
-    }
-  }
-  btn.textContent = '✍ Test Write'; btn.disabled = false;
-}
 
 // ── Inline edit cell helpers ──
 function cellInner(val) {
@@ -1012,9 +855,8 @@ function startEdit(td) {
   input.addEventListener('keydown', e => {
     if (e.key === 'Enter')  { e.preventDefault(); input.blur(); }
     if (e.key === 'Escape') {
-      const dv = local !== null ? local : orig;
-      td.className = 'edit-cell' + (dv.trim() !== orig.trim() ? ' edited' : '');
-      td.innerHTML = cellInner(dv);
+      td.className = 'edit-cell';
+      td.innerHTML = cellInner(orig);
       td.onclick   = () => startEdit(td);
     }
   });
@@ -1087,87 +929,48 @@ function buildDupeSet(rows) {
 }
 function isDupe(r) { const n = (r[3]||'').trim(); return n !== '' && dupeNumbers.has(n); }
 
-// ── JSONP loader: bypasses CORS for reads (like beacon bypasses CORS for writes) ──
-function loadDataViaJsonp(scriptUrl) {
-  return new Promise(function(resolve, reject) {
-    const cbName = '_hp_cb_' + Date.now();
-    const script = document.createElement('script');
-    window[cbName] = function(data) {
-      delete window[cbName];
-      script.remove();
-      resolve(data);
-    };
-    script.src = scriptUrl + '?action=getData&callback=' + cbName + '&_t=' + Date.now();
-    script.onerror = function() { delete window[cbName]; script.remove(); reject(new Error('jsonp failed')); };
-    document.head.appendChild(script);
-    setTimeout(function() {
-      if (window[cbName]) { delete window[cbName]; script.remove(); reject(new Error('jsonp timeout')); }
-    }, 30000);
-  });
-}
-
-// ── Load Data ──
-async function loadData() {
+// ── Load Data (server-side via google.script.run — no CORS, always live) ──
+function loadData() {
   document.getElementById('lastUpdated').textContent = 'Loading…';
   document.getElementById('errorBanner').style.display = 'none';
-  try {
-    // Try Apps Script via JSONP (live data, bypasses CORS, no cache).
-    // Fall back to direct fetch, then published CSV if both fail.
-    let txt = null;
-    let source = 'CSV cache ⚠';
-    const scriptUrl = getScriptUrl();
-    if (scriptUrl) {
+  google.script.run
+    .withSuccessHandler(function(txt) {
       try {
-        const t = await loadDataViaJsonp(scriptUrl);
-        if (t && t.length > 100) { txt = t; source = 'Sheet LIVE ✓'; }
+        const parsed = parseCSV(txt);
+        const sheetRows = parsed.slice(1).filter(r => r.length >= 5 && (r[1] || '').trim() !== '');
+        allRows = mergeLocalRows(sheetRows);
+        // Apply local edits to allRows ONLY where sheet value is still empty
+        Object.keys(localEdits).forEach(function(ticket) {
+          const row = allRows.find(r => (r[1]||'').trim() === ticket);
+          if (!row) return;
+          Object.keys(EDIT_COL).forEach(function(field) {
+            const val = localEdits[ticket][field];
+            const ci  = EDIT_COL[field];
+            if (val !== undefined && val !== null && (row[ci]||'').trim() === '') row[ci] = val;
+          });
+        });
+        buildDupeSet(allRows);
+        document.getElementById('lastUpdated').textContent = 'Updated [Sheet LIVE ✓]: ' + new Date().toLocaleTimeString();
+        populateDropdowns();
+        applyFilters();
+        generateAlerts();
+        showNamePromptIfNeeded();
+        toast('Data loaded ✓', 'success');
+        setTimeout(loadData, 60 * 1000);
       } catch(e) {
-        console.warn('[HP] JSONP failed:', e.message, '— trying direct fetch…');
-        try {
-          const r = await fetch(scriptUrl + '?action=getData', { redirect: 'follow' });
-          if (r.ok) { const t2 = await r.text(); if (t2 && t2.length > 100) { txt = t2; source = 'Sheet LIVE ✓'; } }
-        } catch(e2) { console.warn('[HP] Direct fetch also failed:', e2.message); }
+        document.getElementById('lastUpdated').textContent = 'Parse error';
+        toast('Error parsing data: ' + e.message, 'error');
+        setTimeout(loadData, 30 * 1000);
       }
-    }
-    if (!txt) {
-      const res = await fetch(CSV_URL + '&t=' + Date.now());
-      if (!res.ok) throw new Error('HTTP ' + res.status);
-      txt = await res.text();
-    }
-    const parsed = parseCSV(txt);
-    // Skip header row; filter rows with a ticket number (col 1)
-    const sheetRows = parsed.slice(1).filter(r => r.length >= 5 && (r[1] || '').trim() !== '');
-    allRows = mergeLocalRows(sheetRows);
-    // Apply local edits to allRows ONLY where sheet value is still empty
-    // (handles page-reload race: beacon fired but sheet not yet updated)
-    Object.keys(localEdits).forEach(function(ticket) {
-      const row = allRows.find(r => (r[1]||'').trim() === ticket);
-      if (!row) return;
-      Object.keys(EDIT_COL).forEach(function(field) {
-        const val = localEdits[ticket][field];
-        const ci  = EDIT_COL[field];
-        if (val !== undefined && val !== null && (row[ci]||'').trim() === '') row[ci] = val;
-      });
-    });
-    buildDupeSet(allRows); // compute which mobile numbers appear more than once
-    document.getElementById('lastUpdated').textContent = 'Updated [' + source + ']: ' + new Date().toLocaleTimeString();
-    populateDropdowns();
-    applyFilters();
-    generateAlerts();
-    showNamePromptIfNeeded();
-    toast('Data loaded — source: ' + source, source.includes('LIVE') ? 'success' : 'info');
-    setTimeout(loadData, 60 * 1000); // auto-refresh every 1 min
-  } catch(e) {
-    const banner = document.getElementById('errorBanner');
-    banner.style.display = 'block';
-    banner.innerHTML =
-      '<b>⚠ Failed to load data: ' + e.message + '</b><br>' +
-      'This usually happens when the file is opened directly (double-click). <br>' +
-      '<b>Fix:</b> Double-click <b>Launch HP Dashboard.bat</b> to open via local server,<br>' +
-      'or visit: <a href="https://shariqkhan-ui.github.io/hp-customer-tracker/" target="_blank">' +
-      'https://shariqkhan-ui.github.io/hp-customer-tracker/</a>';
-    document.getElementById('lastUpdated').textContent = 'Load failed – see error below';
-    setTimeout(loadData, 30 * 1000); // retry in 30s
-  }
+    })
+    .withFailureHandler(function(e) {
+      const banner = document.getElementById('errorBanner');
+      banner.style.display = 'block';
+      banner.innerHTML = '<b>⚠ Failed to load data: ' + (e.message || 'Unknown error') + '</b>';
+      document.getElementById('lastUpdated').textContent = 'Load failed';
+      setTimeout(loadData, 30 * 1000);
+    })
+    .getCSVData();
 }
 
 // ── Multi-Select Filter Logic ──
@@ -1680,7 +1483,6 @@ async function submitBulkAdd() {
   const btn = document.getElementById('bulkSubmitBtn');
   btn.disabled = true; btn.textContent = 'Adding…';
 
-  const scriptUrl = getScriptUrl();
   rows.forEach(r => {
     const caseAddedOn = r.caseAddedOn;
     // col: 0=caseAddedOn, 1=ticket, 2=createdDate(blank), 3=mobile, 4=subcat, 5=name, 6=partner, 7=tat
@@ -1688,17 +1490,7 @@ async function submitBulkAdd() {
     addLocalRow(newRow);
     allRows.unshift(newRow);
     // Sync to Google Sheet so all users can see it
-    if (scriptUrl) {
-      const q = '?action=addRow' +
-        '&caseAddedOn=' + encodeURIComponent(caseAddedOn) +
-        '&ticketNo='    + encodeURIComponent(r.ticket)  +
-        '&mobile='      + encodeURIComponent(r.mobile)  +
-        '&custName='    + encodeURIComponent(r.name)    +
-        '&partner='     + encodeURIComponent(r.partner) +
-        '&subcat='      + encodeURIComponent(r.subcat)  +
-        '&tat='         + encodeURIComponent(r.tat);
-      fireBeacon(scriptUrl + q);  // image beacon: bypasses CORS, always fires
-    }
+    google.script.run.addRow({ caseAddedOn, ticketNo: r.ticket, mobile: r.mobile, custName: r.name, partner: r.partner, subcat: r.subcat, tat: r.tat });
   });
 
   buildDupeSet(allRows);
@@ -1765,18 +1557,7 @@ async function submitAddCase() {
   closeAddCase();
 
   // Sync to Google Sheet so all users can see it
-  const url = getScriptUrl();
-  if (url) {
-    const q = '?action=addRow' +
-      '&ticketNo='    + encodeURIComponent(ticket)  +
-      '&mobile='      + encodeURIComponent(mobile)  +
-      '&custName='    + encodeURIComponent(name)    +
-      '&partner='     + encodeURIComponent(partner) +
-      '&subcat='      + encodeURIComponent(subcat)  +
-      '&tat='         + encodeURIComponent(tat)     +
-      '&caseAddedOn=' + encodeURIComponent(createdDate);
-    fireBeacon(url + q);  // image beacon: bypasses CORS, always fires
-  }
+  google.script.run.addRow({ ticketNo: ticket, mobile, custName: name, partner, subcat, tat, caseAddedOn: createdDate });
   toast('Case added \u2713', 'success');
 }
 
@@ -1801,9 +1582,7 @@ function handleLogoClick() {
   }
 }
 function revealAdminButtons() {
-  ['auditBtn','settingsBtn'].forEach(function(id) {
-    document.getElementById(id).style.display = '';
-  });
+  document.getElementById('auditBtn').style.display = '';
 }
 function getUser() { return localStorage.getItem(USER_KEY) || 'Unknown'; }
 function updateUserBadge() {
@@ -1924,40 +1703,9 @@ function downloadAuditCSV() {
 // ── Init ──
 loadEdits();
 (function() {
-  const url = getScriptUrl();
-  if (url) document.getElementById('scriptUrlInput').value = url;
-  updateSyncBadge();
   // Show admin buttons if PIN is already saved on this device (i.e. this is the owner's browser)
   if (localStorage.getItem(AUDIT_PIN_KEY)) revealAdminButtons();
 })();
-warmupScript(); // pre-warm Apps Script on page load so first edit doesn't hit cold-start delay
-// Auto-sync all saved edits silently on page load (no button needed)
-setTimeout(function() {
-  const url = getScriptUrl();
-  if (!url) return;
-  const edits = localEdits;
-  const tickets = Object.keys(edits);
-  if (!tickets.length) return;
-  const fields = ['remarks', 'engineer', 'migration_date'];
-  let i = 0;
-  const pairs = [];
-  tickets.forEach(function(ticket) {
-    fields.forEach(function(field) {
-      const value = edits[ticket][field];
-      if (value !== undefined && value !== null) pairs.push({ ticket, field, value });
-    });
-  });
-  function sendNext() {
-    if (i >= pairs.length) return;
-    const p = pairs[i++];
-    const fullUrl = url + '?ticketNo=' + encodeURIComponent(p.ticket) +
-                         '&field='    + encodeURIComponent(p.field)  +
-                         '&value='    + encodeURIComponent(p.value);
-    fireBeacon(fullUrl);  // image beacon: bypasses CORS, always fires
-    setTimeout(sendNext, 200);
-  }
-  sendNext();
-}, 3000); // wait 3s after page load before syncing
 (function() {
   const saved = localStorage.getItem(USER_KEY);
   if (saved) {
