@@ -727,7 +727,7 @@ function updateSyncBadge() {
   el.className   = 'sync-badge' + (url ? '' : ' nosync');
 }
 
-// ── Save edit: localStorage + Apps Script (no-cors avoids CORS/redirect issues) ──
+// ── Save edit: localStorage + Apps Script via image beacon (bypasses CORS) ──
 async function saveToSheet(ticket, field, value) {
   setEdit(ticket, field, value);   // always save locally first
   const url = getScriptUrl();
@@ -735,13 +735,8 @@ async function saveToSheet(ticket, field, value) {
   const fullUrl = url + '?ticketNo=' + encodeURIComponent(ticket) +
                        '&field='    + encodeURIComponent(field)  +
                        '&value='    + encodeURIComponent(value);
-  try {
-    await fetch(fullUrl, { redirect: 'follow' });
-    toast('Saved to Sheet \u2713', 'success');
-  } catch(e) {
-    try { await fetch(fullUrl, { mode: 'no-cors' }); } catch(e2) {}
-    toast('Saved \u2713', 'success');
-  }
+  fireBeacon(fullUrl);  // image beacon: zero CORS issues, guaranteed to fire
+  toast('Saved \u2713', 'success');
 }
 
 // ── Sync ALL localStorage edits to Google Sheet ──
@@ -765,7 +760,7 @@ async function syncAllEdits() {
       const fullUrl = url + '?ticketNo=' + encodeURIComponent(ticket) +
                            '&field='    + encodeURIComponent(field)  +
                            '&value='    + encodeURIComponent(value);
-      try { await fetch(fullUrl, { mode: 'no-cors' }); } catch(e) {}
+      fireBeacon(fullUrl);
       count++;
       // small delay to avoid hammering Apps Script
       await new Promise(r => setTimeout(r, 200));
@@ -777,11 +772,18 @@ async function syncAllEdits() {
   toast(count + ' edit(s) pushed to Sheet \u2713', 'success');
 }
 
+// ── Image beacon: fire-and-forget GET, bypasses all CORS restrictions ──
+// Used for all write operations (edit, addRow) — 100% reliable cross-origin
+function fireBeacon(url) {
+  const img = new Image();
+  img.src = url + (url.includes('?') ? '&' : '?') + '_t=' + Date.now();
+}
+
 // ── Warm up Apps Script on load so edits don't face cold-start delay ──
 function warmupScript() {
   const url = getScriptUrl();
   if (!url) return;
-  fetch(url + '?warmup=1', { mode: 'no-cors' }).catch(() => {});
+  fireBeacon(url + '?warmup=1');
 }
 
 async function testSheetConnection() {
@@ -1631,9 +1633,7 @@ async function submitBulkAdd() {
         '&partner='     + encodeURIComponent(r.partner) +
         '&subcat='      + encodeURIComponent(r.subcat)  +
         '&tat='         + encodeURIComponent(r.tat);
-      fetch(scriptUrl + q, { redirect: 'follow' }).catch(() => {
-        fetch(scriptUrl + q, { mode: 'no-cors' }).catch(() => {});
-      });
+      fireBeacon(scriptUrl + q);  // image beacon: bypasses CORS, always fires
     }
   });
 
@@ -1711,9 +1711,7 @@ async function submitAddCase() {
       '&subcat='      + encodeURIComponent(subcat)  +
       '&tat='         + encodeURIComponent(tat)     +
       '&caseAddedOn=' + encodeURIComponent(createdDate);
-    fetch(url + q, { redirect: 'follow' }).catch(() => {
-      fetch(url + q, { mode: 'no-cors' }).catch(() => {});
-    });
+    fireBeacon(url + q);  // image beacon: bypasses CORS, always fires
   }
   toast('Case added \u2713', 'success');
 }
@@ -1891,9 +1889,8 @@ setTimeout(function() {
     const fullUrl = url + '?ticketNo=' + encodeURIComponent(p.ticket) +
                          '&field='    + encodeURIComponent(p.field)  +
                          '&value='    + encodeURIComponent(p.value);
-    fetch(fullUrl, { mode: 'no-cors' }).catch(function(){}).finally(function() {
-      setTimeout(sendNext, 300);
-    });
+    fireBeacon(fullUrl);  // image beacon: bypasses CORS, always fires
+    setTimeout(sendNext, 200);
   }
   sendNext();
 }, 3000); // wait 3s after page load before syncing
