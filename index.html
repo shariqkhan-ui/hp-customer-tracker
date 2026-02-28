@@ -634,6 +634,10 @@ table.main-tbl tbody tr:hover { background: #220020; }
 // ── Supabase client ──
 const SUPABASE_URL = 'https://nuudbseiurpkiqjnhhqb.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_GbOprC-AsNaSDje-KVgWcA_KeZ96NzC';
+if (typeof supabase === 'undefined') {
+  document.body.innerHTML = '<div style="color:red;padding:40px;font-family:sans-serif"><b>ERROR: Supabase library failed to load from CDN. Check your internet connection and reload the page.</b></div>';
+  throw new Error('Supabase CDN not loaded');
+}
 const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 // Convert Supabase row object → array matching column indices used throughout the dashboard
@@ -974,6 +978,7 @@ function isDupe(r) { const n = (r[3]||'').trim(); return n !== '' && dupeNumbers
 
 // ── Load Data from Supabase — paginated to fetch ALL rows beyond default 1000 limit ──
 async function loadData() {
+  try {
   document.getElementById('lastUpdated').textContent = 'Loading…';
   document.getElementById('errorBanner').style.display = 'none';
 
@@ -1005,6 +1010,12 @@ async function loadData() {
   showNamePromptIfNeeded();
   toast('Data loaded \u2713 — ' + allRows.length + ' cases', 'success');
   setTimeout(loadData, 30000); // auto-refresh every 30 seconds
+  } catch(e) {
+    console.error('loadData crash:', e);
+    const banner = document.getElementById('errorBanner');
+    if (banner) { banner.style.display = 'block'; banner.innerHTML = '<b>⚠ Unexpected error: ' + e.message + '</b>'; }
+    setTimeout(loadData, 30000);
+  }
 }
 
 // ── Real-time: changes by ANY user instantly appear for ALL users ──
@@ -1844,7 +1855,7 @@ loadEdits();
 (function() {
   if (localStorage.getItem(AUDIT_PIN_KEY)) revealAdminButtons();
 })();
-setupRealtime(); // subscribe to live changes from all users
+try { setupRealtime(); } catch(e) { console.warn('Realtime setup failed (non-fatal):', e.message); }
 (function() {
   const saved = localStorage.getItem(USER_KEY);
   if (saved) {
