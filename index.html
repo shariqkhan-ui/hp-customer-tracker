@@ -793,10 +793,21 @@ function startEdit(td) {
     td.appendChild(sel);
     sel.focus();
 
+    let remarksCommitted = false;
     async function commitRemarks() {
+      if (remarksCommitted) return; remarksCommitted = true;
       const nv = sel.value;
       addAuditEntry(ticket, field, cur, nv);
       await saveToSheet(ticket, field, nv);
+      // Auto-set migration_date to today when 'Migrated' is selected and date not already set
+      if (nv === 'Migrated') {
+        const row = allRows.find(r => (r[1]||'').trim() === ticket);
+        if (row && !effectiveVal(row, 14)) {
+          const migTd = new Date();
+          const todayStr = String(migTd.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[migTd.getMonth()] + '-' + migTd.getFullYear();
+          await saveToSheet(ticket, 'migration_date', todayStr);
+        }
+      }
       applyFilters();
     }
     sel.addEventListener('change', commitRemarks);
