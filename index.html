@@ -793,10 +793,10 @@ function startEdit(td) {
     td.appendChild(sel);
     sel.focus();
 
-    function commitRemarks() {
+    async function commitRemarks() {
       const nv = sel.value;
       addAuditEntry(ticket, field, cur, nv);
-      saveToSheet(ticket, field, nv);
+      await saveToSheet(ticket, field, nv);
       applyFilters();
     }
     sel.addEventListener('change', commitRemarks);
@@ -827,7 +827,7 @@ function startEdit(td) {
     td.appendChild(input);
     input.focus();
 
-    function commitDate() {
+    async function commitDate() {
       let nv = '';
       if (input.value) {
         const d = new Date(input.value + 'T00:00:00');
@@ -835,7 +835,7 @@ function startEdit(td) {
              MONTHS_SHORT[d.getMonth()] + '-' + d.getFullYear();
       }
       addAuditEntry(ticket, field, cur, nv);
-      saveToSheet(ticket, field, nv);
+      await saveToSheet(ticket, field, nv);
       applyFilters();
     }
     input.addEventListener('blur', commitDate);
@@ -867,15 +867,13 @@ function startEdit(td) {
     inp.focus(); inp.select();
 
     let committed = false;
-    function commitEng() {
+    async function commitEng() {
       if (committed) return; committed = true;
       const nv = inp.value.trim();
       addAuditEntry(ticket, field, cur, nv);
-      saveToSheet(ticket, field, nv).then(() => populateDropdowns());
-      // Update cell directly so value shows immediately without re-filtering rows
-      td.className = 'edit-cell' + (nv.trim() !== orig.trim() ? ' edited' : '');
-      td.innerHTML = cellInner(nv);
-      td.onclick = () => startEdit(td);
+      await saveToSheet(ticket, field, nv);
+      populateDropdowns();
+      applyFilters();
     }
     inp.addEventListener('blur', commitEng);
     inp.addEventListener('keydown', e => {
@@ -899,10 +897,10 @@ function startEdit(td) {
   input.focus();
   input.select();
 
-  function commit() {
+  async function commit() {
     const nv = input.value;
     addAuditEntry(ticket, field, cur, nv);
-    saveToSheet(ticket, field, nv);
+    await saveToSheet(ticket, field, nv);
     applyFilters();
   }
   input.addEventListener('blur', commit);
