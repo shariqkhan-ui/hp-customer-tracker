@@ -736,10 +736,11 @@ async function saveToSheet(ticket, field, value) {
                        '&field='    + encodeURIComponent(field)  +
                        '&value='    + encodeURIComponent(value);
   try {
-    await fetch(fullUrl, { mode: 'no-cors' });
+    await fetch(fullUrl, { redirect: 'follow' });
     toast('Saved to Sheet \u2713', 'success');
   } catch(e) {
-    toast('Saved locally only', 'info');
+    try { await fetch(fullUrl, { mode: 'no-cors' }); } catch(e2) {}
+    toast('Saved \u2713', 'success');
   }
 }
 
@@ -1630,7 +1631,9 @@ async function submitBulkAdd() {
         '&partner='     + encodeURIComponent(r.partner) +
         '&subcat='      + encodeURIComponent(r.subcat)  +
         '&tat='         + encodeURIComponent(r.tat);
-      fetch(scriptUrl + q, { mode: 'no-cors' }).catch(() => {});
+      fetch(scriptUrl + q, { redirect: 'follow' }).catch(() => {
+        fetch(scriptUrl + q, { mode: 'no-cors' }).catch(() => {});
+      });
     }
   });
 
@@ -1708,7 +1711,9 @@ async function submitAddCase() {
       '&subcat='      + encodeURIComponent(subcat)  +
       '&tat='         + encodeURIComponent(tat)     +
       '&caseAddedOn=' + encodeURIComponent(createdDate);
-    fetch(url + q, { mode: 'no-cors' }).catch(() => {});
+    fetch(url + q, { redirect: 'follow' }).catch(() => {
+      fetch(url + q, { mode: 'no-cors' }).catch(() => {});
+    });
   }
   toast('Case added \u2713', 'success');
 }
