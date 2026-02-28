@@ -1061,18 +1061,38 @@ function buildDupeSet(rows) {
 }
 function isDupe(r) { const n = (r[3]||'').trim(); return n !== '' && dupeNumbers.has(n); }
 
+// ── JSONP loader: bypasses CORS for reads (like beacon bypasses CORS for writes) ──
+function loadDataViaJsonp(scriptUrl) {
+  return new Promise(function(resolve, reject) {
+    const cbName = '_hp_cb_' + Date.now();
+    const script = document.createElement('script');
+    window[cbName] = function(data) {
+      delete window[cbName];
+      script.remove();
+      resolve(data);
+    };
+    script.src = scriptUrl + '?action=getData&callback=' + cbName + '&_t=' + Date.now();
+    script.onerror = function() { delete window[cbName]; script.remove(); reject(new Error('jsonp failed')); };
+    document.head.appendChild(script);
+    setTimeout(function() {
+      if (window[cbName]) { delete window[cbName]; script.remove(); reject(new Error('jsonp timeout')); }
+    }, 20000);
+  });
+}
+
 // ── Load Data ──
 async function loadData() {
   document.getElementById('lastUpdated').textContent = 'Loading…';
   document.getElementById('errorBanner').style.display = 'none';
   try {
-    // Try Apps Script first (live data, no cache). Fall back to published CSV.
+    // Try Apps Script via JSONP (live data, bypasses CORS, no cache).
+    // Fall back to published CSV only if JSONP fails.
     let txt = null;
     const scriptUrl = getScriptUrl();
     if (scriptUrl) {
       try {
-        const r = await fetch(scriptUrl + '?action=getData', { redirect: 'follow' });
-        if (r.ok) { const t = await r.text(); if (t && t.length > 100) txt = t; }
+        const t = await loadDataViaJsonp(scriptUrl);
+        if (t && t.length > 100) txt = t;
       } catch(e) {}
     }
     if (!txt) {
