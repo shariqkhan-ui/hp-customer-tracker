@@ -799,13 +799,18 @@ function startEdit(td) {
       const nv = sel.value;
       addAuditEntry(ticket, field, cur, nv);
       await saveToSheet(ticket, field, nv);
-      // Auto-set migration_date to today when 'Migrated' is selected and date not already set
+      const row = allRows.find(r => (r[1]||'').trim() === ticket);
       if (nv === 'Migrated') {
-        const row = allRows.find(r => (r[1]||'').trim() === ticket);
+        // Auto-set migration_date to today if not already set
         if (row && !effectiveVal(row, 14)) {
           const migTd = new Date();
           const todayStr = String(migTd.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[migTd.getMonth()] + '-' + migTd.getFullYear();
           await saveToSheet(ticket, 'migration_date', todayStr);
+        }
+      } else if (cur === 'Migrated') {
+        // Remark changed away from Migrated — clear migration_date so status updates
+        if (row && effectiveVal(row, 14)) {
+          await saveToSheet(ticket, 'migration_date', '');
         }
       }
       applyFilters();
