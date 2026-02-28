@@ -1004,6 +1004,7 @@ async function loadData() {
   generateAlerts();
   showNamePromptIfNeeded();
   toast('Data loaded \u2713 — ' + allRows.length + ' cases', 'success');
+  setTimeout(loadData, 30000); // auto-refresh every 30 seconds
 }
 
 // ── Real-time: changes by ANY user instantly appear for ALL users ──
