@@ -691,23 +691,8 @@ function isCaseNeedsAction(r) {
   return true;  // unresolved comment, no recent update
 }
 
-// ── Effective value: prefer sheet data unless local edit is very recent (< 2 min) ──
-const COL_FIELD = { 8: 'remarks', 10: 'engineer', 14: 'migration_date' };
-function effectiveVal(r, col) {
-  const ticket    = (r[1] || '').trim();
-  const field     = COL_FIELD[col];
-  const sheetVal  = (r[col] || '').trim();
-  if (ticket && field) {
-    const edit = getEdit(ticket, field);
-    if (edit !== null) {
-      const ts       = (localEdits[ticket] && localEdits[ticket][field + '_ts']) || 0;
-      const twoMinAgo = Date.now() - 2 * 60 * 1000;
-      // Use local edit only if: edited on this machine within last 2 min, OR sheet still has no value
-      if (ts > twoMinAgo || sheetVal === '') return edit;
-    }
-  }
-  return sheetVal;
-}
+// ── Effective value: always read directly from row (allRows is patched on save) ──
+function effectiveVal(r, col) { return (r[col] || '').trim(); }
 
 function getScriptUrl() { return localStorage.getItem(SCRIPT_KEY) || DEFAULT_SCRIPT_URL; }
 function toggleSyncPanel() {
@@ -727,9 +712,16 @@ function updateSyncBadge() {
   el.className   = 'sync-badge' + (url ? '' : ' nosync');
 }
 
-// ── Save edit: localStorage + Apps Script via image beacon (bypasses CORS) ──
+// ── Save edit: patch allRows in memory + localStorage + Apps Script beacon ──
+const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14 };
 async function saveToSheet(ticket, field, value) {
-  setEdit(ticket, field, value);   // always save locally first
+  setEdit(ticket, field, value);   // keep for auto-sync on page reload
+  // Patch allRows in memory so current user sees change instantly without waiting for refresh
+  const ci = EDIT_COL[field];
+  if (ci !== undefined) {
+    const row = allRows.find(r => (r[1]||'').trim() === ticket);
+    if (row) row[ci] = value;
+  }
   const url = getScriptUrl();
   if (!url) return;
   const fullUrl = url + '?ticketNo=' + encodeURIComponent(ticket) +
@@ -840,34 +832,20 @@ const REMARKS_OPTIONS = [
   'Migration is in Progress','Cx not contactable/Reachable',
   'Migration not possible/Refund','Customer not interested in Migration'
 ];
-// Show local edit only if made within last 2 min OR sheet is empty (same rule as effectiveVal)
-function resolveDisplay(ticket, field, sheetVal) {
-  const local = getEdit(ticket, field);
-  if (local !== null) {
-    const ts = (localEdits[ticket] && localEdits[ticket][field + '_ts']) || 0;
-    if (ts > Date.now() - 2 * 60 * 1000 || sheetVal.trim() === '') return local;
-  }
-  return sheetVal;
-}
 function makeEditCell(ticket, field, orig) {
-  let display    = resolveDisplay(ticket, field, orig);
-  // For remarks: only show value if it's one of the predefined options, else treat as blank
+  // orig = value already in allRows (patched on save, refreshed from sheet on loadData)
+  // Never read localStorage here — allRows is the single source of truth
+  let display = orig;
   if (field === 'remarks' && !REMARKS_OPTIONS.includes(display.trim())) display = '';
-  // Mark as edited only if local edit is still "active" (recent or sheet empty) and differs from sheet
-  const local    = getEdit(ticket, field);
-  const ts       = local !== null ? ((localEdits[ticket] && localEdits[ticket][field + '_ts']) || 0) : 0;
-  const active   = local !== null && (ts > Date.now() - 2 * 60 * 1000 || orig.trim() === '');
-  const isEdited = active && local.trim() !== orig.trim();
-  return '<td class="edit-cell' + (isEdited ? ' edited' : '') + '" ' +
-    'data-ticket="' + esc(ticket) + '" data-field="' + esc(field) + '" data-orig="' + esc(orig) + '" ' +
-    'onclick="startEdit(this)" style="max-width:180px">' + cellInner(display) + '</td>';
+  return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="' + esc(field) +
+    '" data-orig="' + esc(orig) + '" onclick="startEdit(this)" style="max-width:180px">' + cellInner(display) + '</td>';
 }
 function startEdit(td) {
   if (td.querySelector('input,select')) return;
   const ticket = td.dataset.ticket;
   const field  = td.dataset.field;
   const orig   = td.dataset.orig;
-  const cur    = resolveDisplay(ticket, field, orig);
+  const cur    = orig;  // always start from current sheet/allRows value
 
   // Ground Remarks field: show predefined dropdown
   if (field === 'remarks') {
@@ -1122,6 +1100,17 @@ async function loadData() {
     // Skip header row; filter rows with a ticket number (col 1)
     const sheetRows = parsed.slice(1).filter(r => r.length >= 5 && (r[1] || '').trim() !== '');
     allRows = mergeLocalRows(sheetRows);
+    // Apply local edits to allRows ONLY where sheet value is still empty
+    // (handles page-reload race: beacon fired but sheet not yet updated)
+    Object.keys(localEdits).forEach(function(ticket) {
+      const row = allRows.find(r => (r[1]||'').trim() === ticket);
+      if (!row) return;
+      Object.keys(EDIT_COL).forEach(function(field) {
+        const val = localEdits[ticket][field];
+        const ci  = EDIT_COL[field];
+        if (val !== undefined && val !== null && (row[ci]||'').trim() === '') row[ci] = val;
+      });
+    });
     buildDupeSet(allRows); // compute which mobile numbers appear more than once
     document.getElementById('lastUpdated').textContent = 'Updated [' + source + ']: ' + new Date().toLocaleTimeString();
     populateDropdowns();
