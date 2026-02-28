@@ -1541,9 +1541,9 @@ async function submitBulkAdd() {
     case_added_on: r.caseAddedOn, ticket_no: r.ticket, mobile: r.mobile,
     subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat
   }));
-  const { error } = await db.from('cases').insert(inserts);
-  if (error) {
-    toast('ERROR saving to database: ' + error.message, 'error');
+  const { error: insertError } = await db.from('cases').insert(inserts);
+  if (insertError) {
+    toast('ERROR saving to database: ' + insertError.message, 'error');
     btn.disabled = false; btn.textContent = '➕ Add All Cases';
     return;
   }
