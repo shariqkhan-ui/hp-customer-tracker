@@ -6,6 +6,7 @@
 <title>High Pain Customer Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -274,6 +275,21 @@ table.main-tbl tbody tr:hover { background: #220020; }
         <input type="password" id="auditPinInput" placeholder="Set a PIN..." style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;min-width:160px" />
       </div>
       <button class="btn" onclick="saveAuditPin()" style="background:rgba(217,0,141,.15);border-color:var(--primary);color:var(--primary-light)">Set PIN</button>
+      <button class="btn btn-primary" onclick="openImportModal()" style="background:var(--blue);border-color:var(--blue);align-self:flex-end">&#x1F4E5; Import Data from CSV</button>
+    </div>
+  </div>
+
+  <!-- Data Import Modal -->
+  <div class="modal-overlay" id="importModal">
+    <div class="modal" style="width:620px">
+      <div class="modal-title">&#x1F4E5; Import All Cases from CSV</div>
+      <p style="font-size:12px;color:var(--muted);margin-bottom:12px">Export your Google Sheet as CSV (File → Download → CSV), then paste the entire contents below. All columns will be imported.</p>
+      <textarea id="importPaste" rows="8" style="width:100%;padding:8px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;resize:vertical" placeholder="Paste CSV content here..."></textarea>
+      <div id="importPreview" style="font-size:12px;margin-top:8px;min-height:18px"></div>
+      <div class="modal-actions">
+        <button class="btn" onclick="closeImportModal()">Cancel</button>
+        <button class="btn btn-primary" id="importBtn" onclick="runImport()">&#x1F4E5; Import to Supabase</button>
+      </div>
     </div>
   </div>
 
@@ -615,6 +631,35 @@ table.main-tbl tbody tr:hover { background: #220020; }
 <div id="toastArea"></div>
 
 <script>
+// ── Supabase client ──
+const SUPABASE_URL = 'https://nuudbseiurpkiqjnhhqb.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_GbOprC-AsNaSDje-KVgWcA_KeZ96NzC';
+const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// Convert Supabase row object → array matching column indices used throughout the dashboard
+function dbRowToArray(r) {
+  return [
+    r.case_added_on   || '',  // 0
+    r.ticket_no       || '',  // 1
+    r.created_date    || '',  // 2
+    r.mobile          || '',  // 3
+    r.subcat          || '',  // 4
+    r.cust_name       || '',  // 5
+    r.partner         || '',  // 6
+    r.tat             || '',  // 7
+    r.remarks         || '',  // 8
+    r.easy_remarks    || '',  // 9
+    r.engineer        || '',  // 10
+    r.ticket_url      || '',  // 11
+    r.col12           || '',  // 12
+    r.col13           || '',  // 13
+    r.migration_date  || ''   // 14
+  ];
+}
+
+// Map edit field name → Supabase column name
+const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date' };
+
 let allRows = [], visRows = [], charts = {};
 
 // ── Local Edits + Sheet Sync ──
@@ -680,22 +725,20 @@ function isCaseNeedsAction(r) {
 function effectiveVal(r, col) { return (r[col] || '').trim(); }
 
 
-// ── Save edit: patch allRows in memory + write to sheet via Apps Script ──
+// ── Save edit: patch allRows in memory + write to Supabase ──
 const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14 };
 async function saveToSheet(ticket, field, value) {
   setEdit(ticket, field, value);
-  // Patch allRows in memory so current user sees change instantly
   const ci = EDIT_COL[field];
   if (ci !== undefined) {
     const row = allRows.find(r => (r[1]||'').trim() === ticket);
     if (row) row[ci] = value;
   }
   toast('Saved \u2713', 'success');
-  google.script.run
-    .withFailureHandler(function(e) {
-      toast('Sync error: ' + (e.message || 'unknown'), 'error');
-    })
-    .saveEdit(ticket, field, value);
+  const dbCol = DB_COL[field];
+  if (!dbCol) return;
+  const { error } = await db.from('cases').update({ [dbCol]: value }).eq('ticket_no', ticket);
+  if (error) toast('Sync error: ' + error.message, 'error');
 }
 
 
@@ -929,48 +972,46 @@ function buildDupeSet(rows) {
 }
 function isDupe(r) { const n = (r[3]||'').trim(); return n !== '' && dupeNumbers.has(n); }
 
-// ── Load Data (server-side via google.script.run — no CORS, always live) ──
-function loadData() {
+// ── Load Data from Supabase (always live, real-time) ──
+async function loadData() {
   document.getElementById('lastUpdated').textContent = 'Loading…';
   document.getElementById('errorBanner').style.display = 'none';
-  google.script.run
-    .withSuccessHandler(function(txt) {
-      try {
-        const parsed = parseCSV(txt);
-        const sheetRows = parsed.slice(1).filter(r => r.length >= 5 && (r[1] || '').trim() !== '');
-        allRows = mergeLocalRows(sheetRows);
-        // Apply local edits to allRows ONLY where sheet value is still empty
-        Object.keys(localEdits).forEach(function(ticket) {
-          const row = allRows.find(r => (r[1]||'').trim() === ticket);
-          if (!row) return;
-          Object.keys(EDIT_COL).forEach(function(field) {
-            const val = localEdits[ticket][field];
-            const ci  = EDIT_COL[field];
-            if (val !== undefined && val !== null && (row[ci]||'').trim() === '') row[ci] = val;
-          });
-        });
-        buildDupeSet(allRows);
-        document.getElementById('lastUpdated').textContent = 'Updated [Sheet LIVE ✓]: ' + new Date().toLocaleTimeString();
-        populateDropdowns();
-        applyFilters();
-        generateAlerts();
-        showNamePromptIfNeeded();
-        toast('Data loaded ✓', 'success');
-        setTimeout(loadData, 60 * 1000);
-      } catch(e) {
-        document.getElementById('lastUpdated').textContent = 'Parse error';
-        toast('Error parsing data: ' + e.message, 'error');
-        setTimeout(loadData, 30 * 1000);
+  const { data, error } = await db.from('cases').select('*').order('created_at', { ascending: false });
+  if (error) {
+    const banner = document.getElementById('errorBanner');
+    banner.style.display = 'block';
+    banner.innerHTML = '<b>⚠ Failed to load data: ' + error.message + '</b>';
+    document.getElementById('lastUpdated').textContent = 'Load failed';
+    setTimeout(loadData, 30000);
+    return;
+  }
+  allRows = (data || []).map(dbRowToArray);
+  buildDupeSet(allRows);
+  document.getElementById('lastUpdated').textContent = 'Updated [Supabase LIVE ✓]: ' + new Date().toLocaleTimeString();
+  populateDropdowns();
+  applyFilters();
+  generateAlerts();
+  showNamePromptIfNeeded();
+  toast('Data loaded \u2713', 'success');
+}
+
+// ── Real-time: changes by ANY user instantly appear for ALL users ──
+function setupRealtime() {
+  db.channel('cases-live')
+    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'cases' }, function(payload) {
+      const updated = payload.new;
+      const idx = allRows.findIndex(r => r[1] === updated.ticket_no);
+      if (idx !== -1) { allRows[idx] = dbRowToArray(updated); applyFilters(); }
+    })
+    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cases' }, function(payload) {
+      const newCase = payload.new;
+      if (!allRows.some(r => r[1] === newCase.ticket_no)) {
+        allRows.unshift(dbRowToArray(newCase));
+        buildDupeSet(allRows); populateDropdowns(); applyFilters();
+        toast('New case added: ' + newCase.ticket_no, 'info');
       }
     })
-    .withFailureHandler(function(e) {
-      const banner = document.getElementById('errorBanner');
-      banner.style.display = 'block';
-      banner.innerHTML = '<b>⚠ Failed to load data: ' + (e.message || 'Unknown error') + '</b>';
-      document.getElementById('lastUpdated').textContent = 'Load failed';
-      setTimeout(loadData, 30 * 1000);
-    })
-    .getCSVData();
+    .subscribe();
 }
 
 // ── Multi-Select Filter Logic ──
@@ -1489,8 +1530,9 @@ async function submitBulkAdd() {
     const newRow = [caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', ''];
     addLocalRow(newRow);
     allRows.unshift(newRow);
-    // Sync to Google Sheet so all users can see it
-    google.script.run.addRow({ caseAddedOn, ticketNo: r.ticket, mobile: r.mobile, custName: r.name, partner: r.partner, subcat: r.subcat, tat: r.tat });
+    // Save to Supabase so all users see it instantly
+    db.from('cases').insert({ case_added_on: caseAddedOn, ticket_no: r.ticket, mobile: r.mobile, subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat })
+      .then(function(res) { if (res.error) console.warn('Supabase insert error:', res.error.message); });
   });
 
   buildDupeSet(allRows);
@@ -1556,8 +1598,9 @@ async function submitAddCase() {
   applyFilters();
   closeAddCase();
 
-  // Sync to Google Sheet so all users can see it
-  google.script.run.addRow({ ticketNo: ticket, mobile, custName: name, partner, subcat, tat, caseAddedOn: createdDate });
+  // Save to Supabase so all users see it instantly
+  db.from('cases').insert({ case_added_on: createdDate, ticket_no: ticket, mobile, subcat, cust_name: name, partner, tat })
+    .then(function(r) { if (r.error) toast('Supabase sync error: ' + r.error.message, 'error'); });
   toast('Case added \u2713', 'success');
 }
 
@@ -1642,29 +1685,30 @@ function saveAuditPin() {
   document.getElementById('auditPinInput').value = '';
   toast('Audit PIN set \u2713 — only you can open the audit trail now', 'success');
 }
-function getAuditLog() {
-  try { return JSON.parse(localStorage.getItem(AUDIT_KEY) || '[]'); } catch(e) { return []; }
-}
+// ── Audit log: stored in Supabase (centralized, visible to all users) ──
 function addAuditEntry(ticket, field, oldVal, newVal) {
   if (String(oldVal||'').trim() === String(newVal||'').trim()) return;
-  const log = getAuditLog();
-  log.push({ ts: Date.now(), user: getUser(), ticket: String(ticket||''), field: String(field||''), oldVal: String(oldVal||''), newVal: String(newVal||'') });
-  if (log.length > 10000) log.splice(0, log.length - 10000);
-  localStorage.setItem(AUDIT_KEY, JSON.stringify(log));
+  db.from('audit_log').insert({
+    user_name: getUser(), ticket_no: String(ticket||''),
+    field: String(field||''), old_value: String(oldVal||''), new_value: String(newVal||'')
+  }).then(function(r) { if (r.error) console.warn('Audit log error:', r.error.message); });
 }
-function openAuditModal() {
+async function openAuditModal() {
   const pin = localStorage.getItem(AUDIT_PIN_KEY);
   if (pin) {
     const entered = window.prompt('Enter Audit Trail PIN to continue:');
     if (entered === null) return;
     if (entered !== pin) { toast('Incorrect PIN — access denied', 'error'); return; }
   }
-  renderAuditLog();
   document.getElementById('auditModal').classList.add('open');
+  document.getElementById('auditCount').textContent = 'Loading…';
+  document.getElementById('auditBody').innerHTML = '';
+  const { data, error } = await db.from('audit_log').select('*').order('ts', { ascending: false }).limit(500);
+  if (error) { toast('Failed to load audit log: ' + error.message, 'error'); return; }
+  renderAuditLog(data || []);
 }
 function closeAuditModal() { document.getElementById('auditModal').classList.remove('open'); }
-function renderAuditLog() {
-  const log = getAuditLog().slice().reverse();
+function renderAuditLog(log) {
   const tbody = document.getElementById('auditBody');
   const empty = document.getElementById('auditEmpty');
   document.getElementById('auditCount').textContent = log.length + ' edit(s) recorded';
@@ -1673,24 +1717,24 @@ function renderAuditLog() {
   const FIELD_LABEL = { remarks: 'Ground Remarks', engineer: 'Engineer Name', migration_date: 'Migration Date' };
   tbody.innerHTML = log.map(function(e) {
     const dt = new Date(e.ts).toLocaleString('en-IN');
-    const fl = FIELD_LABEL[e.field] || e.field;
     return '<tr style="border-bottom:1px solid #1a0018">' +
       '<td style="padding:8px 10px;color:var(--muted);white-space:nowrap">' + esc(dt) + '</td>' +
-      '<td style="padding:8px 10px;color:var(--blue)">' + esc(e.user) + '</td>' +
-      '<td style="padding:8px 10px;color:var(--primary-light)">' + esc(e.ticket) + '</td>' +
-      '<td style="padding:8px 10px">' + esc(fl) + '</td>' +
-      '<td style="padding:8px 10px;color:var(--red)">' + esc(e.oldVal || '\u2014') + '</td>' +
-      '<td style="padding:8px 10px;color:var(--green)">' + esc(e.newVal || '\u2014') + '</td>' +
+      '<td style="padding:8px 10px;color:var(--blue)">' + esc(e.user_name||'') + '</td>' +
+      '<td style="padding:8px 10px;color:var(--primary-light)">' + esc(e.ticket_no||'') + '</td>' +
+      '<td style="padding:8px 10px">' + esc(FIELD_LABEL[e.field]||e.field||'') + '</td>' +
+      '<td style="padding:8px 10px;color:var(--red)">' + esc(e.old_value||'\u2014') + '</td>' +
+      '<td style="padding:8px 10px;color:var(--green)">' + esc(e.new_value||'\u2014') + '</td>' +
       '</tr>';
   }).join('');
 }
-function downloadAuditCSV() {
-  const log = getAuditLog().slice().reverse();
+async function downloadAuditCSV() {
+  const { data, error } = await db.from('audit_log').select('*').order('ts', { ascending: false });
+  if (error) { toast('Download failed: ' + error.message, 'error'); return; }
   const q = function(v) { return '"' + String(v||'').replace(/"/g,'""') + '"'; };
   const lines = [
     ['Date & Time','Edited By','Ticket','Field','Old Value','New Value'].map(q).join(','),
-    ...log.map(function(e) {
-      return [new Date(e.ts).toLocaleString('en-IN'), e.user, e.ticket, e.field, e.oldVal||'', e.newVal||''].map(q).join(',');
+    ...(data||[]).map(function(e) {
+      return [new Date(e.ts).toLocaleString('en-IN'), e.user_name||'', e.ticket_no||'', e.field||'', e.old_value||'', e.new_value||''].map(q).join(',');
     })
   ];
   const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
@@ -1700,12 +1744,76 @@ function downloadAuditCSV() {
   a.click(); URL.revokeObjectURL(a.href);
 }
 
+// ── Data Import (one-time migration from Google Sheets CSV) ──
+function openImportModal() {
+  document.getElementById('importPaste').value = '';
+  document.getElementById('importPreview').textContent = '';
+  document.getElementById('importModal').classList.add('open');
+}
+function closeImportModal() { document.getElementById('importModal').classList.remove('open'); }
+document.addEventListener('click', e => { if (e.target === document.getElementById('importModal')) closeImportModal(); });
+
+document.addEventListener('DOMContentLoaded', function() {
+  var el = document.getElementById('importPaste');
+  if (el) el.addEventListener('input', function() {
+    var text = el.value.trim();
+    if (!text) { document.getElementById('importPreview').textContent = ''; return; }
+    var rows = parseCSV(text).slice(1).filter(r => (r[1]||'').trim());
+    var prev = document.getElementById('importPreview');
+    prev.style.color = rows.length ? 'var(--green)' : 'var(--red)';
+    prev.textContent = rows.length ? '✅ ' + rows.length + ' rows ready to import' : '❌ No valid rows found';
+  });
+});
+
+async function runImport() {
+  var text = document.getElementById('importPaste').value.trim();
+  if (!text) { toast('Paste CSV data first', 'error'); return; }
+  var parsed = parseCSV(text);
+  var rows = parsed.slice(1).filter(r => (r[1]||'').trim());
+  if (!rows.length) { toast('No valid rows found', 'error'); return; }
+
+  var btn = document.getElementById('importBtn');
+  btn.disabled = true;
+
+  var batch = rows.map(r => ({
+    case_added_on:  (r[0]||'').trim(),
+    ticket_no:      (r[1]||'').trim(),
+    created_date:   (r[2]||'').trim(),
+    mobile:         (r[3]||'').trim(),
+    subcat:         (r[4]||'').trim(),
+    cust_name:      (r[5]||'').trim(),
+    partner:        (r[6]||'').trim(),
+    tat:            (r[7]||'').trim(),
+    remarks:        (r[8]||'').trim(),
+    easy_remarks:   (r[9]||'').trim(),
+    engineer:       (r[10]||'').trim(),
+    ticket_url:     (r[11]||'').trim(),
+    col12:          (r[12]||'').trim(),
+    col13:          (r[13]||'').trim(),
+    migration_date: (r[14]||'').trim()
+  }));
+
+  var inserted = 0;
+  for (var i = 0; i < batch.length; i += 100) {
+    var chunk = batch.slice(i, i + 100);
+    btn.textContent = 'Importing… ' + Math.min(i + 100, batch.length) + '/' + batch.length;
+    var { error } = await db.from('cases').upsert(chunk, { onConflict: 'ticket_no', ignoreDuplicates: false });
+    if (error) { toast('Import error at row ' + i + ': ' + error.message, 'error'); btn.disabled = false; btn.textContent = '📥 Import to Supabase'; return; }
+    inserted += chunk.length;
+  }
+
+  btn.disabled = false; btn.textContent = '📥 Import to Supabase';
+  toast(inserted + ' cases imported ✓', 'success');
+  closeImportModal();
+  loadData();
+}
+
 // ── Init ──
 loadEdits();
 (function() {
-  // Show admin buttons if PIN is already saved on this device (i.e. this is the owner's browser)
   if (localStorage.getItem(AUDIT_PIN_KEY)) revealAdminButtons();
 })();
+setupRealtime(); // subscribe to live changes from all users
 (function() {
   const saved = localStorage.getItem(USER_KEY);
   if (saved) {
