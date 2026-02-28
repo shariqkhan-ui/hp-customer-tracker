@@ -732,6 +732,17 @@ function effectiveVal(r, col) { return (r[col] || '').trim(); }
 // ── Save edit: patch allRows in memory + write to Supabase ──
 const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14 };
 async function saveToSheet(ticket, field, value) {
+  const dbCol = DB_COL[field];
+  if (!dbCol) return;
+
+  // Save to Supabase FIRST — only update local state if it succeeds
+  const { error } = await db.from('cases').update({ [dbCol]: value }).eq('ticket_no', ticket);
+  if (error) {
+    toast('\u26a0 Save FAILED — change not stored: ' + error.message, 'error');
+    return;
+  }
+
+  // Supabase confirmed — now update local state
   setEdit(ticket, field, value);
   const ci = EDIT_COL[field];
   if (ci !== undefined) {
@@ -739,10 +750,6 @@ async function saveToSheet(ticket, field, value) {
     if (row) row[ci] = value;
   }
   toast('Saved \u2713', 'success');
-  const dbCol = DB_COL[field];
-  if (!dbCol) return;
-  const { error } = await db.from('cases').update({ [dbCol]: value }).eq('ticket_no', ticket);
-  if (error) toast('Sync error: ' + error.message, 'error');
 }
 
 
