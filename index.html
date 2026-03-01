@@ -816,9 +816,17 @@ function startEdit(td) {
       applyFilters();
     }
     sel.addEventListener('change', commitRemarks);
-    sel.addEventListener('blur', commitRemarks);
+    sel.addEventListener('blur', function() {
+      // If user clicked away without selecting, revert cell — do NOT save
+      if (!remarksCommitted) {
+        td.className = 'edit-cell' + (cur.trim() !== orig.trim() ? ' edited' : '');
+        td.innerHTML = cellInner(cur);
+        td.onclick = () => startEdit(td);
+      }
+    });
     sel.addEventListener('keydown', function(e) {
       if (e.key === 'Escape') {
+        remarksCommitted = true; // prevent blur from double-triggering
         td.className = 'edit-cell' + (cur.trim() !== orig.trim() ? ' edited' : '');
         td.innerHTML = cellInner(cur);
         td.onclick = () => startEdit(td);
