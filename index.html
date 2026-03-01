@@ -990,6 +990,7 @@ function dKey(d) { if (!d) return ''; const dd = new Date(d); dd.setHours(0,0,0,
 function getStatus(r) {
   if (effectiveVal(r, 14).trim() !== '') return 'Migrated';
   const g = effectiveVal(r, 8).toLowerCase();
+  if (g === 'resolved by old partner') return 'Ping Up';
   const subcat = effectiveVal(r, 4).toLowerCase();
   const pingKw = ['ping up', 'internet working', 'internet up', 'speed up', 'link up'];
   const pingSubcats = ['internet supply down', 'recharge done but no internet'];
