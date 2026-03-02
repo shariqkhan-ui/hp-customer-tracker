@@ -6,7 +6,7 @@
 <title>High Pain Customer Tracker</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+<!-- Firebase REST API — no SDK needed, uses plain fetch() -->
 <style>
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
 :root {
@@ -288,7 +288,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div id="importPreview" style="font-size:12px;margin-top:8px;min-height:18px"></div>
       <div class="modal-actions">
         <button class="btn" onclick="closeImportModal()">Cancel</button>
-        <button class="btn btn-primary" id="importBtn" onclick="runImport()">&#x1F4E5; Import to Supabase</button>
+        <button class="btn btn-primary" id="importBtn" onclick="runImport()">&#x1F4E5; Import to Firebase</button>
       </div>
     </div>
   </div>
@@ -631,14 +631,40 @@ table.main-tbl tbody tr:hover { background: #220020; }
 <div id="toastArea"></div>
 
 <script>
-// ── Supabase client ──
-const SUPABASE_URL = 'https://nuudbseiurpkiqjnhhqb.supabase.co';
-const SUPABASE_KEY = 'sb_publishable_GbOprC-AsNaSDje-KVgWcA_KeZ96NzC';
-if (typeof supabase === 'undefined') {
-  document.body.innerHTML = '<div style="color:red;padding:40px;font-family:sans-serif"><b>ERROR: Supabase library failed to load from CDN. Check your internet connection and reload the page.</b></div>';
-  throw new Error('Supabase CDN not loaded');
+// ── Firebase Realtime Database — REST API (no SDK required) ──
+// Database is in Singapore region — works reliably from all Indian networks
+const FIREBASE_DB = 'https://high-pain-cx-management-default-rtdb.asia-southeast1.firebasedatabase.app';
+
+// Firebase RTDB keys cannot contain . # $ [ ] / — encode ticket_no for use as key
+function ticketKey(t) { return String(t).replace(/[.#$\[\]\/]/g, '_'); }
+
+// Generic REST helpers
+async function fbGet(path) {
+  const r = await fetch(FIREBASE_DB + path + '.json');
+  if (!r.ok) throw new Error('Firebase GET failed: HTTP ' + r.status);
+  return r.json();
 }
-const db = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+async function fbPut(path, value) {
+  const r = await fetch(FIREBASE_DB + path + '.json', {
+    method: 'PUT', headers: {'Content-Type':'application/json'}, body: JSON.stringify(value)
+  });
+  if (!r.ok) throw new Error('Firebase PUT failed: HTTP ' + r.status);
+  return r.json();
+}
+async function fbPatch(path, obj) {
+  const r = await fetch(FIREBASE_DB + path + '.json', {
+    method: 'PATCH', headers: {'Content-Type':'application/json'}, body: JSON.stringify(obj)
+  });
+  if (!r.ok) throw new Error('Firebase PATCH failed: HTTP ' + r.status);
+  return r.json();
+}
+async function fbPost(path, obj) {
+  const r = await fetch(FIREBASE_DB + path + '.json', {
+    method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(obj)
+  });
+  if (!r.ok) throw new Error('Firebase POST failed: HTTP ' + r.status);
+  return r.json();
+}
 
 // Convert Supabase row object → array matching column indices used throughout the dashboard
 function dbRowToArray(r) {
@@ -729,20 +755,21 @@ function isCaseNeedsAction(r) {
 function effectiveVal(r, col) { return (r[col] || '').trim(); }
 
 
-// ── Save edit: patch allRows in memory + write to Supabase ──
+// ── Save edit: patch allRows in memory + write to Firebase ──
 const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14 };
 async function saveToSheet(ticket, field, value) {
   const dbCol = DB_COL[field];
   if (!dbCol) return;
 
-  // Save to Supabase FIRST — only update local state if it succeeds
-  const { error } = await db.from('cases').update({ [dbCol]: value }).eq('ticket_no', ticket);
-  if (error) {
-    toast('\u26a0 Save FAILED — change not stored: ' + error.message, 'error');
+  // Save to Firebase FIRST — only update local state if it succeeds
+  try {
+    await fbPut('/cases/' + ticketKey(ticket) + '/' + dbCol, value);
+  } catch(e) {
+    toast('\u26a0 Save FAILED — change not stored: ' + e.message, 'error');
     return;
   }
 
-  // Supabase confirmed — now update local state
+  // Firebase confirmed — now update local state
   setEdit(ticket, field, value);
   const ci = EDIT_COL[field];
   if (ci !== undefined) {
@@ -1006,65 +1033,106 @@ function buildDupeSet(rows) {
 }
 function isDupe(r) { const n = (r[3]||'').trim(); return n !== '' && dupeNumbers.has(n); }
 
-// ── Load Data from Supabase — paginated to fetch ALL rows beyond default 1000 limit ──
+// ── Load Data from Firebase REST API ──
+let realtimeReady = false;
+
 async function loadData() {
   try {
-  document.getElementById('lastUpdated').textContent = 'Loading…';
-  document.getElementById('errorBanner').style.display = 'none';
+    document.getElementById('lastUpdated').textContent = 'Loading\u2026';
+    document.getElementById('errorBanner').style.display = 'none';
 
-  const PAGE = 1000;
-  let allData = [], page = 0;
-  while (true) {
-    const { data, error } = await db.from('cases').select('*')
-      .order('created_at', { ascending: false })
-      .range(page * PAGE, (page + 1) * PAGE - 1);
-    if (error) {
-      const banner = document.getElementById('errorBanner');
-      banner.style.display = 'block';
-      banner.innerHTML = '<b>⚠ Failed to load data: ' + error.message + '</b>';
-      document.getElementById('lastUpdated').textContent = 'Load failed';
-      setTimeout(loadData, 30000);
-      return;
-    }
-    if (data && data.length) allData = allData.concat(data);
-    if (!data || data.length < PAGE) break;
-    page++;
-  }
+    const rawData = await fbGet('/cases') || {};
+    allRows = Object.values(rawData).map(dbRowToArray).filter(function(r) { return r[1]; });
+    allRows.sort(function(a, b) {
+      const da = parseDate((a[0]||'').trim()), db2 = parseDate((b[0]||'').trim());
+      return (db2 ? db2.getTime() : 0) - (da ? da.getTime() : 0);
+    });
 
-  allRows = allData.map(dbRowToArray);
-  buildDupeSet(allRows);
-  document.getElementById('lastUpdated').textContent = 'Updated [Supabase LIVE ✓] ' + allRows.length + ' cases — ' + new Date().toLocaleTimeString();
-  populateDropdowns();
-  applyFilters();
-  generateAlerts();
-  showNamePromptIfNeeded();
-  toast('Data loaded \u2713 — ' + allRows.length + ' cases', 'success');
-  setTimeout(loadData, 30000); // auto-refresh every 30 seconds
+    buildDupeSet(allRows);
+    document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
+    populateDropdowns();
+    applyFilters();
+    generateAlerts();
+    showNamePromptIfNeeded();
+    toast('Data loaded \u2713 \u2014 ' + allRows.length + ' cases', 'success');
+    realtimeReady = true;
+    setTimeout(loadData, 30000);
   } catch(e) {
     console.error('loadData crash:', e);
     const banner = document.getElementById('errorBanner');
-    if (banner) { banner.style.display = 'block'; banner.innerHTML = '<b>⚠ Unexpected error: ' + e.message + '</b>'; }
+    if (banner) { banner.style.display = 'block'; banner.innerHTML = '<b>\u26a0 Failed to load: ' + e.message + ' \u2014 check Firebase database rules (must be public)</b>'; }
     setTimeout(loadData, 30000);
   }
 }
 
-// ── Real-time: changes by ANY user instantly appear for ALL users ──
+// ── Real-time via Server-Sent Events (Firebase REST SSE) ──
+// Changes by ANY user push instantly to ALL users without polling
 function setupRealtime() {
-  db.channel('cases-live')
-    .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'cases' }, function(payload) {
-      const updated = payload.new;
-      const idx = allRows.findIndex(r => r[1] === updated.ticket_no);
-      if (idx !== -1) { allRows[idx] = dbRowToArray(updated); applyFilters(); }
-    })
-    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'cases' }, function(payload) {
-      const newCase = payload.new;
-      if (!allRows.some(r => r[1] === newCase.ticket_no)) {
-        allRows.unshift(dbRowToArray(newCase));
+  var evtSource;
+  function connect() {
+    if (evtSource) { try { evtSource.close(); } catch(e) {} }
+    evtSource = new EventSource(FIREBASE_DB + '/cases.json?alt=sse');
+
+    // First 'put' event delivers the full cases snapshot for initial load
+    evtSource.addEventListener('put', function(e) {
+      var payload;
+      try { payload = JSON.parse(e.data); } catch(ex) { return; }
+      var path = payload.path || '/';
+      var data = payload.data;
+
+      if (path === '/') {
+        // Full dataset (initial load or full replace)
+        var raw = data || {};
+        allRows = Object.values(raw).map(dbRowToArray).filter(function(r) { return r[1]; });
+        allRows.sort(function(a, b) {
+          var da = parseDate((a[0]||'').trim()), db2 = parseDate((b[0]||'').trim());
+          return (db2 ? db2.getTime() : 0) - (da ? da.getTime() : 0);
+        });
+        buildDupeSet(allRows);
+        document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
+        if (!realtimeReady) {
+          populateDropdowns(); applyFilters(); generateAlerts(); showNamePromptIfNeeded();
+          toast('Data loaded \u2713 \u2014 ' + allRows.length + ' cases', 'success');
+          document.getElementById('errorBanner').style.display = 'none';
+          realtimeReady = true;
+        } else {
+          populateDropdowns(); applyFilters();
+        }
+      } else {
+        // Single case added or replaced: path = '/ticketKey'
+        if (!realtimeReady) return;
+        var tKey = path.replace(/^\//, '');
+        if (!data || !data.ticket_no) return;
+        var idx = allRows.findIndex(function(r) { return ticketKey(r[1]||'') === tKey; });
+        if (idx !== -1) { allRows[idx] = dbRowToArray(data); }
+        else { allRows.unshift(dbRowToArray(data)); toast('New case: ' + data.ticket_no, 'info'); }
         buildDupeSet(allRows); populateDropdowns(); applyFilters();
-        toast('New case added: ' + newCase.ticket_no, 'info');
+        document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
       }
-    })
-    .subscribe();
+    });
+
+    // 'patch' event fires for partial field updates within a case
+    evtSource.addEventListener('patch', function(e) {
+      if (!realtimeReady) return;
+      var payload;
+      try { payload = JSON.parse(e.data); } catch(ex) { return; }
+      var tKey = (payload.path || '').replace(/^\//, '');
+      if (!tKey) return;
+      // Re-fetch just this case to get the full updated object
+      fbGet('/cases/' + tKey).then(function(data) {
+        if (!data || !data.ticket_no) return;
+        var idx = allRows.findIndex(function(r) { return ticketKey(r[1]||'') === tKey; });
+        if (idx !== -1) { allRows[idx] = dbRowToArray(data); applyFilters(); }
+        document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
+      }).catch(function() {});
+    });
+
+    evtSource.addEventListener('error', function() {
+      console.warn('Firebase SSE disconnected — reconnecting in 10s');
+      setTimeout(connect, 10000);
+    });
+  }
+  connect();
 }
 
 // ── Multi-Select Filter Logic ──
@@ -1568,15 +1636,21 @@ async function submitBulkAdd() {
   const btn = document.getElementById('bulkSubmitBtn');
   btn.disabled = true; btn.textContent = 'Adding…';
 
-  // Insert all rows into Supabase first — then update local UI
-  const inserts = rows.map(r => ({
-    case_added_on: r.caseAddedOn, ticket_no: r.ticket, mobile: r.mobile,
-    subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat
-  }));
-  const { error: insertError } = await db.from('cases').upsert(inserts, { onConflict: 'ticket_no', ignoreDuplicates: true });
-  if (insertError) {
-    toast('ERROR saving to database: ' + insertError.message, 'error');
-    btn.disabled = false; btn.textContent = '➕ Add All Cases';
+  // Insert all rows into Firebase first — then update local UI
+  // db.ref().update() is naturally an upsert: existing tickets are overwritten, no duplicate error
+  const updates = {};
+  rows.forEach(function(r) {
+    updates['cases/' + ticketKey(r.ticket)] = {
+      case_added_on: r.caseAddedOn, ticket_no: r.ticket, mobile: r.mobile,
+      subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat,
+      remarks: '', easy_remarks: '', engineer: '', ticket_url: '', col12: '', col13: '', migration_date: ''
+    };
+  });
+  try {
+    await fbPatch('', updates);
+  } catch(e) {
+    toast('ERROR saving to database: ' + e.message, 'error');
+    btn.disabled = false; btn.textContent = '\u2795 Add All Cases';
     return;
   }
 
@@ -1639,19 +1713,20 @@ async function submitAddCase() {
     createdDate = String(d.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[d.getMonth()] + '-' + d.getFullYear();
   }
 
-  // Save to Supabase FIRST — only update UI if insert succeeds
-  const { error } = await db.from('cases').insert({
-    case_added_on: createdDate, ticket_no: ticket, mobile, subcat, cust_name: name, partner, tat
-  });
-
-  if (error) {
-    const msg = error.message || String(error);
-    // Duplicate ticket is the most common failure
-    if (msg.toLowerCase().includes('unique') || msg.toLowerCase().includes('duplicate') || msg.includes('23505')) {
-      toast('ERROR: Ticket ' + ticket + ' already exists in the database', 'error');
-    } else {
-      toast('ERROR saving to database: ' + msg, 'error');
-    }
+  // Save to Firebase FIRST — only update UI if insert succeeds
+  const existing = await fbGet('/cases/' + ticketKey(ticket));
+  if (existing !== null) {
+    toast('ERROR: Ticket ' + ticket + ' already exists in the database', 'error');
+    return;
+  }
+  try {
+    await fbPut('/cases/' + ticketKey(ticket), {
+      case_added_on: createdDate, ticket_no: ticket, mobile: mobile, subcat: subcat,
+      cust_name: name, partner: partner, tat: tat,
+      remarks: '', easy_remarks: '', engineer: '', ticket_url: '', col12: '', col13: '', migration_date: ''
+    });
+  } catch(e) {
+    toast('ERROR saving to database: ' + e.message, 'error');
     return; // Do NOT add to local UI — case was not saved
   }
 
@@ -1748,13 +1823,14 @@ function saveAuditPin() {
   document.getElementById('auditPinInput').value = '';
   toast('Audit PIN set \u2713 — only you can open the audit trail now', 'success');
 }
-// ── Audit log: stored in Supabase (centralized, visible to all users) ──
+// ── Audit log: stored in Firebase RTDB via REST POST (push = auto-key) ──
 function addAuditEntry(ticket, field, oldVal, newVal) {
   if (String(oldVal||'').trim() === String(newVal||'').trim()) return;
-  db.from('audit_log').insert({
+  fbPost('/audit_log', {
     user_name: getUser(), ticket_no: String(ticket||''),
-    field: String(field||''), old_value: String(oldVal||''), new_value: String(newVal||'')
-  }).then(function(r) { if (r.error) console.warn('Audit log error:', r.error.message); });
+    field: String(field||''), old_value: String(oldVal||''), new_value: String(newVal||''),
+    ts: new Date().toISOString()
+  }).catch(function(e) { console.warn('Audit log error:', e.message); });
 }
 async function openAuditModal() {
   const pin = localStorage.getItem(AUDIT_PIN_KEY);
@@ -1764,11 +1840,15 @@ async function openAuditModal() {
     if (entered !== pin) { toast('Incorrect PIN — access denied', 'error'); return; }
   }
   document.getElementById('auditModal').classList.add('open');
-  document.getElementById('auditCount').textContent = 'Loading…';
+  document.getElementById('auditCount').textContent = 'Loading\u2026';
   document.getElementById('auditBody').innerHTML = '';
-  const { data, error } = await db.from('audit_log').select('*').order('ts', { ascending: false }).limit(500);
-  if (error) { toast('Failed to load audit log: ' + error.message, 'error'); return; }
-  renderAuditLog(data || []);
+  try {
+    const raw = await fbGet('/audit_log') || {};
+    const entries = Object.values(raw).sort(function(a, b) { return b.ts > a.ts ? 1 : -1; }).slice(0, 500);
+    renderAuditLog(entries);
+  } catch(e) {
+    toast('Failed to load audit log: ' + e.message, 'error');
+  }
 }
 function closeAuditModal() { document.getElementById('auditModal').classList.remove('open'); }
 function renderAuditLog(log) {
@@ -1791,20 +1871,24 @@ function renderAuditLog(log) {
   }).join('');
 }
 async function downloadAuditCSV() {
-  const { data, error } = await db.from('audit_log').select('*').order('ts', { ascending: false });
-  if (error) { toast('Download failed: ' + error.message, 'error'); return; }
-  const q = function(v) { return '"' + String(v||'').replace(/"/g,'""') + '"'; };
-  const lines = [
-    ['Date & Time','Edited By','Ticket','Field','Old Value','New Value'].map(q).join(','),
-    ...(data||[]).map(function(e) {
-      return [new Date(e.ts).toLocaleString('en-IN'), e.user_name||'', e.ticket_no||'', e.field||'', e.old_value||'', e.new_value||''].map(q).join(',');
-    })
-  ];
-  const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = 'audit-trail-' + new Date().toISOString().slice(0,10) + '.csv';
-  a.click(); URL.revokeObjectURL(a.href);
+  try {
+    const raw = await fbGet('/audit_log') || {};
+    const entries = Object.values(raw).sort(function(a, b) { return b.ts > a.ts ? 1 : -1; });
+    const q = function(v) { return '"' + String(v||'').replace(/"/g,'""') + '"'; };
+    const lines = [
+      ['Date & Time','Edited By','Ticket','Field','Old Value','New Value'].map(q).join(','),
+      ...entries.map(function(e) {
+        return [new Date(e.ts).toLocaleString('en-IN'), e.user_name||'', e.ticket_no||'', e.field||'', e.old_value||'', e.new_value||''].map(q).join(',');
+      })
+    ];
+    const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'audit-trail-' + new Date().toISOString().slice(0,10) + '.csv';
+    a.click(); URL.revokeObjectURL(a.href);
+  } catch(e) {
+    toast('Download failed: ' + e.message, 'error');
+  }
 }
 
 // ── Data Import (one-time migration from Google Sheets CSV) ──
@@ -1832,13 +1916,13 @@ async function runImport() {
   var text = document.getElementById('importPaste').value.trim();
   if (!text) { toast('Paste CSV data first', 'error'); return; }
   var parsed = parseCSV(text);
-  var rows = parsed.slice(1).filter(r => (r[1]||'').trim());
+  var rows = parsed.slice(1).filter(function(r) { return (r[1]||'').trim(); });
   if (!rows.length) { toast('No valid rows found', 'error'); return; }
 
   var btn = document.getElementById('importBtn');
   btn.disabled = true;
 
-  var batch = rows.map(r => ({
+  var batch = rows.map(function(r) { return {
     case_added_on:  (r[0]||'').trim(),
     ticket_no:      (r[1]||'').trim(),
     created_date:   (r[2]||'').trim(),
@@ -1854,19 +1938,26 @@ async function runImport() {
     col12:          (r[12]||'').trim(),
     col13:          (r[13]||'').trim(),
     migration_date: (r[14]||'').trim()
-  }));
+  }; });
 
   var inserted = 0;
-  for (var i = 0; i < batch.length; i += 100) {
-    var chunk = batch.slice(i, i + 100);
-    btn.textContent = 'Importing… ' + Math.min(i + 100, batch.length) + '/' + batch.length;
-    var { error } = await db.from('cases').upsert(chunk, { onConflict: 'ticket_no', ignoreDuplicates: false });
-    if (error) { toast('Import error at row ' + i + ': ' + error.message, 'error'); btn.disabled = false; btn.textContent = '📥 Import to Supabase'; return; }
-    inserted += chunk.length;
+  for (var i = 0; i < batch.length; i += 200) {
+    var chunk = batch.slice(i, i + 200);
+    btn.textContent = 'Importing\u2026 ' + Math.min(i + 200, batch.length) + '/' + batch.length;
+    var updates = {};
+    chunk.forEach(function(item) { updates['cases/' + ticketKey(item.ticket_no)] = item; });
+    try {
+      await fbPatch('', updates);
+      inserted += chunk.length;
+    } catch(e) {
+      toast('Import error at row ' + i + ': ' + e.message, 'error');
+      btn.disabled = false; btn.textContent = '\uD83D\uDCE5 Import to Firebase';
+      return;
+    }
   }
 
-  btn.disabled = false; btn.textContent = '📥 Import to Supabase';
-  toast(inserted + ' cases imported ✓', 'success');
+  btn.disabled = false; btn.textContent = '\uD83D\uDCE5 Import to Firebase';
+  toast(inserted + ' cases imported \u2713', 'success');
   closeImportModal();
   loadData();
 }
@@ -1876,7 +1967,6 @@ loadEdits();
 (function() {
   if (localStorage.getItem(AUDIT_PIN_KEY)) revealAdminButtons();
 })();
-try { setupRealtime(); } catch(e) { console.warn('Realtime setup failed (non-fatal):', e.message); }
 (function() {
   const saved = localStorage.getItem(USER_KEY);
   if (saved) {
@@ -1885,7 +1975,8 @@ try { setupRealtime(); } catch(e) { console.warn('Realtime setup failed (non-fat
   }
   updateUserBadge();
 })();
-loadData();
+// setupRealtime() handles initial data load via SSE + keeps data live in real-time
+setupRealtime();
 </script>
 </body>
 </html>
