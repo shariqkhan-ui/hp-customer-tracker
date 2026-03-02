@@ -974,11 +974,11 @@ function parseDate(s) {
     const mo = MON[m[2].toLowerCase()];
     if (mo !== undefined) return new Date(+m[3], mo, +m[1]);
   }
-  // M/D/YYYY or D-M-YYYY (numeric)
+  // DD-MM-YYYY or DD/MM/YYYY (always treat first part as day, second as month)
   m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
   if (m) {
-    const a = +m[1], b = +m[2], yr = +m[3];
-    return new Date(yr, a > 12 ? b - 1 : a - 1, a > 12 ? a : b);
+    const day = +m[1], month = +m[2], yr = +m[3];
+    return new Date(yr, month - 1, day);
   }
   return null;
 }
@@ -1526,7 +1526,7 @@ function parseBulkRows(text) {
 
   // Parse data rows (skip header)
   const today = new Date();
-  const todayFmt = String(today.getDate()).padStart(2,'0') + '-' + MONTHS_SHORT[today.getMonth()] + '-' + today.getFullYear();
+  const todayFmt = String(today.getDate()).padStart(2,'0') + '-' + String(today.getMonth()+1).padStart(2,'0') + '-' + today.getFullYear();
   const rows = lines.slice(1).map(line => {
     const cols = splitLine(line);
     const get  = i => cols[i] || '';
