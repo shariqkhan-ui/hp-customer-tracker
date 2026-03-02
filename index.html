@@ -1573,7 +1573,7 @@ async function submitBulkAdd() {
     case_added_on: r.caseAddedOn, ticket_no: r.ticket, mobile: r.mobile,
     subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat
   }));
-  const { error: insertError } = await db.from('cases').insert(inserts);
+  const { error: insertError } = await db.from('cases').upsert(inserts, { onConflict: 'ticket_no', ignoreDuplicates: true });
   if (insertError) {
     toast('ERROR saving to database: ' + insertError.message, 'error');
     btn.disabled = false; btn.textContent = '➕ Add All Cases';
