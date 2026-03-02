@@ -1069,12 +1069,22 @@ async function loadData() {
 // Changes by ANY user push instantly to ALL users without polling
 function setupRealtime() {
   var evtSource;
+  var sseReady = false;
+  // Fallback: if SSE doesn't deliver data within 8s (blocked network), use REST polling
+  var sseTimer = setTimeout(function() {
+    if (!realtimeReady) {
+      console.warn('SSE timeout — falling back to REST polling');
+      loadData();
+    }
+  }, 8000);
+
   function connect() {
     if (evtSource) { try { evtSource.close(); } catch(e) {} }
     evtSource = new EventSource(FIREBASE_DB + '/cases.json?alt=sse');
 
     // First 'put' event delivers the full cases snapshot for initial load
     evtSource.addEventListener('put', function(e) {
+      clearTimeout(sseTimer); sseReady = true;
       var payload;
       try { payload = JSON.parse(e.data); } catch(ex) { return; }
       var path = payload.path || '/';
@@ -1114,6 +1124,7 @@ function setupRealtime() {
     // 'patch' event fires for partial field updates within a case
     evtSource.addEventListener('patch', function(e) {
       if (!realtimeReady) return;
+      clearTimeout(sseTimer); sseReady = true;
       var payload;
       try { payload = JSON.parse(e.data); } catch(ex) { return; }
       var tKey = (payload.path || '').replace(/^\//, '');
@@ -1129,6 +1140,11 @@ function setupRealtime() {
 
     evtSource.addEventListener('error', function() {
       console.warn('Firebase SSE disconnected — reconnecting in 10s');
+      if (!sseReady && !realtimeReady) {
+        // SSE never connected — start polling as backup
+        clearTimeout(sseTimer);
+        if (!realtimeReady) loadData();
+      }
       setTimeout(connect, 10000);
     });
   }
