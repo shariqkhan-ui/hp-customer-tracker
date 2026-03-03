@@ -268,8 +268,15 @@ function extractTickets(obj, depth = 0) {
       await page.press('input[type="password"]', 'Enter');
     }
 
-    // Wait for redirect into the app
-    await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 });
+    // Kapture is a SPA — after login it may update state without a full navigation.
+    // Wait for the URL to leave the login page, or for the app shell to load.
+    await page.waitForFunction(
+      () => !window.location.href.includes('/employee/index.html'),
+      { timeout: 30000 }
+    ).catch(async () => {
+      // If URL didn't change, wait for any main-app element to appear
+      await page.waitForSelector('.MuiAppBar-root, #main-container, .dashboard, nav, [class*="header"], [class*="sidebar"]', { timeout: 15000 });
+    });
     log('Login successful. URL: ' + page.url());
 
     // ── Step 2: Navigate to the all-tickets list view ─────────────────────────
