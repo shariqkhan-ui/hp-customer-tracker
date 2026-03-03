@@ -236,43 +236,28 @@ function extractTickets(obj, depth = 0) {
     // ── Step 1: Login ─────────────────────────────────────────────────────────
     log('Navigating to Kapture…');
 
-    // Navigate to root — let Kapture redirect to login
-    await page.goto(KAPTURE_BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
-    await page.waitForTimeout(5000); // Give SPA time to boot
+    // WIOM Employee Login is at /employee/index.html — two-step login
+    // Step 1: enter username → click Next → Step 2: enter password → click Login
+    log('Navigating to WIOM Employee Login…');
+    await page.goto(KAPTURE_BASE + '/employee/index.html', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Log what actually loaded — helps diagnose IP blocks or redirects
-    log('Page URL after load: ' + page.url());
-    log('Page title: ' + await page.title());
-    const bodyText = await page.evaluate(() => document.body ? document.body.innerText.slice(0, 500) : '(empty)');
-    log('Page body preview: ' + bodyText);
-    await page.screenshot({ path: 'page-load.png', fullPage: true });
+    // Step 1: fill username and click Next
+    log('Step 1: entering username…');
+    await page.waitForSelector('#username_', { timeout: 15000 });
+    await page.fill('#username_', username);
+    await page.click('#nxt_button');
 
-    // Kapture is a Material UI SPA — wait up to 30s for the login form to render
-    log('Waiting for login form (MUI SPA)…');
-    await page.waitForSelector('input.MuiInputBase-input', { timeout: 30000 });
+    // Step 2: wait for password field to appear after SSO validation
+    log('Step 2: waiting for password field…');
+    await page.waitForSelector('input[type="password"]', { timeout: 15000 });
+    await page.fill('input[type="password"]', password);
 
-    // Get all visible MUI inputs on the login form
-    const muiInputs = await page.$$('input.MuiInputBase-input');
-    log(`Found ${muiInputs.length} MUI input(s) on login page`);
+    // Click the Login button
+    await page.click('button:has-text("Login"), input[type="submit"], button[type="submit"]');
 
-    if (muiInputs.length < 2) {
-      throw new Error(`Expected at least 2 inputs (username + password), found ${muiInputs.length}`);
-    }
-
-    // First input = username/email, password input = type="password"
-    await muiInputs[0].fill(username);
-
-    const passwordInput = await page.$('input[type="password"]');
-    if (!passwordInput) throw new Error('Password input not found on login page');
-    await passwordInput.fill(password);
-
-    // Click the login/submit button
-    const submitSel = 'button[type="submit"], button:has-text("Login"), button:has-text("Sign in"), button:has-text("Log in"), button:has-text("LOGIN"), button:has-text("SIGN IN")';
-    await page.click(submitSel);
-
-    // Wait for redirect to main app after login
+    // Wait for redirect into the app
     await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 });
-    log('Login successful. URL after login: ' + page.url());
+    log('Login successful. URL: ' + page.url());
 
     // ── Step 2: Navigate to the all-tickets list view ─────────────────────────
     // Load the tickets list page — Kapture will fire its internal API calls
