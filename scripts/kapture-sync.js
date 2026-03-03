@@ -238,6 +238,14 @@ function extractTickets(obj, depth = 0) {
 
     // Navigate to root — let Kapture redirect to login
     await page.goto(KAPTURE_BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
+    await page.waitForTimeout(5000); // Give SPA time to boot
+
+    // Log what actually loaded — helps diagnose IP blocks or redirects
+    log('Page URL after load: ' + page.url());
+    log('Page title: ' + await page.title());
+    const bodyText = await page.evaluate(() => document.body ? document.body.innerText.slice(0, 500) : '(empty)');
+    log('Page body preview: ' + bodyText);
+    await page.screenshot({ path: 'page-load.png', fullPage: true });
 
     // Kapture is a Material UI SPA — wait up to 30s for the login form to render
     log('Waiting for login form (MUI SPA)…');
