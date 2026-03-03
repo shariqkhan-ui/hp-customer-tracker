@@ -234,57 +234,37 @@ function extractTickets(obj, depth = 0) {
     });
 
     // ── Step 1: Login ─────────────────────────────────────────────────────────
-    log('Navigating to Kapture login…');
+    log('Navigating to Kapture…');
 
-    // Try multiple possible login URLs
-    const loginUrls = [
-      KAPTURE_BASE + '/nui/login',
-      KAPTURE_BASE + '/login',
-      KAPTURE_BASE + '/',
-      KAPTURE_BASE,
-    ];
+    // Navigate to root — let Kapture redirect to login
+    await page.goto(KAPTURE_BASE, { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    let loginFound = false;
-    for (const loginUrl of loginUrls) {
-      log(`Trying login URL: ${loginUrl}`);
-      await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
-      await page.waitForTimeout(3000); // Wait for SPA to render
+    // Kapture is a Material UI SPA — wait up to 30s for the login form to render
+    log('Waiting for login form (MUI SPA)…');
+    await page.waitForSelector('input.MuiInputBase-input', { timeout: 30000 });
 
-      // Screenshot for debugging — saved as artifact
-      await page.screenshot({ path: 'login-page.png', fullPage: true });
-      log(`Screenshot saved for: ${loginUrl}`);
+    // Get all visible MUI inputs on the login form
+    const muiInputs = await page.$$('input.MuiInputBase-input');
+    log(`Found ${muiInputs.length} MUI input(s) on login page`);
 
-      // Log all visible inputs to help identify correct selectors
-      const inputs = await page.$$eval('input', els =>
-        els.map(el => ({ type: el.type, name: el.name, id: el.id, placeholder: el.placeholder }))
-      );
-      log(`Inputs found on page: ${JSON.stringify(inputs)}`);
-
-      const hasInput = await page.$('input');
-      if (hasInput) {
-        log(`Login form found at: ${loginUrl}`);
-        loginFound = true;
-        break;
-      }
+    if (muiInputs.length < 2) {
+      throw new Error(`Expected at least 2 inputs (username + password), found ${muiInputs.length}`);
     }
 
-    if (!loginFound) {
-      throw new Error('Could not find login form on any known Kapture URL. Check login-page.png artifact.');
-    }
+    // First input = username/email, password input = type="password"
+    await muiInputs[0].fill(username);
 
-    // Try common login form selectors
-    const emailSel    = 'input[type="email"], input[type="text"], input[name="email"], input[name="username"], input[name="user_name"], input[name="userId"], #email, #username, input[placeholder*="email" i], input[placeholder*="user" i], input[placeholder*="mobile" i], input[placeholder*="phone" i]';
-    const passwordSel = 'input[type="password"], input[name="password"], input[name="passwd"], #password';
-    const submitSel   = 'button[type="submit"], input[type="submit"], .login-btn, .btn-login, button:has-text("Login"), button:has-text("Sign in"), button:has-text("Log in")';
+    const passwordInput = await page.$('input[type="password"]');
+    if (!passwordInput) throw new Error('Password input not found on login page');
+    await passwordInput.fill(password);
 
-    await page.fill(emailSel, username);
-    await page.fill(passwordSel, password);
-    await page.screenshot({ path: 'login-filled.png' });
+    // Click the login/submit button
+    const submitSel = 'button[type="submit"], button:has-text("Login"), button:has-text("Sign in"), button:has-text("Log in"), button:has-text("LOGIN"), button:has-text("SIGN IN")';
     await page.click(submitSel);
 
+    // Wait for redirect to main app after login
     await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 });
-    await page.screenshot({ path: 'after-login.png' });
-    log('Login step complete. URL after login: ' + page.url());
+    log('Login successful. URL after login: ' + page.url());
 
     // ── Step 2: Navigate to the all-tickets list view ─────────────────────────
     // Load the tickets list page — Kapture will fire its internal API calls
