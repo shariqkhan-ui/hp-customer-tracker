@@ -241,19 +241,32 @@ function extractTickets(obj, depth = 0) {
     log('Navigating to WIOM Employee Login…');
     await page.goto(KAPTURE_BASE + '/employee/index.html', { waitUntil: 'domcontentloaded', timeout: 30000 });
 
-    // Step 1: fill username and click Next
+    // Step 1: fill username
     log('Step 1: entering username…');
     await page.waitForSelector('#username_', { timeout: 15000 });
     await page.fill('#username_', username);
-    await page.click('#nxt_button');
 
-    // Step 2: wait for password field to appear after SSO validation
+    // Try clicking Next button (may be hidden — use force), or press Enter
+    log('Step 1: submitting username…');
+    try {
+      await page.click('#nxt_button', { force: true, timeout: 5000 });
+    } catch {
+      // Fallback: press Enter on the username field
+      await page.press('#username_', 'Enter');
+    }
+
+    // Step 2: wait for password field to appear
     log('Step 2: waiting for password field…');
-    await page.waitForSelector('input[type="password"]', { timeout: 15000 });
+    await page.waitForSelector('input[type="password"]', { timeout: 20000 });
     await page.fill('input[type="password"]', password);
+    log('Step 2: submitting password…');
 
-    // Click the Login button
-    await page.click('button:has-text("Login"), input[type="submit"], button[type="submit"]');
+    // Press Enter or click Login button
+    try {
+      await page.click('button:has-text("Login")', { timeout: 5000 });
+    } catch {
+      await page.press('input[type="password"]', 'Enter');
+    }
 
     // Wait for redirect into the app
     await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 });
