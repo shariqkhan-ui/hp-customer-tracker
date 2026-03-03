@@ -793,11 +793,52 @@ const REMARKS_OPTIONS = [
   'Migration is in Progress','Cx not contactable/Reachable',
   'Migration not possible/Refund','Customer not interested in Migration'
 ];
+// Map old free-text remarks to the closest standard dropdown option
+function mapOldRemark(raw) {
+  if (!raw || !raw.trim()) return null;
+  const r = raw.trim().toLowerCase();
+  if (REMARKS_OPTIONS.includes(raw.trim())) return null; // already standard
+  if (r.includes('no overlapping') || r.includes('no overlap')) return 'No Overlapping Partner/Refund';
+  if (r.includes('resolved by old') || r.includes('old partner')) return 'Resolved by Old Partner';
+  if (r.includes('not possible')) return 'Migration not possible/Refund';
+  if (r.includes('in progress') || r.includes('wip')) return 'Migration is in Progress';
+  if (r.includes('not contactable') || r.includes('not reachable') || r.includes('cnc') || r.includes('cnr') || r.includes('not picking') || r.includes('unreachable')) return 'Cx not contactable/Reachable';
+  if (r.includes('not interested') || r.includes('not intrested')) return 'Customer not interested in Migration';
+  if (r.includes('refund')) return 'Migration not possible/Refund';
+  if (r.includes('migrat')) return 'Migrated';
+  return null; // no mapping found — show raw value as-is
+}
+
+let remarksAutoMigrated = false;
+async function autoMigrateRemarks() {
+  if (remarksAutoMigrated) return;
+  remarksAutoMigrated = true;
+  const toUpdate = allRows.filter(function(r) {
+    const rem = (r[8] || '').trim();
+    return rem && !REMARKS_OPTIONS.includes(rem) && mapOldRemark(rem) !== null;
+  });
+  if (toUpdate.length === 0) return;
+  toast('Auto-fixing ' + toUpdate.length + ' old remark(s)\u2026', 'info');
+  let successCount = 0;
+  for (const row of toUpdate) {
+    const ticket = (row[1] || '').trim();
+    const newRem = mapOldRemark((row[8] || '').trim());
+    if (!newRem || !ticket) continue;
+    try {
+      await fbPut('/cases/' + ticketKey(ticket) + '/remarks', newRem);
+      row[8] = newRem;
+      successCount++;
+    } catch(e) {
+      console.warn('autoMigrate failed for ' + ticket + ':', e);
+    }
+  }
+  if (successCount > 0) { applyFilters(); toast(successCount + ' old remark(s) auto-fixed \u2713', 'success'); }
+}
+
 function makeEditCell(ticket, field, orig) {
   // orig = value already in allRows (patched on save, refreshed from sheet on loadData)
   // Never read localStorage here — allRows is the single source of truth
   let display = orig;
-  if (field === 'remarks' && !REMARKS_OPTIONS.includes(display.trim())) display = '';
   return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="' + esc(field) +
     '" data-orig="' + esc(orig) + '" onclick="startEdit(this)" style="max-width:180px">' + cellInner(display) + '</td>';
 }
@@ -1052,6 +1093,7 @@ async function loadData() {
     document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
     populateDropdowns();
     applyFilters();
+    autoMigrateRemarks();
     generateAlerts();
     showNamePromptIfNeeded();
     toast('Data loaded \u2713 \u2014 ' + allRows.length + ' cases', 'success');
