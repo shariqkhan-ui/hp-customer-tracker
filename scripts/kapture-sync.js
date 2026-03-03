@@ -114,37 +114,39 @@ async function queryMetabase(sql, apiKey) {
   // Table: PUBLIC.SERVICE_TICKET_MODEL (Metabase table ID 5599, DB 113)
   const sql = `
     SELECT
-      KAPTURE_TICKET_ID,
-      CUSTOMER_MOBILE,
-      CURRENT_PARTNER_NAME                               AS PARTNER,
-      FIRST_TITLE                                        AS SUB_CATEGORY,
-      FLOOR(TOTALTAT_TILLNOW_MINS_CALENDARHRS / 60)     AS TAT_HOURS,
-      CURRENT_TICKET_STATUS,
-      TO_CHAR(TICKET_ADDED_TIME, 'DD/Mon/YYYY')         AS CREATED_DATE
-    FROM SERVICE_TICKET_MODEL
+      stm.KAPTURE_TICKET_ID,
+      stm.CUSTOMER_MOBILE,
+      c.NAME                                             AS CUSTOMER_NAME,
+      stm.CURRENT_PARTNER_NAME                          AS PARTNER,
+      stm.FIRST_TITLE                                   AS SUB_CATEGORY,
+      FLOOR(stm.TOTALTAT_TILLNOW_MINS_CALENDARHRS / 60) AS TAT_HOURS,
+      stm.CURRENT_TICKET_STATUS,
+      TO_CHAR(stm.TICKET_ADDED_TIME, 'DD/Mon/YYYY')    AS CREATED_DATE
+    FROM SERVICE_TICKET_MODEL stm
+    LEFT JOIN COMBINED_T_WG_CUSTOMER c
+      ON c.MOBILE = stm.CUSTOMER_MOBILE
     WHERE
       -- Internet-related sub-category
       (
-        FIRST_TITLE ILIKE '%internet supply down%'
-        OR FIRST_TITLE ILIKE '%slow speed%'
-        OR FIRST_TITLE ILIKE '%frequent disconnection%'
-        OR FIRST_TITLE ILIKE '%recharge done but no internet%'
-        OR FIRST_TITLE ILIKE '%internet not working%'
-        OR FIRST_TITLE ILIKE '%no internet%'
-        OR FIRST_TITLE ILIKE '%internet issue%'
-        OR FIRST_TITLE ILIKE '%internet%'
+        stm.FIRST_TITLE ILIKE '%internet supply down%'
+        OR stm.FIRST_TITLE ILIKE '%slow speed%'
+        OR stm.FIRST_TITLE ILIKE '%frequent disconnection%'
+        OR stm.FIRST_TITLE ILIKE '%recharge done but no internet%'
+        OR stm.FIRST_TITLE ILIKE '%internet not working%'
+        OR stm.FIRST_TITLE ILIKE '%no internet%'
+        OR stm.FIRST_TITLE ILIKE '%internet issue%'
+        OR stm.FIRST_TITLE ILIKE '%internet%'
       )
       -- Not resolved
-      AND IS_RESOLVED = 0
+      AND stm.IS_RESOLVED = 0
       -- Not reopened (excluded per requirement)
-      AND TIMES_REOPENED = 0
+      AND stm.TIMES_REOPENED = 0
       -- Only cases that CROSSED 72 hours TODAY
-      -- i.e. created between 96 and 72 hours ago → just hit the 72-hr threshold in last 24 hrs
-      AND TICKET_ADDED_TIME >= DATEADD(HOUR, -96, CURRENT_TIMESTAMP())
-      AND TICKET_ADDED_TIME <  DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
+      AND stm.TICKET_ADDED_TIME >= DATEADD(HOUR, -96, CURRENT_TIMESTAMP())
+      AND stm.TICKET_ADDED_TIME <  DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
       -- Must have a valid Kapture ticket ID
-      AND KAPTURE_TICKET_ID IS NOT NULL
-      AND KAPTURE_TICKET_ID != ''
+      AND stm.KAPTURE_TICKET_ID IS NOT NULL
+      AND stm.KAPTURE_TICKET_ID != ''
   `;
 
   log('Running Metabase query…');
@@ -188,7 +190,7 @@ async function queryMetabase(sql, apiKey) {
       created_date:   String(t.CREATED_DATE || '').trim(),
       mobile:         String(t.CUSTOMER_MOBILE || '').trim(),
       subcat:         String(t.SUB_CATEGORY    || '').trim(),
-      cust_name:      '',
+      cust_name:      String(t.CUSTOMER_NAME || '').trim(),
       partner:        String(t.PARTNER         || '').trim(),
       tat:            tatLabel,
       remarks:        '',
