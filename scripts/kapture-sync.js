@@ -143,6 +143,8 @@ async function queryMetabase(sql, apiKey) {
       -- Must have a valid Kapture ticket ID
       AND KAPTURE_TICKET_ID IS NOT NULL
       AND KAPTURE_TICKET_ID != ''
+      -- Only look at tickets from last 30 days to keep query fast
+      AND TICKET_ADDED_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())
   `;
 
   log('Running Metabase query…');
