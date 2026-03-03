@@ -35,4 +35,4 @@ jobs:
           curl -s -X POST "https://slack.com/api/chat.postMessage" \
             -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
             -H "Content-type: application/json" \
-            -d '{"channel":"C0AHDR8H4CC","username":"Shariq'\''s Slack Agent","text":"<!channel> New cases have been added in the tracker \u2014 check it here: https://shariqkhan-ui.github.io/hp-customer-tracker/"}'
+            -d '{"channel":"C0AHDR8H4CC","as_user":false,"username":"Shariq'\''s Slack Agent","text":"<!channel> New cases have been added in the tracker \u2014 check it here: https://shariqkhan-ui.github.io/hp-customer-tracker/"}'
