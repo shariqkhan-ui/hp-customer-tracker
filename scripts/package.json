@@ -1,0 +1,12 @@
+{
+  "name": "kapture-sync",
+  "version": "1.0.0",
+  "description": "Auto-sync internet-related 72hr+ pending cases from Kapture to High Pain Tracker",
+  "main": "kapture-sync.js",
+  "scripts": {
+    "start": "node kapture-sync.js"
+  },
+  "dependencies": {
+    "playwright": "^1.42.0"
+  }
+}
