@@ -118,9 +118,9 @@ async function queryMetabase(sql, apiKey) {
       CUSTOMER_MOBILE,
       CURRENT_PARTNER_NAME                               AS PARTNER,
       FIRST_TITLE                                        AS SUB_CATEGORY,
-      ROUND(TOTALTAT_TILLNOW_MINS_CALENDARHRS / 60, 1)  AS TAT_HOURS,
+      FLOOR(TOTALTAT_TILLNOW_MINS_CALENDARHRS / 60)     AS TAT_HOURS,
       CURRENT_TICKET_STATUS,
-      TICKET_ADDED_TIME
+      TO_CHAR(TICKET_ADDED_TIME, 'DD/Mon/YYYY')         AS CREATED_DATE
     FROM SERVICE_TICKET_MODEL
     WHERE
       -- Internet-related sub-category
@@ -177,14 +177,18 @@ async function queryMetabase(sql, apiKey) {
       continue;
     }
 
+    const tatHours = t.TAT_HOURS || 72;
+    const tatLabel = tatHours >= 120 ? '>120 hrs' : tatHours >= 72 ? '>72 hrs' : tatHours + ' hrs';
+
     const payload = {
       case_added_on:  todayStr(),
       ticket_no:      ticketId,
+      created_date:   String(t.CREATED_DATE || '').trim(),
       mobile:         String(t.CUSTOMER_MOBILE || '').trim(),
       subcat:         String(t.SUB_CATEGORY    || '').trim(),
       cust_name:      '',
       partner:        String(t.PARTNER         || '').trim(),
-      tat:            t.TAT_HOURS ? t.TAT_HOURS + ' hrs' : '72+ hrs',
+      tat:            tatLabel,
       remarks:        '',
       easy_remarks:   '',
       engineer:       '',
@@ -196,7 +200,7 @@ async function queryMetabase(sql, apiKey) {
 
     try {
       await fbPut('/cases/' + key, payload);
-      log(`  Added ticket=${ticketId} subcat="${t.SUB_CATEGORY}" tat="${t.TAT_HOURS} hrs"`);
+      log(`  Added ticket=${ticketId} subcat="${t.SUB_CATEGORY}" tat="${tatLabel}"`);
       added++;
     } catch (e) {
       log(`  ERROR adding ticket=${ticketId}: ${e.message}`);
