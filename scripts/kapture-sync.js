@@ -261,22 +261,41 @@ function extractTickets(obj, depth = 0) {
     await page.fill('input[type="password"]', password);
     log('Step 2: submitting password…');
 
-    // Press Enter or click Login button
-    try {
-      await page.click('button:has-text("Login")', { timeout: 5000 });
-    } catch {
-      await page.press('input[type="password"]', 'Enter');
+    // Click Login button — try multiple selectors, fallback to JS click
+    log('Step 2: clicking Login button…');
+    const loginClicked = await page.evaluate(() => {
+      const candidates = [...document.querySelectorAll('button, input[type="submit"]')];
+      const loginBtn = candidates.find(el =>
+        /login|sign in|submit/i.test(el.textContent || el.value || '')
+      );
+      if (loginBtn) { loginBtn.click(); return true; }
+      // Last resort: submit the form directly
+      const form = document.querySelector('form');
+      if (form) { form.submit(); return 'form'; }
+      return false;
+    });
+    log('Login button click result: ' + loginClicked);
+
+    // Wait 5s then screenshot to see what happened
+    await page.waitForTimeout(5000);
+    await page.screenshot({ path: 'after-submit.png', fullPage: true });
+    log('Post-submit URL: ' + page.url());
+    log('Post-submit title: ' + await page.title());
+
+    // Check if still on login page (login may have failed)
+    const stillOnLogin = page.url().includes('/employee/index.html');
+    if (stillOnLogin) {
+      // Log any error message shown on page
+      const errorMsg = await page.evaluate(() => {
+        const err = document.querySelector('.error, .alert, [class*="error"], [class*="alert"], [class*="message"]');
+        return err ? err.innerText : null;
+      });
+      if (errorMsg) log('Login error on page: ' + errorMsg);
+      throw new Error('Still on login page after submission. Check after-submit.png artifact.');
     }
 
-    // Kapture is a SPA — after login it may update state without a full navigation.
-    // Wait for the URL to leave the login page, or for the app shell to load.
-    await page.waitForFunction(
-      () => !window.location.href.includes('/employee/index.html'),
-      { timeout: 30000 }
-    ).catch(async () => {
-      // If URL didn't change, wait for any main-app element to appear
-      await page.waitForSelector('.MuiAppBar-root, #main-container, .dashboard, nav, [class*="header"], [class*="sidebar"]', { timeout: 15000 });
-    });
+    // Wait for the main app to fully load
+    await page.waitForLoadState('networkidle', { timeout: 30000 });
     log('Login successful. URL: ' + page.url());
 
     // ── Step 2: Navigate to the all-tickets list view ─────────────────────────
