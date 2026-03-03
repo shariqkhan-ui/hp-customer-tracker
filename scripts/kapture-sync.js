@@ -136,15 +136,15 @@ async function queryMetabase(sql, apiKey) {
       )
       -- Not resolved
       AND IS_RESOLVED = 0
-      -- Not reopened
+      -- Not reopened (excluded per requirement)
       AND TIMES_REOPENED = 0
-      -- Pending more than 72 hours (4320 minutes)
-      AND TOTALTAT_TILLNOW_MINS_CALENDARHRS >= 4320
+      -- Only cases that CROSSED 72 hours TODAY
+      -- i.e. created between 96 and 72 hours ago → just hit the 72-hr threshold in last 24 hrs
+      AND TICKET_ADDED_TIME >= DATEADD(HOUR, -96, CURRENT_TIMESTAMP())
+      AND TICKET_ADDED_TIME <  DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
       -- Must have a valid Kapture ticket ID
       AND KAPTURE_TICKET_ID IS NOT NULL
       AND KAPTURE_TICKET_ID != ''
-      -- Only look at tickets from last 30 days to keep query fast
-      AND TICKET_ADDED_TIME >= DATEADD(DAY, -30, CURRENT_TIMESTAMP())
   `;
 
   log('Running Metabase query…');
