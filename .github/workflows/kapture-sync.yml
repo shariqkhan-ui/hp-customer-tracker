@@ -39,3 +39,11 @@ jobs:
           KAPTURE_USERNAME: ${{ secrets.KAPTURE_USERNAME }}
           KAPTURE_PASSWORD: ${{ secrets.KAPTURE_PASSWORD }}
         run: node kapture-sync.js
+
+      - name: Upload debug screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: kapture-debug-screenshots
+          path: scripts/*.png
+          retention-days: 1

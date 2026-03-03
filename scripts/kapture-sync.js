@@ -235,20 +235,56 @@ function extractTickets(obj, depth = 0) {
 
     // ── Step 1: Login ─────────────────────────────────────────────────────────
     log('Navigating to Kapture login…');
-    await page.goto(KAPTURE_BASE + '/nui/login', { waitUntil: 'networkidle', timeout: 30000 });
+
+    // Try multiple possible login URLs
+    const loginUrls = [
+      KAPTURE_BASE + '/nui/login',
+      KAPTURE_BASE + '/login',
+      KAPTURE_BASE + '/',
+      KAPTURE_BASE,
+    ];
+
+    let loginFound = false;
+    for (const loginUrl of loginUrls) {
+      log(`Trying login URL: ${loginUrl}`);
+      await page.goto(loginUrl, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      await page.waitForTimeout(3000); // Wait for SPA to render
+
+      // Screenshot for debugging — saved as artifact
+      await page.screenshot({ path: 'login-page.png', fullPage: true });
+      log(`Screenshot saved for: ${loginUrl}`);
+
+      // Log all visible inputs to help identify correct selectors
+      const inputs = await page.$$eval('input', els =>
+        els.map(el => ({ type: el.type, name: el.name, id: el.id, placeholder: el.placeholder }))
+      );
+      log(`Inputs found on page: ${JSON.stringify(inputs)}`);
+
+      const hasInput = await page.$('input');
+      if (hasInput) {
+        log(`Login form found at: ${loginUrl}`);
+        loginFound = true;
+        break;
+      }
+    }
+
+    if (!loginFound) {
+      throw new Error('Could not find login form on any known Kapture URL. Check login-page.png artifact.');
+    }
 
     // Try common login form selectors
-    const emailSel    = 'input[type="email"], input[name="email"], input[name="username"], #email, #username, input[placeholder*="email" i], input[placeholder*="user" i]';
-    const passwordSel = 'input[type="password"], input[name="password"], #password';
-    const submitSel   = 'button[type="submit"], input[type="submit"], .login-btn, button:has-text("Login"), button:has-text("Sign in")';
+    const emailSel    = 'input[type="email"], input[type="text"], input[name="email"], input[name="username"], input[name="user_name"], input[name="userId"], #email, #username, input[placeholder*="email" i], input[placeholder*="user" i], input[placeholder*="mobile" i], input[placeholder*="phone" i]';
+    const passwordSel = 'input[type="password"], input[name="password"], input[name="passwd"], #password';
+    const submitSel   = 'button[type="submit"], input[type="submit"], .login-btn, .btn-login, button:has-text("Login"), button:has-text("Sign in"), button:has-text("Log in")';
 
-    await page.waitForSelector(emailSel, { timeout: 15000 });
     await page.fill(emailSel, username);
     await page.fill(passwordSel, password);
+    await page.screenshot({ path: 'login-filled.png' });
     await page.click(submitSel);
 
     await page.waitForNavigation({ waitUntil: 'networkidle', timeout: 30000 });
-    log('Login successful.');
+    await page.screenshot({ path: 'after-login.png' });
+    log('Login step complete. URL after login: ' + page.url());
 
     // ── Step 2: Navigate to the all-tickets list view ─────────────────────────
     // Load the tickets list page — Kapture will fire its internal API calls
