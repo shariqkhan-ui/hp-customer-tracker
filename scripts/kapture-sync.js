@@ -1,410 +1,194 @@
 /**
- * Kapture → High Pain Tracker Auto-Sync
+ * Kapture → High Pain Tracker Auto-Sync (via Metabase)
  *
  * What it does:
- *   1. Logs into Kapture CRM (wiomin.kapturecrm.com)
- *   2. Intercepts Kapture's internal API responses to collect ticket data
- *   3. Filters for: pending/open tickets, internet-related sub-category, created 72+ hours ago
- *   4. Checks Firebase — skips tickets already in the tracker
- *   5. Adds new qualifying cases to Firebase with today's date as "Case Added On"
+ *   1. Queries V_SERVICE_TICKET_MODEL_FINAL in Snowflake via Metabase API
+ *   2. Filters for: internet-related sub-category, pending 72+ hours, open/pending status, not reopened
+ *   3. Checks Firebase — skips tickets already in the tracker
+ *   4. Adds new qualifying cases to Firebase with today's date as "Case Added On"
  *
- * Runs every hour via GitHub Actions (cron).
- * Required env vars: KAPTURE_USERNAME, KAPTURE_PASSWORD
+ * No browser automation needed — uses Metabase SQL API directly.
+ * Runs daily at 10 AM IST via GitHub Actions cron.
+ * Required env vars: METABASE_API_KEY
  */
 
-const { chromium } = require('playwright');
 const https = require('https');
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
-const FIREBASE_DB   = 'https://high-pain-cx-management-default-rtdb.asia-southeast1.firebasedatabase.app';
-const KAPTURE_BASE  = 'https://wiomin.kapturecrm.com';
-const KAPTURE_ORG   = '957486452';  // from the ticket detail URL pattern
+const FIREBASE_DB    = 'https://high-pain-cx-management-default-rtdb.asia-southeast1.firebasedatabase.app';
+const METABASE_URL   = 'https://metabase.wiom.in';
+const METABASE_DB_ID = 113;
+const KAPTURE_BASE   = 'https://wiomin.kapturecrm.com';
+const KAPTURE_ORG    = '957486452';
 
-const MONTHS_SHORT  = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-
-// Sub-category keywords that qualify as internet-related
-const INTERNET_KEYWORDS = [
-  'internet supply down',
-  'slow speed',
-  'frequent disconnection',
-  'recharge done but no internet',
-  'recharge done but internet not working',
-  'no internet',
-  'internet not working',
-  'internet issue',
-  'internet problem',
-  'broadband down',
-  'broadband issue',
-  'speed issue',
-  'speed problem',
-  'connection issue',
-  'wifi down',
-  'wifi issue',
-  'internet',
-];
-
-// Statuses in Kapture that mean the ticket is still open/pending
-const OPEN_STATUSES = [
-  'open',
-  'pending',
-  'in progress',
-  'assigned',
-  'unresolved',
-  'new',
-  'waiting',
-];
+const MONTHS_SHORT   = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 function log(msg) {
-  const ts = new Date().toISOString();
-  console.log(`[${ts}] ${msg}`);
-}
-
-function formatDateDDMonYYYY(date) {
-  return String(date.getDate()).padStart(2, '0') + '-' +
-    MONTHS_SHORT[date.getMonth()] + '-' +
-    date.getFullYear();
+  console.log(`[${new Date().toISOString()}] ${msg}`);
 }
 
 function todayStr() {
-  return formatDateDDMonYYYY(new Date());
+  const d = new Date();
+  return String(d.getDate()).padStart(2, '0') + '-' + MONTHS_SHORT[d.getMonth()] + '-' + d.getFullYear();
 }
 
 function ticketKey(t) {
-  // Match the same encoding used in index.html
   return String(t).replace(/[.#$[\]/ ]/g, '_');
-}
-
-function isInternetRelated(subcat) {
-  const lower = (subcat || '').toLowerCase();
-  return INTERNET_KEYWORDS.some(kw => lower.includes(kw));
-}
-
-function isOlderThan72Hours(dateValue) {
-  if (!dateValue) return false;
-  const created = new Date(dateValue);
-  if (isNaN(created.getTime())) {
-    // Try parsing common formats like "DD-Mon-YYYY" or "DD/MM/YYYY"
-    const parts = String(dateValue).match(/(\d{1,2})[-/](\w+)[-/](\d{4})/);
-    if (!parts) return false;
-    const parsed = new Date(`${parts[2]} ${parts[1]}, ${parts[3]}`);
-    if (isNaN(parsed.getTime())) return false;
-    return (Date.now() - parsed.getTime()) >= 72 * 60 * 60 * 1000;
-  }
-  return (Date.now() - created.getTime()) >= 72 * 60 * 60 * 1000;
-}
-
-function isOpenStatus(status) {
-  const lower = (status || '').toLowerCase();
-  return OPEN_STATUSES.some(s => lower.includes(s));
 }
 
 function kaptureUrl(ticketId) {
   return `${KAPTURE_BASE}/nui/tickets/all/5/-1/0/detail/${KAPTURE_ORG}/${ticketId}?query=${ticketId}`;
 }
 
-// ── Firebase REST helpers ─────────────────────────────────────────────────────
+// ── HTTP helpers ──────────────────────────────────────────────────────────────
 
-function fbRequest(method, path, body) {
+function httpRequest(method, urlStr, body, headers) {
   return new Promise((resolve, reject) => {
-    const url  = new URL(FIREBASE_DB + path + '.json');
+    const url  = new URL(urlStr);
     const opts = {
       hostname: url.hostname,
       path:     url.pathname + url.search,
       method,
-      headers:  { 'Content-Type': 'application/json' },
+      headers:  { 'Content-Type': 'application/json', ...headers },
     };
-
     const req = https.request(opts, (res) => {
       let data = '';
       res.on('data', chunk => (data += chunk));
       res.on('end', () => {
         try { resolve(JSON.parse(data)); }
-        catch { resolve(null); }
+        catch { resolve(data); }
       });
     });
-
     req.on('error', reject);
-
     if (body) req.write(JSON.stringify(body));
     req.end();
   });
 }
 
-async function fbGet(path)         { return fbRequest('GET',  path); }
-async function fbPut(path, value)  { return fbRequest('PUT',  path, value); }
-
-// ── Ticket normaliser ─────────────────────────────────────────────────────────
-// Kapture returns tickets in different shapes depending on the endpoint.
-// This function extracts a consistent object from whatever shape we get.
-
-function normaliseTicket(raw) {
-  if (!raw || typeof raw !== 'object') return null;
-
-  // Try common field name variants (Kapture uses inconsistent naming)
-  const id      = raw.ticket_id    || raw.ticketId    || raw.id           || raw.ticket_no  || '';
-  const mobile  = raw.mobile       || raw.phone        || raw.contact_no  || raw.customer_mobile || raw.mobileNo || '';
-  const name    = raw.customer_name|| raw.customerName || raw.name        || raw.cust_name  || '';
-  const partner = raw.partner      || raw.account_name || raw.company     || raw.brand      || '';
-  const subcat  = raw.sub_category || raw.subCategory  || raw.sub_cat     || raw.category   || raw.sub_type || '';
-  const status  = raw.status       || raw.ticket_status|| raw.ticketStatus|| '';
-  const created = raw.created_at   || raw.createdAt    || raw.creation_date || raw.created_date || raw.date || '';
-  const tat     = raw.tat          || raw.aging        || raw.pending_since || '';
-
-  if (!id) return null;
-
-  return { id: String(id), mobile, name, partner, subcat, status, created, tat };
+async function fbGet(path) {
+  return httpRequest('GET', FIREBASE_DB + path + '.json', null, {});
 }
 
-// Recursively search for ticket arrays inside any JSON structure
-function extractTickets(obj, depth = 0) {
-  if (depth > 5 || !obj || typeof obj !== 'object') return [];
+async function fbPut(path, value) {
+  return httpRequest('PUT', FIREBASE_DB + path + '.json', value, {});
+}
 
-  // If it's an array, check if the items look like tickets
-  if (Array.isArray(obj)) {
-    const normed = obj.map(normaliseTicket).filter(Boolean);
-    if (normed.length > 0) return normed;
-    // Recurse into array items
-    return obj.flatMap(item => extractTickets(item, depth + 1));
-  }
+// ── Metabase query ────────────────────────────────────────────────────────────
 
-  // If it's an object with a data/tickets/records/list key, recurse there
-  const arrayKeys = ['data', 'tickets', 'records', 'list', 'result', 'results', 'items', 'payload'];
-  for (const key of arrayKeys) {
-    if (Array.isArray(obj[key])) {
-      const normed = obj[key].map(normaliseTicket).filter(Boolean);
-      if (normed.length > 0) return normed;
-    }
-  }
+async function queryMetabase(sql, apiKey) {
+  const result = await httpRequest(
+    'POST',
+    METABASE_URL + '/api/dataset',
+    { database: METABASE_DB_ID, type: 'native', native: { query: sql } },
+    { 'x-api-key': apiKey }
+  );
 
-  // Generic recurse
-  return Object.values(obj).flatMap(v => extractTickets(v, depth + 1));
+  if (result.error) throw new Error('Metabase query error: ' + result.error);
+
+  const cols = (result.data?.cols || []).map(c => c.name);
+  const rows = result.data?.rows || [];
+
+  // Convert rows to objects keyed by column name
+  return rows.map(row => {
+    const obj = {};
+    cols.forEach((col, i) => { obj[col] = row[i]; });
+    return obj;
+  });
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 (async () => {
-  const username = process.env.KAPTURE_USERNAME;
-  const password = process.env.KAPTURE_PASSWORD;
-
-  if (!username || !password) {
-    console.error('ERROR: KAPTURE_USERNAME and KAPTURE_PASSWORD env vars are required.');
+  const apiKey = process.env.METABASE_API_KEY;
+  if (!apiKey) {
+    console.error('ERROR: METABASE_API_KEY env var is required.');
     process.exit(1);
   }
 
-  log('Starting Kapture → High Pain Tracker sync…');
+  log('Starting Kapture → High Pain Tracker sync via Metabase…');
 
-  const browser = await chromium.launch({
-    headless: true,
-    args: ['--no-sandbox', '--disable-setuid-sandbox'],
-  });
+  // ── Step 1: Query SERVICE_TICKET_MODEL via Metabase ──────────────────────
+  // Table: PUBLIC.SERVICE_TICKET_MODEL (Metabase table ID 5599, DB 113)
+  const sql = `
+    SELECT
+      KAPTURE_TICKET_ID,
+      CUSTOMER_MOBILE,
+      CURRENT_PARTNER_NAME                               AS PARTNER,
+      FIRST_TITLE                                        AS SUB_CATEGORY,
+      ROUND(TOTALTAT_TILLNOW_MINS_CALENDARHRS / 60, 1)  AS TAT_HOURS,
+      CURRENT_TICKET_STATUS,
+      TICKET_ADDED_TIME
+    FROM SERVICE_TICKET_MODEL
+    WHERE
+      -- Internet-related sub-category
+      (
+        FIRST_TITLE ILIKE '%internet supply down%'
+        OR FIRST_TITLE ILIKE '%slow speed%'
+        OR FIRST_TITLE ILIKE '%frequent disconnection%'
+        OR FIRST_TITLE ILIKE '%recharge done but no internet%'
+        OR FIRST_TITLE ILIKE '%internet not working%'
+        OR FIRST_TITLE ILIKE '%no internet%'
+        OR FIRST_TITLE ILIKE '%internet issue%'
+        OR FIRST_TITLE ILIKE '%internet%'
+      )
+      -- Not resolved
+      AND IS_RESOLVED = 0
+      -- Not reopened
+      AND TIMES_REOPENED = 0
+      -- Pending more than 72 hours (4320 minutes)
+      AND TOTALTAT_TILLNOW_MINS_CALENDARHRS >= 4320
+      -- Must have a valid Kapture ticket ID
+      AND KAPTURE_TICKET_ID IS NOT NULL
+      AND KAPTURE_TICKET_ID != ''
+  `;
 
-  const collectedTickets = [];
-
+  log('Running Metabase query…');
+  let tickets;
   try {
-    const context = await browser.newContext({
-      userAgent: 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36',
-      viewport:  { width: 1280, height: 900 },
-    });
-    const page = await context.newPage();
-
-    // ── Intercept all JSON responses from Kapture's internal API ──────────────
-    page.on('response', async (response) => {
-      const url = response.url();
-      // Only process Kapture's own API calls (not static assets)
-      if (!url.includes('kapturecrm.com')) return;
-      if (!url.includes('/api/') && !url.includes('/v1/') && !url.includes('/v2/') &&
-          !url.includes('/tickets') && !url.includes('/cases')) return;
-
-      const ct = response.headers()['content-type'] || '';
-      if (!ct.includes('application/json')) return;
-
-      try {
-        const body = await response.json();
-        const tickets = extractTickets(body);
-        if (tickets.length > 0) {
-          log(`Intercepted ${tickets.length} ticket(s) from: ${url}`);
-          collectedTickets.push(...tickets);
-        }
-      } catch {
-        // Non-JSON or parsing error — skip silently
-      }
-    });
-
-    // ── Step 1: Login ─────────────────────────────────────────────────────────
-    log('Navigating to Kapture…');
-
-    // WIOM Employee Login is at /employee/index.html — two-step login
-    // Step 1: enter username → click Next → Step 2: enter password → click Login
-    log('Navigating to WIOM Employee Login…');
-    await page.goto(KAPTURE_BASE + '/employee/index.html', { waitUntil: 'domcontentloaded', timeout: 30000 });
-
-    // Step 1: fill username
-    log('Step 1: entering username…');
-    await page.waitForSelector('#username_', { timeout: 15000 });
-    await page.fill('#username_', username);
-
-    // Try clicking Next button (may be hidden — use force), or press Enter
-    log('Step 1: submitting username…');
-    try {
-      await page.click('#nxt_button', { force: true, timeout: 5000 });
-    } catch {
-      // Fallback: press Enter on the username field
-      await page.press('#username_', 'Enter');
-    }
-
-    // Step 2: wait for password field to appear
-    log('Step 2: waiting for password field…');
-    await page.waitForSelector('input[type="password"]', { timeout: 20000 });
-    await page.fill('input[type="password"]', password);
-    log('Step 2: submitting password…');
-
-    // Click Login button — try multiple selectors, fallback to JS click
-    log('Step 2: clicking Login button…');
-    const loginClicked = await page.evaluate(() => {
-      const candidates = [...document.querySelectorAll('button, input[type="submit"]')];
-      const loginBtn = candidates.find(el =>
-        /login|sign in|submit/i.test(el.textContent || el.value || '')
-      );
-      if (loginBtn) { loginBtn.click(); return true; }
-      // Last resort: submit the form directly
-      const form = document.querySelector('form');
-      if (form) { form.submit(); return 'form'; }
-      return false;
-    });
-    log('Login button click result: ' + loginClicked);
-
-    // Wait 5s then screenshot to see what happened
-    await page.waitForTimeout(5000);
-    await page.screenshot({ path: 'after-submit.png', fullPage: true });
-    log('Post-submit URL: ' + page.url());
-    log('Post-submit title: ' + await page.title());
-
-    // Check if still on login page (login may have failed)
-    const stillOnLogin = page.url().includes('/employee/index.html');
-    if (stillOnLogin) {
-      // Log any error message shown on page
-      const errorMsg = await page.evaluate(() => {
-        const err = document.querySelector('.error, .alert, [class*="error"], [class*="alert"], [class*="message"]');
-        return err ? err.innerText : null;
-      });
-      if (errorMsg) log('Login error on page: ' + errorMsg);
-      throw new Error('Still on login page after submission. Check after-submit.png artifact.');
-    }
-
-    // Wait for the main app to fully load
-    await page.waitForLoadState('networkidle', { timeout: 30000 });
-    log('Login successful. URL: ' + page.url());
-
-    // ── Step 2: Navigate to the all-tickets list view ─────────────────────────
-    // Load the tickets list page — Kapture will fire its internal API calls
-    // which we intercept above. Try a few URL patterns.
-    const ticketListUrls = [
-      `${KAPTURE_BASE}/nui/tickets/all/5/-1/0`,
-      `${KAPTURE_BASE}/nui/tickets`,
-      `${KAPTURE_BASE}/nui/cases`,
-    ];
-
-    for (const listUrl of ticketListUrls) {
-      log(`Loading ticket list: ${listUrl}`);
-      try {
-        await page.goto(listUrl, { waitUntil: 'networkidle', timeout: 30000 });
-        // Wait a bit for background API calls to complete
-        await page.waitForTimeout(3000);
-        break;
-      } catch (e) {
-        log(`Warning: ${listUrl} failed — ${e.message}`);
-      }
-    }
-
-    // ── Step 3: Scroll / paginate to collect more tickets ─────────────────────
-    // Some Kapture views load more tickets as you scroll down
-    for (let i = 0; i < 5; i++) {
-      await page.evaluate(() => window.scrollBy(0, 800));
-      await page.waitForTimeout(1500);
-    }
-
-    // Try to click a "Load more" or "Next page" button if present
-    const loadMoreSel = 'button:has-text("Load more"), button:has-text("Next"), .pagination-next, [aria-label="Next page"]';
-    let hasMore = true;
-    let pageCount = 0;
-    while (hasMore && pageCount < 10) {
-      try {
-        const btn = await page.$(loadMoreSel);
-        if (btn) {
-          await btn.click();
-          await page.waitForTimeout(2000);
-          pageCount++;
-        } else {
-          hasMore = false;
-        }
-      } catch {
-        hasMore = false;
-      }
-    }
-
-    log(`Total tickets intercepted before filtering: ${collectedTickets.length}`);
-
-  } finally {
-    await browser.close();
+    tickets = await queryMetabase(sql, apiKey);
+  } catch (e) {
+    console.error('ERROR querying Metabase:', e.message);
+    process.exit(1);
   }
 
-  // ── Step 4: De-duplicate intercepted tickets ──────────────────────────────
-  const seen = new Set();
-  const uniqueTickets = collectedTickets.filter(t => {
-    if (seen.has(t.id)) return false;
-    seen.add(t.id);
-    return true;
-  });
-  log(`Unique tickets after de-dup: ${uniqueTickets.length}`);
+  log(`Qualifying tickets from Metabase: ${tickets.length}`);
 
-  // ── Step 5: Apply our filter criteria ────────────────────────────────────
-  const qualifying = uniqueTickets.filter(t => {
-    const internet = isInternetRelated(t.subcat);
-    const oldEnough = isOlderThan72Hours(t.created);
-    const open = isOpenStatus(t.status);
-
-    if (!internet)    log(`  Skip [not internet] ticket=${t.id} subcat="${t.subcat}"`);
-    if (!oldEnough)   log(`  Skip [<72 hrs]      ticket=${t.id} created="${t.created}"`);
-    if (!open)        log(`  Skip [closed]       ticket=${t.id} status="${t.status}"`);
-
-    return internet && oldEnough && open;
-  });
-
-  log(`Qualifying cases (internet + 72hr+ + open): ${qualifying.length}`);
-
-  if (qualifying.length === 0) {
-    log('Nothing to add. Done.');
+  if (tickets.length === 0) {
+    log('No qualifying cases found. Done.');
     return;
   }
 
-  // ── Step 6: Check Firebase and add new cases ──────────────────────────────
+  // ── Step 2: Add to Firebase (skip duplicates) ─────────────────────────────
   let added = 0, skipped = 0;
 
-  for (const t of qualifying) {
-    const key      = ticketKey(t.id);
+  for (const t of tickets) {
+    const ticketId = String(t.KAPTURE_TICKET_ID || '').trim();
+    if (!ticketId) continue;
+
+    const key      = ticketKey(ticketId);
     const existing = await fbGet('/cases/' + key);
 
     if (existing !== null) {
-      log(`  Already exists — skip ticket=${t.id}`);
+      log(`  Already exists — skip ticket=${ticketId}`);
       skipped++;
       continue;
     }
 
     const payload = {
-      case_added_on:  todayStr(),     // Today's date — when NQT adds it to the tracker
-      ticket_no:      t.id,
-      mobile:         t.mobile,
-      subcat:         t.subcat,
-      cust_name:      t.name,
-      partner:        t.partner,
-      tat:            t.tat || '72+ hours',
+      case_added_on:  todayStr(),
+      ticket_no:      ticketId,
+      mobile:         String(t.CUSTOMER_MOBILE || '').trim(),
+      subcat:         String(t.SUB_CATEGORY    || '').trim(),
+      cust_name:      '',
+      partner:        String(t.PARTNER         || '').trim(),
+      tat:            t.TAT_HOURS ? t.TAT_HOURS + ' hrs' : '72+ hrs',
       remarks:        '',
       easy_remarks:   '',
-      engineer:       '',             // NQT can assign via the dashboard
-      ticket_url:     kaptureUrl(t.id),
+      engineer:       '',
+      ticket_url:     kaptureUrl(ticketId),
       col12:          '',
       col13:          '',
       migration_date: '',
@@ -412,10 +196,10 @@ function extractTickets(obj, depth = 0) {
 
     try {
       await fbPut('/cases/' + key, payload);
-      log(`  Added ticket=${t.id} subcat="${t.subcat}" created="${t.created}"`);
+      log(`  Added ticket=${ticketId} subcat="${t.SUB_CATEGORY}" tat="${t.TAT_HOURS} hrs"`);
       added++;
     } catch (e) {
-      log(`  ERROR adding ticket=${t.id}: ${e.message}`);
+      log(`  ERROR adding ticket=${ticketId}: ${e.message}`);
     }
   }
 
