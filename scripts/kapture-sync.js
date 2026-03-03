@@ -52,7 +52,6 @@ const OPEN_STATUSES = [
   'assigned',
   'unresolved',
   'new',
-  'reopened',
   'waiting',
 ];
 
