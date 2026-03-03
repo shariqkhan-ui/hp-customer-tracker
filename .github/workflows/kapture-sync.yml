@@ -28,3 +28,10 @@ jobs:
         env:
           METABASE_API_KEY: ${{ secrets.METABASE_API_KEY }}
         run: node kapture-sync.js
+
+      - name: Notify Slack
+        run: |
+          curl -s -X POST "https://slack.com/api/chat.postMessage" \
+            -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
+            -H "Content-type: application/json" \
+            -d '{"channel":"C0AHDR8H4CC","text":"<!channel> New cases have been added in the tracker \u2014 check it here: https://shariqkhan-ui.github.io/hp-customer-tracker/"}'
