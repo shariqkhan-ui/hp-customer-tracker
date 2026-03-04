@@ -1,12 +1,18 @@
 name: Kapture Auto-Sync
 
 on:
-  # Runs daily at 10:00 AM IST (04:30 UTC)
+  # Fallback schedule in case external cron fails (may run up to 2 hrs late)
   schedule:
     - cron: '30 4 * * *'
 
-  # Allow manual trigger from GitHub Actions UI for testing
+  # Triggered by cron-job.org at exactly 10:00 AM IST for precise timing.
+  # Also allows manual UI triggers for testing (no Slack sent unless notify_slack=true).
   workflow_dispatch:
+    inputs:
+      notify_slack:
+        description: 'Send Slack notification after sync (set true for cron-job.org trigger)'
+        required: false
+        default: 'false'
 
 jobs:
   sync:
@@ -30,7 +36,7 @@ jobs:
         run: node kapture-sync.js
 
       - name: Notify Slack
-        if: github.event_name == 'schedule'
+        if: github.event_name == 'schedule' || github.event.inputs.notify_slack == 'true'
         run: |
           curl -s -X POST "https://slack.com/api/chat.postMessage" \
             -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \

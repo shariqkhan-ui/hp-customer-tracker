@@ -165,8 +165,9 @@ async function queryMetabase(sql, apiKey) {
     return;
   }
 
-  // ── Step 2: Add to Firebase (skip duplicates) ─────────────────────────────
-  let added = 0, skipped = 0;
+  // ── Step 2: Add to Firebase (skip duplicates, update stale dates) ──────────
+  let added = 0, skipped = 0, updated = 0;
+  const today = todayStr();
 
   for (const t of tickets) {
     const ticketId = String(t.KAPTURE_TICKET_ID || '').trim();
@@ -176,8 +177,20 @@ async function queryMetabase(sql, apiKey) {
     const existing = await fbGet('/cases/' + key);
 
     if (existing !== null) {
-      log(`  Already exists — skip ticket=${ticketId}`);
-      skipped++;
+      // Case already exists — no duplicate added.
+      // If it was added on a previous date, refresh case_added_on to today.
+      if (existing.case_added_on !== today) {
+        try {
+          await fbPut('/cases/' + key + '/case_added_on', today);
+          log(`  Date updated ticket=${ticketId} ${existing.case_added_on} → ${today}`);
+          updated++;
+        } catch (e) {
+          log(`  ERROR updating date ticket=${ticketId}: ${e.message}`);
+        }
+      } else {
+        log(`  Already exists (today) — skip ticket=${ticketId}`);
+        skipped++;
+      }
       continue;
     }
 
@@ -211,5 +224,5 @@ async function queryMetabase(sql, apiKey) {
     }
   }
 
-  log(`Sync complete. Added: ${added}  Skipped (already existed): ${skipped}`);
+  log(`Sync complete. Added: ${added}  Date-updated: ${updated}  Skipped (already today): ${skipped}`);
 })();
