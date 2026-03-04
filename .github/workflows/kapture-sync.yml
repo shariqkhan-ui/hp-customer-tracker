@@ -28,7 +28,5 @@ jobs:
         working-directory: scripts
         env:
           METABASE_API_KEY: ${{ secrets.METABASE_API_KEY }}
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
         run: node kapture-sync.js
-
-      # Slack notification is sent by Google Apps Script at exactly 10:00 AM IST.
-      # See sendSlackNotification() and installDailySlackTrigger() in Code.gs.

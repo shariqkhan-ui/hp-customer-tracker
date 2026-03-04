@@ -9,7 +9,7 @@
  *
  * No browser automation needed — uses Metabase SQL API directly.
  * Runs daily at 10 AM IST via GitHub Actions cron.
- * Required env vars: METABASE_API_KEY
+ * Required env vars: METABASE_API_KEY, SLACK_BOT_TOKEN
  */
 
 const https = require('https');
@@ -225,4 +225,26 @@ async function queryMetabase(sql, apiKey) {
   }
 
   log(`Sync complete. Added: ${added}  Date-updated: ${updated}  Skipped (already today): ${skipped}`);
+
+  // ── Step 3: Notify Slack ──────────────────────────────────────────────────
+  const slackToken = process.env.SLACK_BOT_TOKEN;
+  if (slackToken) {
+    log('Sending Slack notification…');
+    try {
+      await httpRequest(
+        'POST',
+        'https://slack.com/api/chat.postMessage',
+        {
+          channel:  'C0AHDR8H4CC',
+          username: "Shariq's Slack Agent",
+          icon_url: 'https://raw.githubusercontent.com/shariqkhan-ui/hp-customer-tracker/master/shariq-agent.jpg',
+          text:     `<!channel> New cases have been added in the tracker \u2014 check it here: https://shariqkhan-ui.github.io/hp-customer-tracker/`
+        },
+        { 'Authorization': 'Bearer ' + slackToken }
+      );
+      log('Slack notification sent.');
+    } catch (e) {
+      log('ERROR sending Slack notification: ' + e.message);
+    }
+  }
 })();
