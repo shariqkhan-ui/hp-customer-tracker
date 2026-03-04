@@ -119,13 +119,17 @@ function row(label, count, total, indent, bold) {
     LINE,
   ];
 
-  const cc   = '<@U077923R68H> <@U08E4KETML1>';
+  const cc         = '<@U077923R68H> <@U08E4KETML1>';
+  const tableText  = '```\n' + lines.join('\n') + '\n```';
+  const text       = `📊 *High Pain Customers — Daily Report | ${todayStr()}*\ncc: ${cc}`;
+
+  // Using blocks inside attachment keeps the color bar and prevents Slack's "Show more" truncation
   const attachment = {
-    color:     '#E5178F',
-    mrkdwn_in: ['text'],
-    text:      '```\n' + lines.join('\n') + '\n```',
+    color:  '#E5178F',
+    blocks: [
+      { type: 'section', text: { type: 'mrkdwn', text: tableText } },
+    ],
   };
-  const text = `📊 *High Pain Customers — Daily Report | ${todayStr()}*\ncc: ${cc}`;
 
   console.log('Sending report to Slack…');
   const res = await httpRequest(
