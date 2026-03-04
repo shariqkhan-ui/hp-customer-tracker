@@ -56,12 +56,13 @@ function pct(num, total) {
   return String(Math.round((num / total) * 100)) + '%';
 }
 
-function row(label, count, total, indent) {
+function row(label, count, total, indent, bold) {
   const prefix = indent ? '  ↳ ' : '';
   const l = (prefix + label).padEnd(36);
   const c = String(count).padStart(5);
   const p = pct(count, total).padStart(6);
-  return l + c + p;
+  const line = l + c + p;
+  return bold ? `*${line}*` : line;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -104,31 +105,40 @@ function row(label, count, total, indent) {
   const unresolved = total - resolved;
 
   // ── Build Slack message ───────────────────────────────────────────────────
-  const LINE = '━'.repeat(48);
-  const lines = [
+  const LINE   = '━'.repeat(48);
+  const HEADER = '*Metric*'.padEnd(36) + '*Value*'.padStart(5) + '*%*'.padStart(6);
+  const lines  = [
+    HEADER,
     LINE,
-    row('Tickets Received (72 hrs)',    total,          total, false),
-    row('Resolved',                     resolved,       total, false),
-    row('Migrated',                     migrated,       total, true),
-    row('Resolved by Same Partner',     pingUp,         total, true),
-    row('Refund (Unresolved)',           unresolved,     total, false),
-    row('Customer Denied',              custDenied,     total, true),
-    row('Host Partner Not Aligned',     hostNotAligned, total, true),
+    row('Tickets Received (72 hrs)',  total,          total, false, true),
+    row('Resolved',                   resolved,       total, false, true),
+    row('Migrated',                   migrated,       total, true,  false),
+    row('Resolved by Same Partner',   pingUp,         total, true,  false),
+    row('Refund (Unresolved)',         unresolved,     total, false, true),
+    row('Customer Denied',            custDenied,     total, true,  false),
+    row('Host Partner Not Aligned',   hostNotAligned, total, true,  false),
     LINE,
   ];
 
   const cc   = '<@U077923R68H> <@U08E4KETML1>';
-  const text = `📊 *High Pain Customers — Daily Report | ${todayStr()}*\ncc: ${cc}\n\`\`\`\n${lines.join('\n')}\n\`\`\``;
+  // Use attachment with color bar (hex E5178F) — bold renders in attachment text via mrkdwn_in
+  const attachment = {
+    color:     '#E5178F',
+    mrkdwn_in: ['text'],
+    text:      lines.join('\n'),
+  };
+  const text = `📊 *High Pain Customers — Daily Report | ${todayStr()}*\ncc: ${cc}`;
 
   console.log('Sending report to Slack…');
   const res = await httpRequest(
     'POST',
     'https://slack.com/api/chat.postMessage',
     {
-      channel:  SLACK_CHANNEL,
-      username: "Shariq's Slack Agent",
-      icon_url: 'https://raw.githubusercontent.com/shariqkhan-ui/hp-customer-tracker/master/shariq-agent.jpg',
+      channel:     SLACK_CHANNEL,
+      username:    "Shariq's Slack Agent",
+      icon_url:    'https://raw.githubusercontent.com/shariqkhan-ui/hp-customer-tracker/master/shariq-agent.jpg',
       text,
+      attachments: [attachment],
     },
     { 'Authorization': 'Bearer ' + token }
   );
