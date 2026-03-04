@@ -1,18 +1,13 @@
 name: Kapture Auto-Sync
 
 on:
-  # Fallback schedule in case external cron fails (may run up to 2 hrs late)
+  # Runs daily at 10:00 AM IST (04:30 UTC). Slack notification is handled by
+  # Google Apps Script (sendSlackNotification) which fires at exactly 10:00 AM IST.
   schedule:
     - cron: '30 4 * * *'
 
-  # Triggered by cron-job.org at exactly 10:00 AM IST for precise timing.
-  # Also allows manual UI triggers for testing (no Slack sent unless notify_slack=true).
+  # Allow manual trigger from GitHub Actions UI for testing
   workflow_dispatch:
-    inputs:
-      notify_slack:
-        description: 'Send Slack notification after sync (set true for cron-job.org trigger)'
-        required: false
-        default: 'false'
 
 jobs:
   sync:
@@ -35,10 +30,5 @@ jobs:
           METABASE_API_KEY: ${{ secrets.METABASE_API_KEY }}
         run: node kapture-sync.js
 
-      - name: Notify Slack
-        if: github.event_name == 'schedule' || github.event.inputs.notify_slack == 'true'
-        run: |
-          curl -s -X POST "https://slack.com/api/chat.postMessage" \
-            -H "Authorization: Bearer ${{ secrets.SLACK_BOT_TOKEN }}" \
-            -H "Content-type: application/json" \
-            -d '{"channel":"C0AHDR8H4CC","username":"Shariq'\''s Slack Agent","icon_url":"https://raw.githubusercontent.com/shariqkhan-ui/hp-customer-tracker/master/shariq-agent.jpg","text":"<!channel> New cases have been added in the tracker \u2014 check it here: https://shariqkhan-ui.github.io/hp-customer-tracker/"}'
+      # Slack notification is sent by Google Apps Script at exactly 10:00 AM IST.
+      # See sendSlackNotification() and installDailySlackTrigger() in Code.gs.
