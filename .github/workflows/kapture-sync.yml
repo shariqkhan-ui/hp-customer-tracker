@@ -1,8 +1,8 @@
 name: Kapture Auto-Sync
 
 on:
-  # Runs daily at 10:00 AM IST (04:30 UTC). Slack notification is handled by
-  # Google Apps Script (sendSlackNotification) which fires at exactly 10:00 AM IST.
+  # Runs daily at 10:00 AM IST (04:30 UTC).
+  # Slack notification is sent at end of kapture-sync.js using SLACK_BOT_TOKEN secret.
   schedule:
     - cron: '30 4 * * *'
 
