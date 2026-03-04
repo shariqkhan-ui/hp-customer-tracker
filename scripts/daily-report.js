@@ -57,9 +57,11 @@ function pct(num, total) {
 }
 
 function row(label, count, total, indent, bold) {
-  const prefix = indent ? '   • ' : '';
-  const line = `${prefix}${label}: ${count}  _(${pct(count, total)})_`;
-  return bold ? `*${prefix}${label}:  ${count}*  _(${pct(count, total)})_` : line;
+  const prefix = indent ? '    ↳ ' : bold ? '► ' : '  ';
+  const l = (prefix + label).padEnd(38);
+  const c = String(count).padStart(5);
+  const p = pct(count, total).padStart(6);
+  return l + c + p;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -102,8 +104,10 @@ function row(label, count, total, indent, bold) {
   const unresolved = total - resolved;
 
   // ── Build Slack message ───────────────────────────────────────────────────
-  const LINE  = '━'.repeat(32);
-  const lines = [
+  const LINE   = '━'.repeat(49);
+  const HEADER = '  Metric'.padEnd(38) + 'Value'.padStart(5) + '%'.padStart(6);
+  const lines  = [
+    HEADER,
     LINE,
     row('Tickets Received (72 hrs)',  total,          total, false, true),
     row('Resolved',                   resolved,       total, false, true),
@@ -119,7 +123,7 @@ function row(label, count, total, indent, bold) {
   const attachment = {
     color:     '#E5178F',
     mrkdwn_in: ['text'],
-    text:      lines.join('\n'),
+    text:      '```\n' + lines.join('\n') + '\n```',
   };
   const text = `📊 *High Pain Customers — Daily Report | ${todayStr()}*\ncc: ${cc}`;
 
