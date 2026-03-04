@@ -57,12 +57,9 @@ function pct(num, total) {
 }
 
 function row(label, count, total, indent, bold) {
-  const prefix = indent ? '  ↳ ' : '';
-  const l = (prefix + label).padEnd(36);
-  const c = String(count).padStart(5);
-  const p = pct(count, total).padStart(6);
-  const line = l + c + p;
-  return bold ? `*${line}*` : line;
+  const prefix = indent ? '   • ' : '';
+  const line = `${prefix}${label}: ${count}  _(${pct(count, total)})_`;
+  return bold ? `*${prefix}${label}:  ${count}*  _(${pct(count, total)})_` : line;
 }
 
 // ── Main ─────────────────────────────────────────────────────────────────────
@@ -97,7 +94,7 @@ function row(label, count, total, indent, bold) {
     else if (status === 'Ping Up') pingUp++;
 
     // Subparts of Unresolved/Refund
-    if (remarks === 'Customer not interested in Migration') custDenied++;
+    if (remarks === 'Customer not interested in Migration' || remarks === 'Cx not contactable/Reachable') custDenied++;
     if (remarks === 'No Overlapping Partner/Refund' || remarks === 'Migration not possible/Refund') hostNotAligned++;
   }
 
@@ -105,10 +102,8 @@ function row(label, count, total, indent, bold) {
   const unresolved = total - resolved;
 
   // ── Build Slack message ───────────────────────────────────────────────────
-  const LINE   = '━'.repeat(48);
-  const HEADER = '*Metric*'.padEnd(36) + '*Value*'.padStart(5) + '*%*'.padStart(6);
-  const lines  = [
-    HEADER,
+  const LINE  = '━'.repeat(32);
+  const lines = [
     LINE,
     row('Tickets Received (72 hrs)',  total,          total, false, true),
     row('Resolved',                   resolved,       total, false, true),
@@ -121,7 +116,6 @@ function row(label, count, total, indent, bold) {
   ];
 
   const cc   = '<@U077923R68H> <@U08E4KETML1>';
-  // Use attachment with color bar (hex E5178F) — bold renders in attachment text via mrkdwn_in
   const attachment = {
     color:     '#E5178F',
     mrkdwn_in: ['text'],
