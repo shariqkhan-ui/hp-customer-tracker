@@ -226,9 +226,10 @@ async function queryMetabase(sql, apiKey) {
 
   log(`Sync complete. Added: ${added}  Date-updated: ${updated}  Skipped (already today): ${skipped}`);
 
-  // ── Step 3: Notify Slack ──────────────────────────────────────────────────
-  const slackToken = process.env.SLACK_BOT_TOKEN;
-  if (slackToken) {
+  // ── Step 3: Notify Slack (only on scheduled runs, not manual triggers) ──────
+  const slackToken  = process.env.SLACK_BOT_TOKEN;
+  const notifySlack = process.env.NOTIFY_SLACK === 'true';
+  if (slackToken && notifySlack) {
     log('Sending Slack notification…');
     try {
       await httpRequest(
