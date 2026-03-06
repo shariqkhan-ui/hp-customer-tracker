@@ -944,7 +944,8 @@ function startEdit(td) {
 
   // Engineer field: show dropdown of existing names
   if (field === 'engineer') {
-    const names = [...new Set(allRows.map(r => effectiveVal(r, 10)).filter(Boolean))].sort();
+    const DEFAULT_ENGINEERS = ['Pinku Roy'];
+    const names = [...new Set([...DEFAULT_ENGINEERS, ...allRows.map(r => effectiveVal(r, 10)).filter(Boolean)])].sort();
     const listId = 'eng_list_' + Date.now();
     const inp = document.createElement('input');
     inp.type = 'text'; inp.value = cur; inp.className = 'edit-input';
@@ -1284,7 +1285,8 @@ function populateDropdowns() {
   populateMsOpts('fSubcat',   uniq(r => (r[4]||'').trim()));
   populateMsOpts('fTat',      uniq(r => (r[7]||'').trim()));
   populateMsOpts('fStatus',   ['Migrated','Ping Up','Unresolved','Duplicate']);
-  populateMsOpts('fEngineer', ['NA (Not Assigned)', ...uniq(r => effectiveVal(r, 10))]);
+  const DEFAULT_ENGINEERS = ['Pinku Roy'];
+  populateMsOpts('fEngineer', ['NA (Not Assigned)', ...new Set([...DEFAULT_ENGINEERS, ...uniq(r => effectiveVal(r, 10))])]);
 }
 
 // ── Filters ──
