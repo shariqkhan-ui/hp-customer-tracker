@@ -1,9 +1,13 @@
 name: Daily High Pain Report
 
 on:
-  # Runs daily at 10:00 PM IST (16:30 UTC)
+  # Target: 10:00 PM IST (16:30 UTC).
+  # Four attempts spread over 2 hrs — first one to run sets the Firebase flag, rest skip.
   schedule:
     - cron: '30 16 * * *'
+    - cron: '0 17 * * *'
+    - cron: '30 17 * * *'
+    - cron: '0 18 * * *'
 
   # Allow manual trigger for testing
   workflow_dispatch:

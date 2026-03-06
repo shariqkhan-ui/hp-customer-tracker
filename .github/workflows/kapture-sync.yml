@@ -1,10 +1,13 @@
 name: Kapture Auto-Sync
 
 on:
-  # Runs daily at 10:00 AM IST (04:30 UTC).
-  # Slack notification is sent at end of kapture-sync.js using SLACK_BOT_TOKEN secret.
+  # Target: 10:00 AM IST (04:30 UTC).
+  # Four attempts spread over 2 hrs — first one to run sets the Firebase flag, rest skip.
   schedule:
     - cron: '30 4 * * *'
+    - cron: '0 5 * * *'
+    - cron: '30 5 * * *'
+    - cron: '0 6 * * *'
 
   # Allow manual trigger from GitHub Actions UI for testing
   workflow_dispatch:

@@ -108,6 +108,14 @@ async function queryMetabase(sql, apiKey) {
     process.exit(1);
   }
 
+  // ── Idempotency check: skip if already ran successfully today ─────────────
+  const today = todayStr();
+  const lastRun = await fbGet('/run_flags/kapture_sync');
+  if (lastRun === today) {
+    log(`Already ran today (${today}) — skipping.`);
+    return;
+  }
+
   log('Starting Kapture → High Pain Tracker sync via Metabase…');
 
   // ── Step 1: Query SERVICE_TICKET_MODEL via Metabase ──────────────────────
@@ -225,6 +233,9 @@ async function queryMetabase(sql, apiKey) {
   }
 
   log(`Sync complete. Added: ${added}  Date-updated: ${updated}  Skipped (already today): ${skipped}`);
+
+  // Mark today as done so duplicate cron runs are skipped
+  await fbPut('/run_flags/kapture_sync', today);
 
   // ── Step 3: Notify Slack (only on scheduled runs, not manual triggers) ──────
   const slackToken  = process.env.SLACK_BOT_TOKEN;

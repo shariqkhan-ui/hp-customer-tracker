@@ -69,6 +69,14 @@ function row(label, count, total, indent, bold) {
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) { console.error('ERROR: SLACK_BOT_TOKEN not set.'); process.exit(1); }
 
+  // ── Idempotency check: skip if already ran successfully today ─────────────
+  const today = todayStr();
+  const lastRun = await httpRequest('GET', FIREBASE_DB + '/run_flags/daily_report.json', null, {});
+  if (lastRun === today) {
+    console.log(`Already ran today (${today}) — skipping.`);
+    return;
+  }
+
   console.log('Fetching all cases from Firebase…');
   const data = await httpRequest('GET', FIREBASE_DB + '/cases.json', null, {});
 
@@ -147,6 +155,8 @@ function row(label, count, total, indent, bold) {
 
   if (res.ok) {
     console.log('Report sent successfully.');
+    // Mark today as done so duplicate cron runs are skipped
+    await httpRequest('PUT', FIREBASE_DB + '/run_flags/daily_report.json', today, {});
   } else {
     console.error('ERROR sending report:', res.error);
     process.exit(1);
