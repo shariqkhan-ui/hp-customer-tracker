@@ -236,10 +236,9 @@ async function queryMetabase(sql, apiKey) {
   // Mark today as done so duplicate cron runs are skipped
   await fbPut('/run_flags/kapture_sync', today);
 
-  // ── Step 3: Notify Slack (only on scheduled runs, not manual triggers) ──────
+  // ── Step 3: Notify Slack (whenever cases were added, regardless of trigger type) ──
   const slackToken  = process.env.SLACK_BOT_TOKEN;
-  const notifySlack = process.env.NOTIFY_SLACK === 'true';
-  if (slackToken && notifySlack) {
+  if (slackToken && added > 0) {
     log('Sending Slack notification…');
     try {
       await httpRequest(

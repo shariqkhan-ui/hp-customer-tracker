@@ -32,5 +32,4 @@ jobs:
         env:
           METABASE_API_KEY: ${{ secrets.METABASE_API_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
-          NOTIFY_SLACK: ${{ github.event_name == 'schedule' && 'true' || 'false' }}
         run: node kapture-sync.js
