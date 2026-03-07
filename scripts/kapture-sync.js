@@ -175,7 +175,6 @@ async function queryMetabase(sql, apiKey) {
 
   // ── Step 2: Add to Firebase (skip duplicates, update stale dates) ──────────
   let added = 0, skipped = 0, updated = 0;
-  const today = todayStr();
 
   for (const t of tickets) {
     const ticketId = String(t.KAPTURE_TICKET_ID || '').trim();
