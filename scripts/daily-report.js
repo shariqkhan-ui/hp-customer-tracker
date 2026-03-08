@@ -8,6 +8,7 @@
  */
 
 const https = require('https');
+const crypto = require('crypto');
 
 const FIREBASE_DB = 'https://high-pain-cx-management-default-rtdb.asia-southeast1.firebasedatabase.app';
 const SLACK_CHANNEL = 'C0AHDR8H4CC';
@@ -36,6 +37,36 @@ function httpRequest(method, urlStr, body, headers) {
     if (body) req.write(JSON.stringify(body));
     req.end();
   });
+}
+
+// ── Firebase auth (service account → access token) ───────────────────────────
+
+async function getFirebaseToken() {
+  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  const now = Math.floor(Date.now() / 1000);
+  const header  = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now, exp: now + 3600,
+  })).toString('base64url');
+  const sign = crypto.createSign('RSA-SHA256');
+  sign.update(`${header}.${payload}`);
+  const jwt = `${header}.${payload}.${sign.sign(sa.private_key, 'base64url')}`;
+
+  const body = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: jwt }).toString();
+  const res = await new Promise((resolve, reject) => {
+    const req = https.request({
+      hostname: 'oauth2.googleapis.com', path: '/token', method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },
+    }, (r) => { let d = ''; r.on('data', c => d += c); r.on('end', () => resolve(JSON.parse(d))); });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+  if (!res.access_token) throw new Error('Failed to get Firebase token: ' + JSON.stringify(res));
+  return res.access_token;
 }
 
 // ── Status logic (mirrors dashboard getStatus) ───────────────────────────────
@@ -156,7 +187,8 @@ function row(label, count, total, indent, bold) {
   if (res.ok) {
     console.log('Report sent successfully.');
     // Mark today as done so duplicate cron runs are skipped
-    await httpRequest('PUT', FIREBASE_DB + '/run_flags/daily_report.json?auth=' + process.env.FIREBASE_DB_SECRET, today, {});
+    const fbToken = await getFirebaseToken();
+    await httpRequest('PUT', FIREBASE_DB + '/run_flags/daily_report.json?access_token=' + fbToken, today, {});
   } else {
     console.error('ERROR sending report:', res.error);
     process.exit(1);

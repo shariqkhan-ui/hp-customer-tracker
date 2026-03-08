@@ -68,14 +68,58 @@ function httpRequest(method, urlStr, body, headers) {
   });
 }
 
-const FIREBASE_SECRET = process.env.FIREBASE_DB_SECRET;
+// ── Firebase auth (service account → access token) ───────────────────────────
+
+let _fbToken = null;
+
+async function getFirebaseToken() {
+  if (_fbToken) return _fbToken;
+  const sa = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+  const crypto = require('crypto');
+
+  const now = Math.floor(Date.now() / 1000);
+  const header  = Buffer.from(JSON.stringify({ alg: 'RS256', typ: 'JWT' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify({
+    iss: sa.client_email,
+    scope: 'https://www.googleapis.com/auth/firebase.database https://www.googleapis.com/auth/userinfo.email',
+    aud: 'https://oauth2.googleapis.com/token',
+    iat: now,
+    exp: now + 3600,
+  })).toString('base64url');
+
+  const sign = crypto.createSign('RSA-SHA256');
+  sign.update(`${header}.${payload}`);
+  const sig = sign.sign(sa.private_key, 'base64url');
+  const jwt = `${header}.${payload}.${sig}`;
+
+  const body = new URLSearchParams({
+    grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+    assertion: jwt,
+  }).toString();
+
+  const res = await new Promise((resolve, reject) => {
+    const url = new URL('https://oauth2.googleapis.com/token');
+    const req = https.request({
+      hostname: url.hostname, path: url.pathname, method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },
+    }, (r) => { let d = ''; r.on('data', c => d += c); r.on('end', () => resolve(JSON.parse(d))); });
+    req.on('error', reject);
+    req.write(body);
+    req.end();
+  });
+
+  if (!res.access_token) throw new Error('Failed to get Firebase token: ' + JSON.stringify(res));
+  _fbToken = res.access_token;
+  return _fbToken;
+}
 
 async function fbGet(path) {
   return httpRequest('GET', FIREBASE_DB + path + '.json', null, {});
 }
 
 async function fbPut(path, value) {
-  return httpRequest('PUT', FIREBASE_DB + path + '.json?auth=' + FIREBASE_SECRET, value, {});
+  const token = await getFirebaseToken();
+  return httpRequest('PUT', FIREBASE_DB + path + '.json?access_token=' + token, value, {});
 }
 
 // ── Metabase query ────────────────────────────────────────────────────────────
