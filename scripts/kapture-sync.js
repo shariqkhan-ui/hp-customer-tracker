@@ -68,12 +68,14 @@ function httpRequest(method, urlStr, body, headers) {
   });
 }
 
+const FIREBASE_SECRET = process.env.FIREBASE_DB_SECRET;
+
 async function fbGet(path) {
   return httpRequest('GET', FIREBASE_DB + path + '.json', null, {});
 }
 
 async function fbPut(path, value) {
-  return httpRequest('PUT', FIREBASE_DB + path + '.json', value, {});
+  return httpRequest('PUT', FIREBASE_DB + path + '.json?auth=' + FIREBASE_SECRET, value, {});
 }
 
 // ── Metabase query ────────────────────────────────────────────────────────────

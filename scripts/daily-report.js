@@ -156,7 +156,7 @@ function row(label, count, total, indent, bold) {
   if (res.ok) {
     console.log('Report sent successfully.');
     // Mark today as done so duplicate cron runs are skipped
-    await httpRequest('PUT', FIREBASE_DB + '/run_flags/daily_report.json', today, {});
+    await httpRequest('PUT', FIREBASE_DB + '/run_flags/daily_report.json?auth=' + process.env.FIREBASE_DB_SECRET, today, {});
   } else {
     console.error('ERROR sending report:', res.error);
     process.exit(1);
