@@ -275,6 +275,11 @@ table.main-tbl tbody tr:hover { background: #220020; }
         <input type="password" id="auditPinInput" placeholder="Set a PIN..." style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;min-width:160px" />
       </div>
       <button class="btn" onclick="saveAuditPin()" style="background:rgba(217,0,141,.15);border-color:var(--primary);color:var(--primary-light)">Set PIN</button>
+      <div style="display:flex;flex-direction:column;gap:4px;min-width:160px">
+        <div class="filter-label">&#x1F441; Viewer PIN (share for read-only audit access)</div>
+        <input type="password" id="viewerPinInput" placeholder="Set viewer PIN..." style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;min-width:160px" />
+      </div>
+      <button class="btn" onclick="saveViewerPin()" style="background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">Set Viewer PIN</button>
       <button class="btn btn-primary" onclick="openImportModal()" style="background:var(--blue);border-color:var(--blue);align-self:flex-end">&#x1F4E5; Import Data from CSV</button>
     </div>
   </div>
@@ -1803,23 +1808,35 @@ async function submitAddCase() {
 }
 
 // ── Audit Trail ──
-const USER_KEY      = 'hp_user_name_v1';
-const AUDIT_KEY     = 'hp_audit_log_v1';
-const AUDIT_PIN_KEY = 'hp_audit_pin_v1';
+const USER_KEY            = 'hp_user_name_v1';
+const AUDIT_KEY           = 'hp_audit_log_v1';
+const AUDIT_PIN_KEY       = 'hp_audit_pin_v1';
+const AUDIT_VIEWER_PIN_KEY = 'hp_audit_viewer_pin_v1'; // viewer-only access (read-only audit)
+
+let _hasViewerAccess = false; // true when authenticated via viewer PIN (not admin PIN)
 
 let _logoClicks = 0, _logoTimer = null;
-function handleLogoClick() {
+async function handleLogoClick() {
   _logoClicks++;
   clearTimeout(_logoTimer);
   _logoTimer = setTimeout(() => { _logoClicks = 0; }, 600);
   if (_logoClicks >= 3) {
     _logoClicks = 0;
-    const pin = localStorage.getItem(AUDIT_PIN_KEY);
-    if (!pin) { revealAdminButtons(); return; }
-    const entered = window.prompt('Enter PIN to access admin controls:');
+    const adminPin = localStorage.getItem(AUDIT_PIN_KEY);
+    if (!adminPin) { revealAdminButtons(); return; }
+    const entered = window.prompt('Enter PIN to access:');
     if (entered === null) return;
-    if (entered === pin) { revealAdminButtons(); toast('Admin controls unlocked', 'success'); }
-    else { toast('Incorrect PIN', 'error'); }
+    if (entered === adminPin) { _hasViewerAccess = false; revealAdminButtons(); toast('Admin controls unlocked', 'success'); return; }
+    // Admin PIN didn't match — try viewer PIN from Firebase
+    try {
+      const viewerPin = await fbGet('/config/viewer_pin');
+      if (viewerPin && entered === viewerPin) {
+        localStorage.setItem(AUDIT_VIEWER_PIN_KEY, entered);
+        _hasViewerAccess = true;
+        revealAdminButtons();
+        toast('Audit Trail access granted \u2713', 'success');
+      } else { toast('Incorrect PIN', 'error'); }
+    } catch(e) { toast('Incorrect PIN', 'error'); }
   }
 }
 function revealAdminButtons() {
@@ -1833,8 +1850,9 @@ function updateUserBadge() {
   else { badge.textContent = '\uD83D\uDC64 Set your name'; badge.style.color = 'var(--muted)'; }
 }
 function showNamePromptIfNeeded() {
-  // Don't show for admin (has PIN)
+  // Don't show for admin (has PIN) or viewer
   if (localStorage.getItem(AUDIT_PIN_KEY)) return;
+  if (localStorage.getItem(AUDIT_VIEWER_PIN_KEY)) return;
   // Don't show if name already saved
   if (localStorage.getItem(USER_KEY)) return;
   // Don't show if user already skipped on this machine
@@ -1883,6 +1901,15 @@ function saveAuditPin() {
   document.getElementById('auditPinInput').value = '';
   toast('Audit PIN set \u2713 — only you can open the audit trail now', 'success');
 }
+async function saveViewerPin() {
+  const pin = document.getElementById('viewerPinInput').value.trim();
+  if (!pin) { toast('Enter a viewer PIN first', 'error'); return; }
+  try {
+    await fbPut('/config/viewer_pin', pin);
+    document.getElementById('viewerPinInput').value = '';
+    toast('Viewer PIN saved \u2713 — share this PIN for read-only audit access', 'success');
+  } catch(e) { toast('Error saving viewer PIN: ' + e.message, 'error'); }
+}
 // ── Audit log: stored in Firebase RTDB via REST POST (push = auto-key) ──
 function addAuditEntry(ticket, field, oldVal, newVal) {
   if (String(oldVal||'').trim() === String(newVal||'').trim()) return;
@@ -1893,11 +1920,18 @@ function addAuditEntry(ticket, field, oldVal, newVal) {
   }).catch(function(e) { console.warn('Audit log error:', e.message); });
 }
 async function openAuditModal() {
-  const pin = localStorage.getItem(AUDIT_PIN_KEY);
-  if (pin) {
+  const adminPin = localStorage.getItem(AUDIT_PIN_KEY);
+  if (adminPin && !_hasViewerAccess) {
     const entered = window.prompt('Enter Audit Trail PIN to continue:');
     if (entered === null) return;
-    if (entered !== pin) { toast('Incorrect PIN — access denied', 'error'); return; }
+    if (entered !== adminPin) { toast('Incorrect PIN — access denied', 'error'); return; }
+  } else if (_hasViewerAccess) {
+    const vpin = localStorage.getItem(AUDIT_VIEWER_PIN_KEY);
+    if (vpin) {
+      const entered = window.prompt('Enter your viewer PIN to continue:');
+      if (entered === null) return;
+      if (entered !== vpin) { toast('Incorrect PIN — access denied', 'error'); return; }
+    }
   }
   document.getElementById('auditModal').classList.add('open');
   document.getElementById('auditCount').textContent = 'Loading\u2026';
@@ -2025,7 +2059,15 @@ async function runImport() {
 // ── Init ──
 loadEdits();
 (function() {
-  if (localStorage.getItem(AUDIT_PIN_KEY)) revealAdminButtons();
+  if (localStorage.getItem(AUDIT_PIN_KEY)) { revealAdminButtons(); return; }
+  // Viewer PIN: re-validate against Firebase so revoked PINs stop working
+  const vpin = localStorage.getItem(AUDIT_VIEWER_PIN_KEY);
+  if (vpin) {
+    fbGet('/config/viewer_pin').then(function(stored) {
+      if (stored && vpin === stored) { _hasViewerAccess = true; revealAdminButtons(); }
+      else { localStorage.removeItem(AUDIT_VIEWER_PIN_KEY); } // PIN was changed/revoked
+    }).catch(function() {});
+  }
 })();
 (function() {
   const saved = localStorage.getItem(USER_KEY);
