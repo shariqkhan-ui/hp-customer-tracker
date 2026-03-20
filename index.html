@@ -263,6 +263,9 @@ table.main-tbl tbody tr:hover { background: #220020; }
 
   <!-- Sync Setup Panel -->
   <div class="setup-panel" id="setupPanel" style="display:none">
+    <div style="display:flex;justify-content:flex-end;margin-bottom:8px">
+      <button class="btn" onclick="document.getElementById('setupPanel').style.display='none'" style="font-size:11px;padding:4px 10px">&#x2715; Close</button>
+    </div>
     <!-- Row 1: Identity & Audit PIN -->
     <div style="display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:12px">
       <div style="display:flex;flex-direction:column;gap:4px;min-width:180px">
