@@ -1841,6 +1841,7 @@ async function handleLogoClick() {
 }
 function revealAdminButtons() {
   document.getElementById('auditBtn').style.display = '';
+  if (!_hasViewerAccess) document.getElementById('setupPanel').style.display = '';
 }
 function getUser() { return localStorage.getItem(USER_KEY) || 'Unknown'; }
 function updateUserBadge() {
