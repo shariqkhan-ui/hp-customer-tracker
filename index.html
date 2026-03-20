@@ -1829,7 +1829,7 @@ async function handleLogoClick() {
     if (entered === adminPin) { _hasViewerAccess = false; revealAdminButtons(); toast('Admin controls unlocked', 'success'); return; }
     // Admin PIN didn't match — try viewer PIN from Firebase
     try {
-      const viewerPin = await fbGet('/config/viewer_pin');
+      const viewerPin = await fbGet('/viewer_pin');
       if (viewerPin && entered === viewerPin) {
         localStorage.setItem(AUDIT_VIEWER_PIN_KEY, entered);
         _hasViewerAccess = true;
@@ -1906,7 +1906,7 @@ async function saveViewerPin() {
   const pin = document.getElementById('viewerPinInput').value.trim();
   if (!pin) { toast('Enter a viewer PIN first', 'error'); return; }
   try {
-    await fbPut('/config/viewer_pin', pin);
+    await fbPut('/viewer_pin', pin);
     document.getElementById('viewerPinInput').value = '';
     toast('Viewer PIN saved \u2713 — share this PIN for read-only audit access', 'success');
   } catch(e) { toast('Error saving viewer PIN: ' + e.message, 'error'); }
@@ -2067,7 +2067,7 @@ loadEdits();
   // Viewer PIN: re-validate against Firebase so revoked PINs stop working
   const vpin = localStorage.getItem(AUDIT_VIEWER_PIN_KEY);
   if (vpin) {
-    fbGet('/config/viewer_pin').then(function(stored) {
+    fbGet('/viewer_pin').then(function(stored) {
       if (stored && vpin === stored) { _hasViewerAccess = true; revealAdminButtons(); }
       else { localStorage.removeItem(AUDIT_VIEWER_PIN_KEY); } // PIN was changed/revoked
     }).catch(function() {});
