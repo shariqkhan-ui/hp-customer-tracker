@@ -2060,7 +2060,10 @@ async function runImport() {
 // ── Init ──
 loadEdits();
 (function() {
-  if (localStorage.getItem(AUDIT_PIN_KEY)) { revealAdminButtons(); return; }
+  if (localStorage.getItem(AUDIT_PIN_KEY)) {
+    localStorage.setItem(USER_KEY, 'Shariq Raza Khan');
+    revealAdminButtons(); return;
+  }
   // Viewer PIN: re-validate against Firebase so revoked PINs stop working
   const vpin = localStorage.getItem(AUDIT_VIEWER_PIN_KEY);
   if (vpin) {
