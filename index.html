@@ -2060,7 +2060,7 @@ function updateUserBadge() {
   const badge   = document.getElementById('userBadge');
   const logout  = document.getElementById('logoutBtn');
   if (session) {
-    const teamBadge = session.team === 'NQT' ? ' 🟡 NQT' : ' 🔵 Cx';
+    const teamBadge = session.role === 'admin' ? ' \uD83D\uDC51 Admin' : session.team === 'NQT' ? ' \uD83D\uDFE1 NQT' : ' \uD83D\uDD35 Cx';
     badge.textContent = '\uD83D\uDC64 ' + session.name + teamBadge;
     badge.style.color = 'var(--primary-light)';
     if (logout) logout.style.display = '';
