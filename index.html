@@ -570,6 +570,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Sub-category</th>
             <th>TAT</th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
+            <th>Migration Status &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Owner &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Pending Since</th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
@@ -586,6 +587,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('subcat',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('migStatus',this.value)"></th>
             <th><input class="col-filter" placeholder="Cx / NQT" oninput="setColFilter('owner',this.value)"></th>
             <th></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
@@ -773,13 +775,14 @@ function dbRowToArray(r) {
     r.col12           || '',  // 12
     r.col13           || '',  // 13
     r.migration_date  || '',  // 14
-    r.owner           || '',  // 15
-    r.owner_assigned_at || 0  // 16 — Unix ms timestamp when owner was last set
+    r.owner              || '',  // 15
+    r.owner_assigned_at  || 0,  // 16 — Unix ms timestamp when owner was last set
+    r.migration_status   || ''  // 17
   ];
 }
 
 // Map edit field name → Supabase column name
-const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner' };
+const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status' };
 
 let allRows = [], visRows = [], charts = {};
 
@@ -847,7 +850,7 @@ function effectiveVal(r, col) { return (r[col] || '').trim(); }
 
 
 // ── Save edit: patch allRows in memory + write to Firebase ──
-const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15 };
+const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17 };
 async function saveToSheet(ticket, field, value) {
   const dbCol = DB_COL[field];
   if (!dbCol) return;
@@ -1029,6 +1032,45 @@ function startEdit(td) {
       if (e.key === 'Escape') {
         ownerCommitted = true;
         td.innerHTML = ownerBadgeCell(cur);
+        td.onclick = () => startEdit(td);
+      }
+    });
+    return;
+  }
+
+  // Migration Status field: Proceed / Hold dropdown
+  if (field === 'migration_status') {
+    const sel = document.createElement('select');
+    sel.className = 'edit-input';
+    sel.innerHTML = '<option value="">— Select —</option>' +
+      MIG_STATUS_OPTS.map(function(o) {
+        return '<option value="' + o + '"' + (o === cur ? ' selected' : '') + '>' + o + '</option>';
+      }).join('');
+    td.innerHTML = '';
+    td.appendChild(sel);
+    sel.focus();
+
+    let msCommitted = false;
+    async function commitMigStatus() {
+      if (msCommitted) return; msCommitted = true;
+      const nv = sel.value;
+      addAuditEntry(ticket, field, cur, nv);
+      await saveToSheet(ticket, field, nv);
+      const row = allRows.find(function(r) { return (r[1]||'').trim() === ticket; });
+      if (row) row[17] = nv;
+      applyFilters();
+    }
+    sel.addEventListener('change', commitMigStatus);
+    sel.addEventListener('blur', function() {
+      if (!msCommitted) {
+        td.innerHTML = migStatusBadgeCell(cur);
+        td.onclick = () => startEdit(td);
+      }
+    });
+    sel.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        msCommitted = true;
+        td.innerHTML = migStatusBadgeCell(cur);
         td.onclick = () => startEdit(td);
       }
     });
@@ -1510,8 +1552,9 @@ function applyColFilters() {
     if (!chk(r[4],              'subcat'))   return false;
     if (!chk(r[7],              'tat'))      return false;
     if (!chk(getOwner(r),       'owner'))    return false;
-    if (!chk(effectiveVal(r,8), 'remarks'))  return false;
-    if (!chk(effectiveVal(r,10),'engineer')) return false;
+    if (!chk(effectiveVal(r,8), 'remarks'))    return false;
+    if (!chk((r[17]||''),       'migStatus'))  return false;
+    if (!chk(effectiveVal(r,10),'engineer'))   return false;
     if (!chk(r[0],              'caseAdded'))return false;
     if (!chk(effectiveVal(r,14),'migDate'))  return false;
     if (!chk(getStatus(r),      'status'))   return false;
@@ -1665,12 +1708,26 @@ function makeOwnerCell(ticket, owner) {
   return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="owner" data-orig="' + esc(owner) + '" onclick="startEdit(this)" style="min-width:70px">' + ownerBadgeCell(owner) + '</td>';
 }
 
+// ── Migration Status cell helpers ──
+const MIG_STATUS_OPTS = ['Proceed with migration', 'Hold migration'];
+function migStatusBadgeCell(val) {
+  const badge = val === 'Proceed with migration'
+    ? '<span class="badge badge-green">Proceed with migration</span>'
+    : val === 'Hold migration'
+      ? '<span class="badge badge-red">Hold migration</span>'
+      : '<span style="color:var(--muted)">—</span>';
+  return badge + '<span class="edit-hint">&#x270F;</span>';
+}
+function makeMigStatusCell(ticket, val) {
+  return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="migration_status" data-orig="' + esc(val) + '" onclick="startEdit(this)" style="min-width:130px">' + migStatusBadgeCell(val) + '</td>';
+}
+
 // ── Table ──
 function renderTable(rows) {
   document.getElementById('rowCount').textContent = rows.length + ' records';
   const tbody = document.getElementById('tBody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
     return;
   }
   const statusBadge = s =>
@@ -1696,6 +1753,7 @@ function renderTable(rows) {
       '<td>' + esc((r[4]||'').trim() || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim()) +
+      makeMigStatusCell(ticket, (r[17]||'').trim()) +
       makeOwnerCell(ticket, owner) +
       '<td style="font-size:12px;font-weight:700;color:' + pendingSinceColor(r) + ';white-space:nowrap">' + getPendingSince(r) + '</td>' +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim()) +
