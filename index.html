@@ -493,6 +493,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Sub-category</th>
             <th>TAT</th>
             <th>Owner &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
+            <th>Pending Since</th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Case Added On</th>
@@ -508,6 +509,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('subcat',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
             <th><input class="col-filter" placeholder="Cx / NQT" oninput="setColFilter('owner',this.value)"></th>
+            <th></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('caseAdded',this.value)"></th>
@@ -1538,6 +1540,29 @@ function renderDayTable(rows) {
     row('FTD — Final Till Date', ftd, true);
 }
 
+// ── Pending Since ──
+// Time elapsed since case_added_on (col 0), shown in Xd Yh format
+function getPendingSince(r) {
+  const d = parseDate((r[0] || '').trim());
+  if (!d) return '—';
+  const diffMs = Date.now() - d.getTime();
+  if (diffMs < 0) return '—';
+  const totalH = Math.floor(diffMs / 3600000);
+  const days   = Math.floor(totalH / 24);
+  const hours  = totalH % 24;
+  if (days === 0) return totalH + 'h';
+  if (hours === 0) return days + 'd';
+  return days + 'd ' + hours + 'h';
+}
+function pendingSinceColor(r) {
+  const d = parseDate((r[0] || '').trim());
+  if (!d) return 'var(--muted)';
+  const days = (Date.now() - d.getTime()) / 86400000;
+  if (days > 3) return 'var(--red)';
+  if (days > 1) return 'var(--yellow)';
+  return 'var(--green)';
+}
+
 // ── Owner cell helpers ──
 function ownerBadgeCell(owner) {
   const badge = owner === 'NQT'
@@ -1554,7 +1579,7 @@ function renderTable(rows) {
   document.getElementById('rowCount').textContent = rows.length + ' records';
   const tbody = document.getElementById('tBody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="14" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
     return;
   }
   const statusBadge = s =>
@@ -1580,6 +1605,7 @@ function renderTable(rows) {
       '<td>' + esc((r[4]||'').trim() || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
       makeOwnerCell(ticket, owner) +
+      '<td style="font-size:12px;font-weight:700;color:' + pendingSinceColor(r) + ';white-space:nowrap">' + getPendingSince(r) + '</td>' +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim()) +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim()) +
       '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[0]||'').trim())) || '—') + '</td>' +
@@ -1592,11 +1618,11 @@ function renderTable(rows) {
 
 // ── Download CSV ──
 function downloadCSV() {
-  const headers = ['#','Mobile','Customer Name','Partner','Sub-category','TAT','Owner','Ground Remarks','Easy Remarks','Migration Date','Status','Ticket No','Ticket URL'];
+  const headers = ['#','Mobile','Customer Name','Partner','Sub-category','TAT','Owner','Pending Since','Ground Remarks','Easy Remarks','Migration Date','Status','Ticket No','Ticket URL'];
   const esc2 = v => '"' + String(v).replace(/"/g, '""') + '"';
   const lines = [headers.map(esc2).join(','), ...visRows.map((r,i) => [
     i+1, (r[3]||'').trim(), (r[5]||'').trim(), (r[6]||'').trim(),
-    (r[4]||'').trim(), (r[7]||'').trim(), getOwner(r), (r[8]||'').trim(), (r[9]||'').trim(),
+    (r[4]||'').trim(), (r[7]||'').trim(), getOwner(r), getPendingSince(r), (r[8]||'').trim(), (r[9]||'').trim(),
     (r[14]||'').trim(), getStatus(r), (r[1]||'').trim(), (r[11]||'').trim()
   ].map(esc2).join(','))];
   const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
