@@ -1632,12 +1632,32 @@ function renderTable(rows) {
 
 // ── Download CSV ──
 function downloadCSV() {
-  const headers = ['#','Mobile','Customer Name','Partner','Sub-category','TAT','Owner','Pending Since','Ground Remarks','Easy Remarks','Migration Date','Status','Ticket No','Ticket URL'];
+  const headers = [
+    '#','Case Added On','Ticket No','Mobile','Customer Name','Partner',
+    'Sub-category','TAT','Ground Remarks','Easy Remarks','Engineer',
+    'Owner','Pending Since','Migration Date','Status','Ticket URL',
+    'Col12','Col13'
+  ];
   const esc2 = v => '"' + String(v).replace(/"/g, '""') + '"';
   const lines = [headers.map(esc2).join(','), ...visRows.map((r,i) => [
-    i+1, (r[3]||'').trim(), (r[5]||'').trim(), (r[6]||'').trim(),
-    (r[4]||'').trim(), (r[7]||'').trim(), getOwner(r), getPendingSince(r), (r[8]||'').trim(), (r[9]||'').trim(),
-    (r[14]||'').trim(), getStatus(r), (r[1]||'').trim(), (r[11]||'').trim()
+    i+1,
+    (r[0]||'').trim(),
+    (r[1]||'').trim(),
+    (r[3]||'').trim(),
+    (r[5]||'').trim(),
+    (r[6]||'').trim(),
+    (r[4]||'').trim(),
+    (r[7]||'').trim(),
+    (r[8]||'').trim(),
+    (r[9]||'').trim(),
+    (r[10]||'').trim(),
+    getOwner(r),
+    getPendingSince(r),
+    (r[14]||'').trim(),
+    getStatus(r),
+    (r[11]||'').trim(),
+    (r[12]||'').trim(),
+    (r[13]||'').trim()
   ].map(esc2).join(','))];
   const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
