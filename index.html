@@ -492,6 +492,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Partner</th>
             <th>Sub-category</th>
             <th>TAT</th>
+            <th>Owner &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Case Added On</th>
@@ -506,6 +507,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('partner',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('subcat',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
+            <th><input class="col-filter" placeholder="Cx / NQT" oninput="setColFilter('owner',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('caseAdded',this.value)"></th>
@@ -691,12 +693,13 @@ function dbRowToArray(r) {
     r.ticket_url      || '',  // 11
     r.col12           || '',  // 12
     r.col13           || '',  // 13
-    r.migration_date  || ''   // 14
+    r.migration_date  || '',  // 14
+    r.owner           || ''   // 15
   ];
 }
 
 // Map edit field name → Supabase column name
-const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date' };
+const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner' };
 
 let allRows = [], visRows = [], charts = {};
 
@@ -764,7 +767,7 @@ function effectiveVal(r, col) { return (r[col] || '').trim(); }
 
 
 // ── Save edit: patch allRows in memory + write to Firebase ──
-const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14 };
+const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15 };
 async function saveToSheet(ticket, field, value) {
   const dbCol = DB_COL[field];
   if (!dbCol) return;
@@ -905,6 +908,42 @@ function startEdit(td) {
         remarksCommitted = true; // prevent blur from double-triggering
         td.className = 'edit-cell' + (cur.trim() !== orig.trim() ? ' edited' : '');
         td.innerHTML = cellInner(cur);
+        td.onclick = () => startEdit(td);
+      }
+    });
+    return;
+  }
+
+  // Owner field: show Cx / NQT dropdown
+  if (field === 'owner') {
+    const sel = document.createElement('select');
+    sel.className = 'edit-input';
+    sel.innerHTML = ['Cx', 'NQT'].map(function(o) {
+      return '<option value="' + o + '"' + (o === cur ? ' selected' : '') + '>' + o + '</option>';
+    }).join('');
+    td.innerHTML = '';
+    td.appendChild(sel);
+    sel.focus();
+
+    let ownerCommitted = false;
+    async function commitOwner() {
+      if (ownerCommitted) return; ownerCommitted = true;
+      const nv = sel.value;
+      addAuditEntry(ticket, field, cur, nv);
+      await saveToSheet(ticket, field, nv);
+      applyFilters();
+    }
+    sel.addEventListener('change', commitOwner);
+    sel.addEventListener('blur', function() {
+      if (!ownerCommitted) {
+        td.innerHTML = ownerBadgeCell(cur);
+        td.onclick = () => startEdit(td);
+      }
+    });
+    sel.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        ownerCommitted = true;
+        td.innerHTML = ownerBadgeCell(cur);
         td.onclick = () => startEdit(td);
       }
     });
@@ -1074,6 +1113,16 @@ function getStatus(r) {
   if (pingSubcats.some(s => subcat.includes(s)) && pingKw.some(kw => g.includes(kw))) return 'Ping Up';
   return 'Unresolved';
 }
+// ── Owner Logic ──
+// NQT = blank remarks OR "Migration is in Progress"; everything else = Cx
+function getOwner(r) {
+  const stored = (r[15] || '').trim();
+  if (stored) return stored;  // user-set value takes precedence
+  const rem = (r[8] || '').trim().toLowerCase();
+  if (!rem || rem === 'migration is in progress') return 'NQT';
+  return 'Cx';
+}
+
 // Duplicate = same mobile Number (col 3) appears more than once across all rows
 let dupeNumbers = new Set();
 function buildDupeSet(rows) {
@@ -1375,6 +1424,7 @@ function applyColFilters() {
     if (!chk(r[6],              'partner'))  return false;
     if (!chk(r[4],              'subcat'))   return false;
     if (!chk(r[7],              'tat'))      return false;
+    if (!chk(getOwner(r),       'owner'))    return false;
     if (!chk(effectiveVal(r,8), 'remarks'))  return false;
     if (!chk(effectiveVal(r,10),'engineer')) return false;
     if (!chk(r[0],              'caseAdded'))return false;
@@ -1488,12 +1538,23 @@ function renderDayTable(rows) {
     row('FTD — Final Till Date', ftd, true);
 }
 
+// ── Owner cell helpers ──
+function ownerBadgeCell(owner) {
+  const badge = owner === 'NQT'
+    ? '<span class="badge badge-yellow">NQT</span>'
+    : '<span class="badge badge-blue">Cx</span>';
+  return badge + '<span class="edit-hint">&#x270F;</span>';
+}
+function makeOwnerCell(ticket, owner) {
+  return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="owner" data-orig="' + esc(owner) + '" onclick="startEdit(this)" style="min-width:70px">' + ownerBadgeCell(owner) + '</td>';
+}
+
 // ── Table ──
 function renderTable(rows) {
   document.getElementById('rowCount').textContent = rows.length + ' records';
   const tbody = document.getElementById('tBody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
     return;
   }
   const statusBadge = s =>
@@ -1510,6 +1571,7 @@ function renderTable(rows) {
     const link   = ticket
       ? '<a class="ticket-link" href="' + esc(kaptureUrl) + '" target="_blank">&#x1F517; ' + esc(ticket) + '</a>'
       : '<span style="color:var(--muted)">—</span>';
+    const owner = getOwner(r);
     return '<tr>' +
       '<td style="color:var(--muted)">' + (i+1) + '</td>' +
       '<td>' + esc((r[3]||'').trim() || '—') + '</td>' +
@@ -1517,6 +1579,7 @@ function renderTable(rows) {
       '<td style="font-size:12px">' + esc((r[6]||'').trim() || '—') + '</td>' +
       '<td>' + esc((r[4]||'').trim() || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
+      makeOwnerCell(ticket, owner) +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim()) +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim()) +
       '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[0]||'').trim())) || '—') + '</td>' +
@@ -1529,11 +1592,11 @@ function renderTable(rows) {
 
 // ── Download CSV ──
 function downloadCSV() {
-  const headers = ['#','Mobile','Customer Name','Partner','Sub-category','TAT','Ground Remarks','Easy Remarks','Migration Date','Status','Ticket No','Ticket URL'];
+  const headers = ['#','Mobile','Customer Name','Partner','Sub-category','TAT','Owner','Ground Remarks','Easy Remarks','Migration Date','Status','Ticket No','Ticket URL'];
   const esc2 = v => '"' + String(v).replace(/"/g, '""') + '"';
   const lines = [headers.map(esc2).join(','), ...visRows.map((r,i) => [
     i+1, (r[3]||'').trim(), (r[5]||'').trim(), (r[6]||'').trim(),
-    (r[4]||'').trim(), (r[7]||'').trim(), (r[8]||'').trim(), (r[9]||'').trim(),
+    (r[4]||'').trim(), (r[7]||'').trim(), getOwner(r), (r[8]||'').trim(), (r[9]||'').trim(),
     (r[14]||'').trim(), getStatus(r), (r[1]||'').trim(), (r[11]||'').trim()
   ].map(esc2).join(','))];
   const blob = new Blob([lines.join('\r\n')], { type: 'text/csv;charset=utf-8;' });
