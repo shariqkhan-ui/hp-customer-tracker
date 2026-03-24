@@ -492,9 +492,9 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Partner</th>
             <th>Sub-category</th>
             <th>TAT</th>
+            <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Owner &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Pending Since</th>
-            <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Case Added On</th>
             <th>Migration Date</th>
@@ -508,9 +508,9 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('partner',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('subcat',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
             <th><input class="col-filter" placeholder="Cx / NQT" oninput="setColFilter('owner',this.value)"></th>
             <th></th>
-            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('caseAdded',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('migDate',this.value)"></th>
@@ -1618,9 +1618,9 @@ function renderTable(rows) {
       '<td style="font-size:12px">' + esc((r[6]||'').trim() || '—') + '</td>' +
       '<td>' + esc((r[4]||'').trim() || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
+      makeEditCell(ticket, 'remarks',  (r[8]||'').trim()) +
       makeOwnerCell(ticket, owner) +
       '<td style="font-size:12px;font-weight:700;color:' + pendingSinceColor(r) + ';white-space:nowrap">' + getPendingSince(r) + '</td>' +
-      makeEditCell(ticket, 'remarks',  (r[8]||'').trim()) +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim()) +
       '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[0]||'').trim())) || '—') + '</td>' +
       makeEditCell(ticket, 'migration_date', (r[14]||'').trim()) +
