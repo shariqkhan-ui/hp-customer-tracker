@@ -696,7 +696,8 @@ function dbRowToArray(r) {
     r.col12           || '',  // 12
     r.col13           || '',  // 13
     r.migration_date  || '',  // 14
-    r.owner           || ''   // 15
+    r.owner           || '',  // 15
+    r.owner_assigned_at || 0  // 16 — Unix ms timestamp when owner was last set
   ];
 }
 
@@ -931,8 +932,13 @@ function startEdit(td) {
     async function commitOwner() {
       if (ownerCommitted) return; ownerCommitted = true;
       const nv = sel.value;
+      const now = Date.now();
       addAuditEntry(ticket, field, cur, nv);
       await saveToSheet(ticket, field, nv);
+      // Also persist the assignment timestamp so Pending Since resets
+      try { await fbPut('/cases/' + ticketKey(ticket) + '/owner_assigned_at', now); } catch(e) {}
+      const row = allRows.find(function(r) { return (r[1]||'').trim() === ticket; });
+      if (row) row[16] = now;
       applyFilters();
     }
     sel.addEventListener('change', commitOwner);
@@ -1543,9 +1549,13 @@ function renderDayTable(rows) {
 // ── Pending Since ──
 // Time elapsed since case_added_on (col 0), shown in Xd Yh format
 function getPendingSince(r) {
-  const d = parseDate((r[0] || '').trim());
-  if (!d) return '—';
-  const diffMs = Date.now() - d.getTime();
+  // Prefer owner_assigned_at (precise timestamp) over midnight-based date parse
+  const ts = Number(r[16]);
+  const diffMs = ts > 0 ? Date.now() - ts : (() => {
+    const d = parseDate((r[0] || '').trim());
+    return d ? Date.now() - d.getTime() : -1;
+  })();
+  if (diffMs < 0) return '—';
   if (diffMs < 0) return '—';
   const totalH = Math.floor(diffMs / 3600000);
   const days   = Math.floor(totalH / 24);
@@ -1555,9 +1565,13 @@ function getPendingSince(r) {
   return days + 'd ' + hours + 'h';
 }
 function pendingSinceColor(r) {
-  const d = parseDate((r[0] || '').trim());
-  if (!d) return 'var(--muted)';
-  const days = (Date.now() - d.getTime()) / 86400000;
+  const ts = Number(r[16]);
+  const diffMs = ts > 0 ? Date.now() - ts : (() => {
+    const d = parseDate((r[0] || '').trim());
+    return d ? Date.now() - d.getTime() : -1;
+  })();
+  if (diffMs < 0) return 'var(--muted)';
+  const days = diffMs / 86400000;
   if (days > 3) return 'var(--red)';
   if (days > 1) return 'var(--yellow)';
   return 'var(--green)';
@@ -1800,7 +1814,8 @@ async function submitBulkAdd() {
     updates['cases/' + ticketKey(r.ticket)] = {
       case_added_on: r.caseAddedOn, ticket_no: r.ticket, mobile: r.mobile,
       subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat,
-      remarks: '', easy_remarks: '', engineer: '', ticket_url: '', col12: '', col13: '', migration_date: ''
+      remarks: '', easy_remarks: '', engineer: '', ticket_url: '', col12: '', col13: '', migration_date: '',
+      owner_assigned_at: Date.now()
     };
   });
   try {
@@ -1812,7 +1827,7 @@ async function submitBulkAdd() {
   }
 
   rows.forEach(r => {
-    const newRow = [r.caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', ''];
+    const newRow = [r.caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', '', '', Date.now()];
     addLocalRow(newRow);
     allRows.unshift(newRow);
   });
@@ -1880,7 +1895,8 @@ async function submitAddCase() {
     await fbPut('/cases/' + ticketKey(ticket), {
       case_added_on: createdDate, ticket_no: ticket, mobile: mobile, subcat: subcat,
       cust_name: name, partner: partner, tat: tat,
-      remarks: '', easy_remarks: '', engineer: '', ticket_url: '', col12: '', col13: '', migration_date: ''
+      remarks: '', easy_remarks: '', engineer: '', ticket_url: '', col12: '', col13: '', migration_date: '',
+      owner_assigned_at: Date.now()
     });
   } catch(e) {
     toast('ERROR saving to database: ' + e.message, 'error');
@@ -1889,7 +1905,7 @@ async function submitAddCase() {
 
   // Insert succeeded — now update local UI
   // col 0 = Case Added On, col 1 = Ticket, col 2 = Created Date (blank), col 3 = Mobile...
-  const newRow = [createdDate, ticket, '', mobile, subcat, name, partner, tat, '', '', '', '', '', '', ''];
+  const newRow = [createdDate, ticket, '', mobile, subcat, name, partner, tat, '', '', '', '', '', '', '', '', Date.now()];
   addLocalRow(newRow);
   allRows.unshift(newRow);
   buildDupeSet(allRows);
