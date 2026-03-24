@@ -204,6 +204,27 @@ table.main-tbl tbody tr:hover { background: #220020; }
 .col-filter:focus { outline:none; border-color:var(--primary); }
 .col-filter::placeholder { color:var(--border); }
 
+/* Login overlay */
+#loginOverlay { position:fixed; inset:0; background:var(--bg); z-index:9000;
+  display:flex; align-items:center; justify-content:center; }
+.login-card { background:var(--card); border:1px solid var(--primary);
+  border-radius:14px; padding:36px 32px; width:400px; max-width:96vw; }
+.login-logo { font-size:20px; font-weight:900; letter-spacing:-.5px;
+  background:linear-gradient(135deg,#D9008D 0%,#ff4dbb 100%);
+  -webkit-background-clip:text; -webkit-text-fill-color:transparent; background-clip:text; margin-bottom:4px; }
+.login-sub { font-size:12px; color:var(--muted); margin-bottom:28px; }
+.login-field { margin-bottom:14px; }
+.login-field label { display:block; font-size:11px; color:var(--muted);
+  text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px; }
+.login-field input { width:100%; padding:10px 12px; background:var(--bg);
+  border:1px solid var(--border); border-radius:6px; color:var(--text); font-size:14px; }
+.login-field input:focus { outline:none; border-color:var(--primary); }
+#loginError { font-size:12px; color:var(--red); min-height:16px; margin-bottom:12px; }
+/* User management list */
+.user-row { display:flex; align-items:center; gap:8px; padding:7px 0;
+  border-bottom:1px solid #1a0018; font-size:12px; }
+.user-row:last-child { border-bottom:none; }
+
 /* Error Banner */
 #errorBanner { display: none; background: rgba(248,81,73,.12); border: 1px solid var(--red);
   border-radius: 10px; padding: 14px 20px; margin-bottom: 16px; color: var(--red);
@@ -239,11 +260,32 @@ table.main-tbl tbody tr:hover { background: #220020; }
 </head>
 <body>
 
+<!-- Login Overlay -->
+<div id="loginOverlay" style="display:none">
+  <div class="login-card">
+    <div class="login-logo">High Pain Customer Tracker</div>
+    <div class="login-sub">Sign in with your work account</div>
+    <div class="login-field">
+      <label>Email</label>
+      <input type="email" id="loginEmail" placeholder="you@wiom.in" autocomplete="email"
+        onkeydown="if(event.key==='Enter')document.getElementById('loginPassword').focus()" />
+    </div>
+    <div class="login-field">
+      <label>Password</label>
+      <input type="password" id="loginPassword" placeholder="••••••••" autocomplete="current-password"
+        onkeydown="if(event.key==='Enter')attemptLogin()" />
+    </div>
+    <div id="loginError"></div>
+    <button class="btn btn-primary" id="loginBtn" style="width:100%;justify-content:center;padding:11px;font-size:14px" onclick="attemptLogin()">Sign In</button>
+  </div>
+</div>
+
 <div class="header">
   <div class="header-logo" id="headerLogo" onclick="handleLogoClick()" style="cursor:default;user-select:none">High Pain Customer Tracker</div>
   <div class="header-right">
     <span id="lastUpdated" style="font-size:11px;color:var(--muted);">Connecting...</span>
-    <span id="userBadge" onclick="changeMyName()" title="Click to change your name" style="font-size:11px;color:var(--muted);cursor:pointer;padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--card2)"></span>
+    <span id="userBadge" style="font-size:11px;color:var(--muted);padding:4px 8px;border:1px solid var(--border);border-radius:5px;background:var(--card2)"></span>
+    <button class="btn" id="logoutBtn" onclick="logout()" style="display:none;font-size:11px;padding:5px 10px;color:var(--red);border-color:var(--red)">&#x2192; Logout</button>
     <button class="btn btn-primary" onclick="loadData()">&#x1F504; Refresh</button>
 <button class="btn" id="auditBtn" onclick="openAuditModal()" title="Audit Trail" style="display:none;background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">&#x1F4CB; Audit Trail</button>
     <div class="alert-wrap" id="alertWrap">
@@ -284,6 +326,40 @@ table.main-tbl tbody tr:hover { background: #220020; }
       </div>
       <button class="btn" onclick="saveViewerPin()" style="background:rgba(56,139,253,.15);border-color:var(--blue);color:var(--blue)">Set Viewer PIN</button>
       <button class="btn btn-primary" onclick="openImportModal()" style="background:var(--blue);border-color:var(--blue);align-self:flex-end">&#x1F4E5; Import Data from CSV</button>
+    </div>
+    <!-- Row 2: User Management -->
+    <div style="border-top:1px solid var(--border);padding-top:14px;margin-top:4px">
+      <div class="filter-label" style="margin-bottom:10px">&#x1F465; Manage Users</div>
+      <div style="display:flex;align-items:flex-end;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div class="filter-label">Email</div>
+          <input type="email" id="nu_email" placeholder="user@wiom.in" style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;min-width:180px" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div class="filter-label">Full Name</div>
+          <input type="text" id="nu_name" placeholder="Display name" style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;min-width:140px" />
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div class="filter-label">Team</div>
+          <select id="nu_team" style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
+            <option value="Cx">Cx</option>
+            <option value="NQT">NQT</option>
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div class="filter-label">Role</div>
+          <select id="nu_role" style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px">
+            <option value="agent">Agent</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:4px">
+          <div class="filter-label">Password</div>
+          <input type="password" id="nu_pwd" placeholder="Set password" style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;min-width:130px" />
+        </div>
+        <button class="btn btn-primary" onclick="addUser()" style="align-self:flex-end">&#x2795; Add User</button>
+      </div>
+      <div id="userList" style="max-height:180px;overflow-y:auto"></div>
     </div>
   </div>
 
@@ -1149,7 +1225,7 @@ async function loadData() {
     document.getElementById('errorBanner').style.display = 'none';
 
     const rawData = await fbGet('/cases') || {};
-    allRows = Object.values(rawData).map(dbRowToArray).filter(function(r) { return r[1]; });
+    allRows = Object.entries(rawData).filter(function(e) { return !String(e[0]).startsWith('__'); }).map(function(e) { return dbRowToArray(e[1]); }).filter(function(r) { return r[1]; });
     allRows.sort(function(a, b) {
       const da = parseDate((a[0]||'').trim()), db2 = parseDate((b[0]||'').trim());
       return (db2 ? db2.getTime() : 0) - (da ? da.getTime() : 0);
@@ -1201,7 +1277,7 @@ function setupRealtime() {
       if (path === '/') {
         // Full dataset (initial load or full replace)
         var raw = data || {};
-        allRows = Object.values(raw).map(dbRowToArray).filter(function(r) { return r[1]; });
+        allRows = Object.entries(raw).filter(function(e) { return !String(e[0]).startsWith('__'); }).map(function(e) { return dbRowToArray(e[1]); }).filter(function(r) { return r[1]; });
         allRows.sort(function(a, b) {
           var da = parseDate((a[0]||'').trim()), db2 = parseDate((b[0]||'').trim());
           return (db2 ? db2.getTime() : 0) - (da ? da.getTime() : 0);
@@ -1969,20 +2045,45 @@ async function handleLogoClick() {
 }
 function revealAdminButtons() {
   document.getElementById('auditBtn').style.display = '';
-  if (!_hasViewerAccess) document.getElementById('setupPanel').style.display = '';
+  if (!_hasViewerAccess) {
+    document.getElementById('setupPanel').style.display = '';
+    loadUserList();
+  }
 }
-function getUser() { return localStorage.getItem(USER_KEY) || 'Unknown'; }
+function getUser() {
+  const session = getSession();
+  return session ? session.name : (localStorage.getItem(USER_KEY) || 'Unknown');
+}
 function updateUserBadge() {
-  const name = localStorage.getItem(USER_KEY) || '';
-  const badge = document.getElementById('userBadge');
-  if (name) { badge.textContent = '\uD83D\uDC64 ' + name; badge.style.color = 'var(--primary-light)'; }
-  else { badge.textContent = '\uD83D\uDC64 Set your name'; badge.style.color = 'var(--muted)'; }
+  const session = getSession();
+  const badge   = document.getElementById('userBadge');
+  const logout  = document.getElementById('logoutBtn');
+  if (session) {
+    const teamBadge = session.team === 'NQT' ? ' 🟡 NQT' : ' 🔵 Cx';
+    badge.textContent = '\uD83D\uDC64 ' + session.name + teamBadge;
+    badge.style.color = 'var(--primary-light)';
+    if (logout) logout.style.display = '';
+  } else {
+    badge.textContent = '';
+    if (logout) logout.style.display = 'none';
+  }
 }
 function showNamePromptIfNeeded() {
-  // Don't show for admin (has PIN) or viewer
+  const session = getSession();
+  if (!session) return;
+  // Only NQT team gets filtered view; Cx sees all cases
+  if (session.team !== 'NQT') return;
+  const name = session.name;
+  if (!name) return;
+  // Auto-apply engineer filter silently — no manual prompt needed since we know who they are
+  msState.fEngineer.clear();
+  msState.fEngineer.add(name);
+  updateMsBtn('fEngineer');
+  applyFilters();
+  return;
+  // Legacy path below kept but unreachable
   if (localStorage.getItem(AUDIT_PIN_KEY)) return;
   if (localStorage.getItem(AUDIT_VIEWER_PIN_KEY)) return;
-  // Don't show if name already saved
   if (localStorage.getItem(USER_KEY)) return;
   // Don't show if user already skipped on this machine
   if (localStorage.getItem('hp_skip_prompt_v1')) return;
@@ -2185,32 +2286,124 @@ async function runImport() {
   loadData();
 }
 
-// ── Init ──
-loadEdits();
-(function() {
-  if (localStorage.getItem(AUDIT_PIN_KEY)) {
-    localStorage.setItem(USER_KEY, 'Shariq Raza Khan');
-    revealAdminButtons(); return;
+// ── Auth / Session ──
+const SESSION_KEY = 'hp_session_v1';
+
+async function hashPassword(pwd) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(pwd));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+function emailToKey(email) {
+  return email.toLowerCase().trim().replace(/[.@]/g, '_');
+}
+function getSession() {
+  try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch(e) { return null; }
+}
+function saveSession(data) { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); }
+function clearSession() { localStorage.removeItem(SESSION_KEY); }
+
+async function attemptLogin() {
+  const email  = document.getElementById('loginEmail').value.trim().toLowerCase();
+  const pwd    = document.getElementById('loginPassword').value;
+  const errEl  = document.getElementById('loginError');
+  const btn    = document.getElementById('loginBtn');
+  errEl.textContent = '';
+  if (!email || !pwd) { errEl.textContent = 'Email and password are required.'; return; }
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  try {
+    const key  = emailToKey(email);
+    const user = await fbGet('/cases/__users__/' + key);
+    if (!user) { errEl.textContent = 'Invalid email or password.'; btn.disabled = false; btn.textContent = 'Sign In'; return; }
+    const hash = await hashPassword(pwd);
+    if (hash !== user.password_hash) { errEl.textContent = 'Invalid email or password.'; btn.disabled = false; btn.textContent = 'Sign In'; return; }
+    saveSession({ email: user.email, name: user.name, team: user.team, role: user.role });
+    document.getElementById('loginOverlay').style.display = 'none';
+    initApp();
+    toast('Welcome, ' + user.name + '! \u2713', 'success');
+  } catch(e) {
+    errEl.textContent = 'Login failed: ' + e.message;
+    btn.disabled = false; btn.textContent = 'Sign In';
   }
-  // Viewer PIN: re-validate against Firebase so revoked PINs stop working
+}
+
+function logout() {
+  clearSession();
+  location.reload();
+}
+
+// User management (admin only)
+async function addUser() {
+  const email = document.getElementById('nu_email').value.trim().toLowerCase();
+  const name  = document.getElementById('nu_name').value.trim();
+  const team  = document.getElementById('nu_team').value;
+  const role  = document.getElementById('nu_role').value;
+  const pwd   = document.getElementById('nu_pwd').value;
+  if (!email || !name || !pwd) { toast('Email, name and password are required', 'error'); return; }
+  try {
+    const hash = await hashPassword(pwd);
+    await fbPut('/cases/__users__/' + emailToKey(email), { email, name, team, role, password_hash: hash });
+    toast('User added \u2713', 'success');
+    ['nu_email','nu_name','nu_pwd'].forEach(id => document.getElementById(id).value = '');
+    loadUserList();
+  } catch(e) { toast('Failed: ' + e.message, 'error'); }
+}
+async function deleteUser(key) {
+  const session = getSession();
+  if (session && emailToKey(session.email) === key) { toast('Cannot remove yourself', 'error'); return; }
+  try {
+    await fbPut('/cases/__users__/' + key, null);
+    toast('User removed \u2713', 'success');
+    loadUserList();
+  } catch(e) { toast('Failed: ' + e.message, 'error'); }
+}
+async function loadUserList() {
+  const el = document.getElementById('userList');
+  if (!el) return;
+  try {
+    const users = await fbGet('/cases/__users__') || {};
+    const list = Object.values(users);
+    if (!list.length) { el.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:6px 0">No users added yet</div>'; return; }
+    el.innerHTML = list.map(u =>
+      '<div class="user-row">' +
+      '<span style="flex:1;color:var(--muted)">' + esc(u.email) + '</span>' +
+      '<span style="font-weight:600">' + esc(u.name) + '</span>' +
+      '<span class="badge ' + (u.team === 'NQT' ? 'badge-yellow' : 'badge-blue') + '">' + esc(u.team||'') + '</span>' +
+      '<span class="badge ' + (u.role === 'admin' ? 'badge-red' : 'badge-green') + '">' + esc(u.role||'') + '</span>' +
+      '<button class="btn" style="font-size:10px;padding:2px 8px;color:var(--red);border-color:var(--red)" onclick="deleteUser(\'' + esc(emailToKey(u.email)) + '\')">Remove</button>' +
+      '</div>'
+    ).join('');
+  } catch(e) { el.innerHTML = '<div style="color:var(--red);font-size:12px">Failed to load users</div>'; }
+}
+
+// ── Init ──
+function initApp() {
+  loadEdits();
+  const session = getSession();
+  if (!session) return;
+  // Admin role gets setup panel + audit trail
+  if (session.role === 'admin') { revealAdminButtons(); }
+  // Legacy: also honour stored admin PIN (backward compat)
+  if (localStorage.getItem(AUDIT_PIN_KEY)) { revealAdminButtons(); }
+  // Viewer PIN re-validate
   const vpin = localStorage.getItem(AUDIT_VIEWER_PIN_KEY);
   if (vpin) {
     fbGet('/cases/__viewer_config__').then(d => d && d.viewer_pin).then(function(stored) {
       if (stored && vpin === stored) { _hasViewerAccess = true; revealAdminButtons(); }
-      else { localStorage.removeItem(AUDIT_VIEWER_PIN_KEY); } // PIN was changed/revoked
+      else { localStorage.removeItem(AUDIT_VIEWER_PIN_KEY); }
     }).catch(function() {});
   }
-})();
-(function() {
-  const saved = localStorage.getItem(USER_KEY);
-  if (saved) {
-    document.getElementById('userNameInput').value = saved;
-    document.getElementById('namePromptModal').style.display = 'none';
-  }
   updateUserBadge();
+  setupRealtime();
+}
+
+(function() {
+  const session = getSession();
+  if (!session) {
+    document.getElementById('loginOverlay').style.display = 'flex';
+  } else {
+    initApp();
+  }
 })();
-// setupRealtime() handles initial data load via SSE + keeps data live in real-time
-setupRealtime();
 </script>
 </body>
 </html>
