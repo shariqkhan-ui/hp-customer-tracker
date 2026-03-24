@@ -358,6 +358,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
           <input type="password" id="nu_pwd" placeholder="Set password" style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;min-width:130px" />
         </div>
         <button class="btn btn-primary" onclick="addUser()" style="align-self:flex-end">&#x2795; Add User</button>
+        <button class="btn" onclick="forceLogoutAll()" style="align-self:flex-end;color:var(--red);border-color:var(--red)">&#x23CF; Force Logout All</button>
       </div>
       <div id="userList" style="max-height:180px;overflow-y:auto"></div>
     </div>
@@ -2299,8 +2300,33 @@ function emailToKey(email) {
 function getSession() {
   try { return JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch(e) { return null; }
 }
-function saveSession(data) { localStorage.setItem(SESSION_KEY, JSON.stringify(data)); }
+function saveSession(data) {
+  data._saved_at = Date.now();
+  localStorage.setItem(SESSION_KEY, JSON.stringify(data));
+}
 function clearSession() { localStorage.removeItem(SESSION_KEY); }
+
+async function checkForceLogout() {
+  try {
+    const cfg = await fbGet('/cases/__config__/force_logout_at');
+    const session = getSession();
+    if (cfg && session && session._saved_at < cfg) {
+      clearSession();
+      toast('Session expired. Please log in again.', 'error');
+      setTimeout(() => location.reload(), 1500);
+      return true;
+    }
+  } catch(e) {}
+  return false;
+}
+
+async function forceLogoutAll() {
+  if (!confirm('This will immediately log out ALL users on all machines. Continue?')) return;
+  try {
+    await fbPut('/cases/__config__/force_logout_at', Date.now());
+    toast('All sessions invalidated \u2713', 'success');
+  } catch(e) { toast('Failed: ' + e.message, 'error'); }
+}
 
 async function attemptLogin() {
   const email  = document.getElementById('loginEmail').value.trim().toLowerCase();
@@ -2393,7 +2419,12 @@ function initApp() {
     }).catch(function() {});
   }
   updateUserBadge();
-  setupRealtime();
+  checkForceLogout().then(function(kicked) {
+    if (!kicked) {
+      setupRealtime();
+      setInterval(function() { checkForceLogout(); }, 60000);
+    }
+  });
 }
 
 (function() {
