@@ -8,7 +8,7 @@
  *   4. Adds new qualifying cases to Firebase with today's date as "Case Added On"
  *
  * No browser automation needed — uses Metabase SQL API directly.
- * Runs daily at 10 AM IST via GitHub Actions cron.
+ * Runs every hour from 10 AM IST via GitHub Actions cron.
  * Required env vars: METABASE_API_KEY, SLACK_BOT_TOKEN
  */
 
@@ -154,15 +154,8 @@ async function queryMetabase(sql, apiKey) {
     process.exit(1);
   }
 
-  // ── Idempotency check: skip if already ran successfully today ─────────────
-  const today = todayStr();
-  const lastRun = await fbGet('/run_flags/kapture_sync');
-  if (lastRun === today) {
-    log(`Already ran today (${today}) — skipping.`);
-    return;
-  }
-
   log('Starting Kapture → High Pain Tracker sync via Metabase…');
+  const today = todayStr();
 
   // ── Step 1: Query SERVICE_TICKET_MODEL via Metabase ──────────────────────
   // Table: PUBLIC.SERVICE_TICKET_MODEL (Metabase table ID 5599, DB 113)
@@ -193,8 +186,6 @@ async function queryMetabase(sql, apiKey) {
       )
       -- Not resolved
       AND stm.IS_RESOLVED = 0
-      -- Not reopened (excluded per requirement)
-      AND stm.TIMES_REOPENED = 0
       -- Only cases that CROSSED 72 hours TODAY
       AND stm.TICKET_ADDED_TIME >= DATEADD(HOUR, -96, CURRENT_TIMESTAMP())
       AND stm.TICKET_ADDED_TIME <  DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
@@ -214,13 +205,12 @@ async function queryMetabase(sql, apiKey) {
 
   log(`Qualifying tickets from Metabase: ${tickets.length}`);
 
-  if (tickets.length === 0) {
-    log('No qualifying cases found. Done.');
-    return;
-  }
-
   // ── Step 2: Add to Firebase (skip duplicates, update stale dates) ──────────
   let added = 0, skipped = 0, updated = 0;
+
+  if (tickets.length === 0) {
+    log('No qualifying cases found.');
+  }
 
   for (const t of tickets) {
     const ticketId = String(t.KAPTURE_TICKET_ID || '').trim();
@@ -279,12 +269,9 @@ async function queryMetabase(sql, apiKey) {
 
   log(`Sync complete. Added: ${added}  Date-updated: ${updated}  Skipped (already today): ${skipped}`);
 
-  // Mark today as done so duplicate cron runs are skipped
-  await fbPut('/run_flags/kapture_sync', today);
-
-  // ── Step 3: Notify Slack (whenever cases were added, regardless of trigger type) ──
+  // ── Step 3: Notify Slack ──
   const slackToken  = process.env.SLACK_BOT_TOKEN;
-  if (slackToken && added > 0) {
+  if (slackToken) {
     log('Sending Slack notification…');
     try {
       await httpRequest(
@@ -294,7 +281,9 @@ async function queryMetabase(sql, apiKey) {
           channel:  'C0AHDR8H4CC',
           username: "Shariq's Slack Agent",
           icon_url: 'https://raw.githubusercontent.com/shariqkhan-ui/hp-customer-tracker/master/shariq-agent.jpg',
-          text:     `<!channel> New cases have been added in the tracker \u2014 check it here: https://shariqkhan-ui.github.io/hp-customer-tracker/`
+          text:     added > 0
+            ? `<!channel> *${added} new case(s) added* to the High Pain Tracker \u2014 check it here: https://shariqkhan-ui.github.io/hp-customer-tracker/`
+            : `Hourly sync complete \u2014 no new cases this run (${skipped} already tracked). https://shariqkhan-ui.github.io/hp-customer-tracker/`
         },
         { 'Authorization': 'Bearer ' + slackToken }
       );
