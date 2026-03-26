@@ -256,6 +256,8 @@ async function queryMetabase(sql, apiKey) {
       col12:          '',
       col13:          '',
       migration_date: '',
+      source:         'cron',
+      added_at:       Date.now(),
     };
 
     try {

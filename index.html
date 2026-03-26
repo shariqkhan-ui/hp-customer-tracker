@@ -777,7 +777,11 @@ function dbRowToArray(r) {
     r.migration_date  || '',  // 14
     r.owner              || '',  // 15
     r.owner_assigned_at  || 0,  // 16 — Unix ms timestamp when owner was last set
-    r.migration_status   || ''  // 17
+    r.migration_status   || '',  // 17
+    r.source             || '',  // 18 — 'cron' | 'manual'
+    r.added_at           || 0,   // 19 — Unix ms when case was first added to tracker
+    r.remarks_updated_at || 0,   // 20 — Unix ms when remarks were last changed
+    r.engineer_assigned_at || 0  // 21 — Unix ms when engineer was last assigned
   ];
 }
 
@@ -866,10 +870,18 @@ async function saveToSheet(ticket, field, value) {
   // Firebase confirmed — now update local state
   setEdit(ticket, field, value);
   const ci = EDIT_COL[field];
-  if (ci !== undefined) {
-    const row = allRows.find(r => (r[1]||'').trim() === ticket);
-    if (row) row[ci] = value;
+  const row = allRows.find(r => (r[1]||'').trim() === ticket);
+  if (ci !== undefined && row) row[ci] = value;
+
+  // Save event timestamp for auditable fields
+  if (field === 'remarks' || field === 'engineer') {
+    const now = Date.now();
+    const tsField = field === 'remarks' ? 'remarks_updated_at' : 'engineer_assigned_at';
+    const tsIdx   = field === 'remarks' ? 20 : 21;
+    try { await fbPut('/cases/' + ticketKey(ticket) + '/' + tsField, now); } catch(e) {}
+    if (row) row[tsIdx] = now;
   }
+
   toast('Saved \u2713', 'success');
 }
 
@@ -929,12 +941,12 @@ async function autoMigrateRemarks() {
   if (successCount > 0) { applyFilters(); toast(successCount + ' old remark(s) auto-fixed \u2713', 'success'); }
 }
 
-function makeEditCell(ticket, field, orig) {
+function makeEditCell(ticket, field, orig, tsHtml) {
   // orig = value already in allRows (patched on save, refreshed from sheet on loadData)
   // Never read localStorage here — allRows is the single source of truth
   let display = orig;
   return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="' + esc(field) +
-    '" data-orig="' + esc(orig) + '" onclick="startEdit(this)" style="max-width:180px">' + cellInner(display) + '</td>';
+    '" data-orig="' + esc(orig) + '" onclick="startEdit(this)" style="max-width:180px">' + cellInner(display) + (tsHtml || '') + '</td>';
 }
 function startEdit(td) {
   if (td.querySelector('input,select')) return;
@@ -1227,6 +1239,21 @@ function parseDate(s) {
 }
 function today0() { const d = new Date(); d.setHours(0,0,0,0); return d; }
 function fmtDate(d) { if (!d) return '—'; return String(d.getDate()).padStart(2,'0')+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+d.getFullYear(); }
+function fmtTsAgo(ts) {
+  if (!ts) return '';
+  const diff = Date.now() - ts;
+  const mins = Math.floor(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return mins + 'm ago';
+  const hrs = Math.floor(mins / 60);
+  if (hrs < 24) return hrs + 'h ago';
+  const days = Math.floor(hrs / 24);
+  return days + 'd ago';
+}
+function fmtTsTime(ts) {
+  if (!ts) return '';
+  return new Date(ts).toLocaleTimeString('en-IN', {hour:'2-digit', minute:'2-digit', timeZone:'Asia/Kolkata'});
+}
 function dKey(d) { if (!d) return ''; const dd = new Date(d); dd.setHours(0,0,0,0); return dd.getFullYear()+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getDate()).padStart(2,'0'); }
 
 // ── Status Logic ──
@@ -1280,7 +1307,7 @@ async function loadData() {
     applyFilters();
     autoMigrateRemarks();
     generateAlerts();
-    showNamePromptIfNeeded();
+    if (!realtimeReady) showNamePromptIfNeeded();
     toast('Data loaded \u2713 \u2014 ' + allRows.length + ' cases', 'success');
     realtimeReady = true;
     setTimeout(loadData, 30000);
@@ -1752,12 +1779,15 @@ function renderTable(rows) {
       '<td style="font-size:12px">' + esc((r[6]||'').trim() || '—') + '</td>' +
       '<td>' + esc((r[4]||'').trim() || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
-      makeEditCell(ticket, 'remarks',  (r[8]||'').trim()) +
+      makeEditCell(ticket, 'remarks',  (r[8]||'').trim(), r[20] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[20]) + '</div>' : '') +
       makeMigStatusCell(ticket, (r[17]||'').trim()) +
       makeOwnerCell(ticket, owner) +
       '<td style="font-size:12px;font-weight:700;color:' + pendingSinceColor(r) + ';white-space:nowrap">' + getPendingSince(r) + '</td>' +
-      makeEditCell(ticket, 'engineer', (r[10]||'').trim()) +
-      '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[0]||'').trim())) || '—') + '</td>' +
+      makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
+      '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[0]||'').trim())) || '—') +
+        (r[19] ? '<br><span style="font-size:10px">' + fmtTsTime(r[19]) + '</span>' : '') +
+        (r[18] ? '<br>' + (r[18]==='cron' ? '<span class="badge badge-blue" style="font-size:9px;padding:1px 5px;margin-top:2px">AUTO</span>' : '<span class="badge badge-yellow" style="font-size:9px;padding:1px 5px;margin-top:2px">MANUAL</span>') : '') +
+      '</td>' +
       makeEditCell(ticket, 'migration_date', (r[14]||'').trim()) +
       '<td>' + statusBadge(st) + (dup ? ' <span class="badge badge-yellow">Dupe</span>' : '') + '</td>' +
       '<td>' + link + '</td>' +
@@ -1964,13 +1994,14 @@ async function submitBulkAdd() {
 
   // Insert all rows into Firebase first — then update local UI
   // db.ref().update() is naturally an upsert: existing tickets are overwritten, no duplicate error
+  const bulkAddedAt = Date.now();
   const updates = {};
   rows.forEach(function(r) {
     updates['cases/' + ticketKey(r.ticket)] = {
       case_added_on: r.caseAddedOn, ticket_no: r.ticket, mobile: r.mobile,
       subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat,
       remarks: '', easy_remarks: '', engineer: '', ticket_url: '', col12: '', col13: '', migration_date: '',
-      owner_assigned_at: Date.now()
+      owner_assigned_at: bulkAddedAt, source: 'manual', added_at: bulkAddedAt
     };
   });
   try {
@@ -1982,7 +2013,7 @@ async function submitBulkAdd() {
   }
 
   rows.forEach(r => {
-    const newRow = [r.caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', '', '', Date.now()];
+    const newRow = [r.caseAddedOn, r.ticket, '', r.mobile, r.subcat, r.name, r.partner, r.tat, '', '', '', '', '', '', '', '', bulkAddedAt, '', 'manual', bulkAddedAt, 0, 0];
     addLocalRow(newRow);
     allRows.unshift(newRow);
   });
@@ -2046,12 +2077,13 @@ async function submitAddCase() {
     toast('ERROR: Ticket ' + ticket + ' already exists in the database', 'error');
     return;
   }
+  const addedAt = Date.now();
   try {
     await fbPut('/cases/' + ticketKey(ticket), {
       case_added_on: createdDate, ticket_no: ticket, mobile: mobile, subcat: subcat,
       cust_name: name, partner: partner, tat: tat,
       remarks: '', easy_remarks: '', engineer: '', ticket_url: '', col12: '', col13: '', migration_date: '',
-      owner_assigned_at: Date.now()
+      owner_assigned_at: addedAt, source: 'manual', added_at: addedAt
     });
   } catch(e) {
     toast('ERROR saving to database: ' + e.message, 'error');
@@ -2060,7 +2092,7 @@ async function submitAddCase() {
 
   // Insert succeeded — now update local UI
   // col 0 = Case Added On, col 1 = Ticket, col 2 = Created Date (blank), col 3 = Mobile...
-  const newRow = [createdDate, ticket, '', mobile, subcat, name, partner, tat, '', '', '', '', '', '', '', '', Date.now()];
+  const newRow = [createdDate, ticket, '', mobile, subcat, name, partner, tat, '', '', '', '', '', '', '', '', addedAt, '', 'manual', addedAt, 0, 0];
   addLocalRow(newRow);
   allRows.unshift(newRow);
   buildDupeSet(allRows);
