@@ -1786,9 +1786,11 @@ function renderTable(rows) {
       makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
       (function() {
         const caseTs = r[19] || r[16] || 0;
+        // source field set explicitly, or infer from ticket_url (cron always sets kapturecrm.com URL)
+        const src = r[18] || ((r[11]||'').includes('kapturecrm.com') ? 'cron' : 'manual');
         return '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[0]||'').trim())) || '—') +
           (caseTs ? ' <span style="font-size:11px;color:var(--text)">' + fmtTsTime(caseTs) + '</span>' : '') +
-          (r[18] ? '<br>' + (r[18]==='cron' ? '<span class="badge badge-blue" style="font-size:9px;padding:1px 5px;margin-top:2px">AUTO</span>' : '<span class="badge badge-yellow" style="font-size:9px;padding:1px 5px;margin-top:2px">MANUAL</span>') : '') +
+          '<br>' + (src === 'cron' ? '<span class="badge badge-blue" style="font-size:9px;padding:1px 5px;margin-top:2px">AUTO</span>' : '<span class="badge badge-yellow" style="font-size:9px;padding:1px 5px;margin-top:2px">MANUAL</span>') +
           '</td>';
       })() +
       makeEditCell(ticket, 'migration_date', (r[14]||'').trim()) +
