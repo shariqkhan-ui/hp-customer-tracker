@@ -1784,10 +1784,13 @@ function renderTable(rows) {
       makeOwnerCell(ticket, owner) +
       '<td style="font-size:12px;font-weight:700;color:' + pendingSinceColor(r) + ';white-space:nowrap">' + getPendingSince(r) + '</td>' +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
-      '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[0]||'').trim())) || '—') +
-        (r[19] ? '<br><span style="font-size:10px">' + fmtTsTime(r[19]) + '</span>' : '') +
-        (r[18] ? '<br>' + (r[18]==='cron' ? '<span class="badge badge-blue" style="font-size:9px;padding:1px 5px;margin-top:2px">AUTO</span>' : '<span class="badge badge-yellow" style="font-size:9px;padding:1px 5px;margin-top:2px">MANUAL</span>') : '') +
-      '</td>' +
+      (function() {
+        const caseTs = r[19] || r[16] || 0;
+        return '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[0]||'').trim())) || '—') +
+          (caseTs ? ' <span style="font-size:11px;color:var(--text)">' + fmtTsTime(caseTs) + '</span>' : '') +
+          (r[18] ? '<br>' + (r[18]==='cron' ? '<span class="badge badge-blue" style="font-size:9px;padding:1px 5px;margin-top:2px">AUTO</span>' : '<span class="badge badge-yellow" style="font-size:9px;padding:1px 5px;margin-top:2px">MANUAL</span>') : '') +
+          '</td>';
+      })() +
       makeEditCell(ticket, 'migration_date', (r[14]||'').trim()) +
       '<td>' + statusBadge(st) + (dup ? ' <span class="badge badge-yellow">Dupe</span>' : '') + '</td>' +
       '<td>' + link + '</td>' +
