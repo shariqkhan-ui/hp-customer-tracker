@@ -1790,7 +1790,7 @@ function renderTable(rows) {
         const src = r[18] || ((r[11]||'').includes('kapturecrm.com') ? 'cron' : 'manual');
         return '<td style="color:var(--muted);font-size:12px">' + (fmtDate(parseDate((r[0]||'').trim())) || '—') +
           (caseTs ? ' <span style="font-size:11px;color:var(--text)">' + fmtTsTime(caseTs) + '</span>' : '') +
-          '<br>' + (src === 'cron' ? '<span class="badge badge-blue" style="font-size:9px;padding:1px 5px;margin-top:2px">AUTO</span>' : '<span class="badge badge-yellow" style="font-size:9px;padding:1px 5px;margin-top:2px">MANUAL</span>') +
+          '<br>' + (src === 'cron' ? '<span class="badge badge-blue" style="font-size:9px;padding:1px 5px;margin-top:2px">Via Cron</span>' : '<span class="badge badge-yellow" style="font-size:9px;padding:1px 5px;margin-top:2px">Manual</span>') +
           '</td>';
       })() +
       makeEditCell(ticket, 'migration_date', (r[14]||'').trim()) +
