@@ -1,10 +1,11 @@
 name: Kapture Auto-Sync
 
 on:
-  # Runs every hour from 10:00 AM IST (04:30 UTC) to 7:00 PM IST (13:30 UTC).
+  # Runs every hour from 9:30 AM IST (04:00 UTC) to 6:30 PM IST (13:00 UTC).
+  # Schedule starts 30 min early to compensate for GitHub Actions cron delays.
   # Each run independently picks up new tickets that have crossed 72 hrs since the last check.
   schedule:
-    - cron: '30 4-13 * * *'
+    - cron: '0 4-13 * * *'
 
   # Allow manual trigger from GitHub Actions UI for testing
   workflow_dispatch:
