@@ -1,11 +1,9 @@
 name: Kapture Auto-Sync
 
 on:
-  # Runs every hour from 9:30 AM IST (04:00 UTC) to 6:30 PM IST (13:00 UTC).
-  # Schedule starts 30 min early to compensate for GitHub Actions cron delays.
-  # Each run independently picks up new tickets that have crossed 72 hrs since the last check.
-  schedule:
-    - cron: '0 4-13 * * *'
+  # GitHub Actions cron disabled — sync now runs via Railway server (node-cron).
+  # Railway is more reliable; GitHub Actions had 60–90 min delays.
+  # Keep workflow_dispatch for manual/emergency runs only.
 
   # Allow manual trigger from GitHub Actions UI for testing
   workflow_dispatch:
