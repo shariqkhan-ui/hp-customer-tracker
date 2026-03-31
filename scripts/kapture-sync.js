@@ -276,7 +276,7 @@ async function queryMetabase(sql, apiKey) {
   if (slackToken) {
     log('Sending Slack notification…');
     try {
-      await httpRequest(
+      const slackRes = await httpRequest(
         'POST',
         'https://slack.com/api/chat.postMessage',
         {
@@ -289,7 +289,11 @@ async function queryMetabase(sql, apiKey) {
         },
         { 'Authorization': 'Bearer ' + slackToken }
       );
-      log('Slack notification sent.');
+      if (slackRes.ok) {
+        log('Slack notification sent successfully.');
+      } else {
+        log(`ERROR: Slack API returned ok=false — error: ${slackRes.error}, needed: ${slackRes.needed || 'N/A'}`);
+      }
     } catch (e) {
       log('ERROR sending Slack notification: ' + e.message);
     }
