@@ -205,8 +205,8 @@ async function queryMetabase(sql, apiKey) {
 
   log(`Qualifying tickets from Metabase: ${tickets.length}`);
 
-  // ── Step 2: Add to Firebase (skip duplicates, update stale dates) ──────────
-  let added = 0, skipped = 0, updated = 0;
+  // ── Step 2: Add to Firebase (skip duplicates) ──────────
+  let added = 0, skipped = 0;
 
   if (tickets.length === 0) {
     log('No qualifying cases found.');
@@ -220,20 +220,10 @@ async function queryMetabase(sql, apiKey) {
     const existing = await fbGet('/cases/' + key);
 
     if (existing !== null) {
-      // Case already exists — no duplicate added.
-      // If it was added on a previous date, refresh case_added_on to today.
-      if (existing.case_added_on !== today) {
-        try {
-          await fbPut('/cases/' + key + '/case_added_on', today);
-          log(`  Date updated ticket=${ticketId} ${existing.case_added_on} → ${today}`);
-          updated++;
-        } catch (e) {
-          log(`  ERROR updating date ticket=${ticketId}: ${e.message}`);
-        }
-      } else {
-        log(`  Already exists (today) — skip ticket=${ticketId}`);
-        skipped++;
-      }
+      // Case already exists — skip entirely. Don't touch the date or any fields
+      // so that engineer/remarks work done by the team is never disrupted.
+      log(`  Already exists — skip ticket=${ticketId} (added ${existing.case_added_on})`);
+      skipped++;
       continue;
     }
 
@@ -269,7 +259,7 @@ async function queryMetabase(sql, apiKey) {
     }
   }
 
-  log(`Sync complete. Added: ${added}  Date-updated: ${updated}  Skipped (already today): ${skipped}`);
+  log(`Sync complete. Added: ${added}  Skipped (already tracked): ${skipped}`);
 
   // ── Step 3: Notify Slack ──
   const slackToken  = process.env.SLACK_BOT_TOKEN;
