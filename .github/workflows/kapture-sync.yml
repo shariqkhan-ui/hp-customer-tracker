@@ -5,6 +5,7 @@ on:
   # Schedule starts 30 min early to compensate for GitHub Actions cron delays.
   schedule:
     - cron: '0 4-13 * * *'
+    - cron: '30 4-13 * * *'
 
   # Allow manual trigger from GitHub Actions UI for testing
   workflow_dispatch:
