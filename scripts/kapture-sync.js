@@ -3,7 +3,7 @@
  *
  * What it does:
  *   1. Queries V_SERVICE_TICKET_MODEL_FINAL in Snowflake via Metabase API
- *   2. Filters for: internet-related sub-category, pending 72+ hours, open/pending status, not reopened
+ *   2. Filters for: internet-related sub-category, open (not resolved), aged 72+ hours (no upper bound), valid Kapture ticket ID
  *   3. Checks Firebase — skips tickets already in the tracker
  *   4. Adds new qualifying cases to Firebase with today's date as "Case Added On"
  *
@@ -186,9 +186,11 @@ async function queryMetabase(sql, apiKey) {
       )
       -- Not resolved
       AND stm.IS_RESOLVED = 0
-      -- Only cases that CROSSED 72 hours TODAY
-      AND stm.TICKET_ADDED_TIME >= DATEADD(HOUR, -96, CURRENT_TIMESTAMP())
-      AND stm.TICKET_ADDED_TIME <  DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
+      -- Aged 72+ hours and STILL OPEN (no 96-hour ceiling). Catches the open
+      -- backlog every run, not just the single day a ticket crosses 72 hrs.
+      -- Safe against duplicates: Firebase dedup by ticket ID skips cases already
+      -- in the tracker, so older open cases get added once and never re-added.
+      AND stm.TICKET_ADDED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
       -- Must have a valid Kapture ticket ID
       AND stm.KAPTURE_TICKET_ID IS NOT NULL
       AND stm.KAPTURE_TICKET_ID != ''

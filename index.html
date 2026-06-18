@@ -896,6 +896,7 @@ function cellInner(val) {
 }
 const REMARKS_OPTIONS = [
   'Migrated','No Overlapping Partner/Refund','Resolved by Old Partner',
+  'OLD CSP is working to resolve complaint',
   'Migration is in Progress','Cx not contactable/Reachable',
   'Migration not possible/Refund','Customer not interested in Migration'
 ];
@@ -905,6 +906,7 @@ function mapOldRemark(raw) {
   const r = raw.trim().toLowerCase();
   if (REMARKS_OPTIONS.includes(raw.trim())) return null; // already standard
   if (r.includes('no overlapping') || r.includes('no overlap')) return 'No Overlapping Partner/Refund';
+  if (r.includes('working to resolve') || (r.includes('csp') && r.includes('working'))) return 'OLD CSP is working to resolve complaint';
   if (r.includes('resolved by old') || r.includes('old partner')) return 'Resolved by Old Partner';
   if (r.includes('not possible')) return 'Migration not possible/Refund';
   if (r.includes('in progress') || r.includes('wip')) return 'Migration is in Progress';
