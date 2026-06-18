@@ -186,11 +186,14 @@ async function queryMetabase(sql, apiKey) {
       )
       -- Not resolved
       AND stm.IS_RESOLVED = 0
-      -- Aged 72+ hours and STILL OPEN (no 96-hour ceiling). Catches the open
-      -- backlog every run, not just the single day a ticket crosses 72 hrs.
+      -- Aged 72 hrs up to 14 days and STILL OPEN. Wider than the old 72-96h
+      -- slice (so it catches open cases that slipped through that single day),
+      -- but capped at 14 days to exclude the large pool of ancient, stale-open
+      -- tickets that aren't live high-pain cases.
       -- Safe against duplicates: Firebase dedup by ticket ID skips cases already
       -- in the tracker, so older open cases get added once and never re-added.
-      AND stm.TICKET_ADDED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
+      AND stm.TICKET_ADDED_TIME <  DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
+      AND stm.TICKET_ADDED_TIME >= DATEADD(DAY, -14, CURRENT_TIMESTAMP())
       -- Must have a valid Kapture ticket ID
       AND stm.KAPTURE_TICKET_ID IS NOT NULL
       AND stm.KAPTURE_TICKET_ID != ''

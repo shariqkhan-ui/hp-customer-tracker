@@ -5,7 +5,7 @@
 -- or turn '{{mobile}}' into a Metabase text Variable so the team can self-serve.
 --
 -- It mirrors the cron filter in scripts/kapture-sync.js EXACTLY:
---   internet sub-category · IS_RESOLVED = 0 · aged > 72 hrs · non-blank Kapture ID
+--   internet sub-category · IS_RESOLVED = 0 · aged 72 hrs–14 days · non-blank Kapture ID
 -- and prints, per ticket, whether it WOULD be pushed and — if not — every reason.
 --
 -- NOTE: "WOULD BE PUSHED" means eligible by filter. The live cron ALSO skips a
@@ -48,6 +48,7 @@ SELECT
     WHEN IS_INTERNET
          AND IS_RESOLVED = 0
          AND AGE_HOURS > 72
+         AND AGE_HOURS <= 336
          AND KAPTURE_TICKET_ID IS NOT NULL
          AND KAPTURE_TICKET_ID != ''
     THEN '✅ WOULD BE PUSHED'
@@ -55,6 +56,7 @@ SELECT
            (CASE WHEN NOT IS_INTERNET                                  THEN 'not internet sub-category, ' ELSE '' END)
         || (CASE WHEN IS_RESOLVED != 0                                 THEN 'already resolved, '          ELSE '' END)
         || (CASE WHEN AGE_HOURS <= 72                                  THEN 'younger than 72 hrs, '       ELSE '' END)
+        || (CASE WHEN AGE_HOURS > 336                                  THEN 'older than 14 days, '        ELSE '' END)
         || (CASE WHEN KAPTURE_TICKET_ID IS NULL OR KAPTURE_TICKET_ID = '' THEN 'blank Kapture ticket ID, ' ELSE '' END)
          )
   END AS VERDICT
