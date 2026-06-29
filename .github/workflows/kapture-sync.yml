@@ -8,6 +8,11 @@ on:
 
   # Allow manual trigger from GitHub Actions UI for testing
   workflow_dispatch:
+    inputs:
+      backfill_chat:
+        description: 'One-time: backfill ALL open chat tickets >72h (no 14-day cap, Slack silent). Leave false for normal runs.'
+        type: boolean
+        default: false
 
 jobs:
   sync:
@@ -30,4 +35,6 @@ jobs:
           METABASE_API_KEY: ${{ secrets.METABASE_API_KEY }}
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          # true only when manually dispatched with the backfill toggle on.
+          BACKFILL_CHAT: ${{ github.event.inputs.backfill_chat }}
         run: node kapture-sync.js

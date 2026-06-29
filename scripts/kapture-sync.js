@@ -145,6 +145,61 @@ async function queryMetabase(sql, apiKey) {
   });
 }
 
+// ── Add a batch of tickets to Firebase (skip any already tracked) ────────────
+async function addTicketsToFirebase(tickets, sourceLabel) {
+  // Dedup within this batch — the mobile join can yield duplicate rows per ticket.
+  const uniq = [...new Map(
+    tickets.map(t => [String(t.KAPTURE_TICKET_ID || '').trim(), t])
+  ).values()];
+
+  let added = 0, skipped = 0;
+  for (const t of uniq) {
+    const ticketId = String(t.KAPTURE_TICKET_ID || '').trim();
+    if (!ticketId) continue;
+
+    const key      = ticketKey(ticketId);
+    const existing = await fbGet('/cases/' + key);
+    if (existing !== null) {
+      // Already tracked — never touch it (preserves the team's engineer/remarks work).
+      skipped++;
+      continue;
+    }
+
+    const tatHours = t.TAT_HOURS || 72;
+    const tatLabel = tatHours >= 120 ? '>120 hrs' : tatHours >= 72 ? '>72 hrs' : tatHours + ' hrs';
+
+    const payload = {
+      case_added_on:  todayStr(),
+      ticket_no:      ticketId,
+      created_date:   String(t.CREATED_DATE || '').trim(),
+      mobile:         String(t.CUSTOMER_MOBILE || '').trim(),
+      subcat:         String(t.SUB_CATEGORY    || '').trim(),
+      cust_name:      String(t.CUSTOMER_NAME   || '').trim(),
+      partner:        String(t.PARTNER         || '').trim(),
+      tat:            tatLabel,
+      remarks:        '',
+      easy_remarks:   '',
+      engineer:       '',
+      ticket_url:     kaptureUrl(ticketId),
+      col12:          '',
+      col13:          '',
+      migration_date: '',
+      channel:        String(t.CHANNEL || 'Service').trim(),
+      source:         sourceLabel,
+      added_at:       Date.now(),
+    };
+
+    try {
+      await fbPut('/cases/' + key, payload);
+      log(`  Added ticket=${ticketId} channel="${payload.channel}" subcat="${t.SUB_CATEGORY}" tat="${tatLabel}"`);
+      added++;
+    } catch (e) {
+      log(`  ERROR adding ticket=${ticketId}: ${e.message}`);
+    }
+  }
+  return { added, skipped };
+}
+
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 (async () => {
@@ -154,7 +209,10 @@ async function queryMetabase(sql, apiKey) {
     process.exit(1);
   }
 
-  log('Starting Kapture → High Pain Tracker sync via Metabase…');
+  // One-time backfill of the full open chat backlog (no 14-day cap, Slack-silent).
+  const BACKFILL_CHAT = process.env.BACKFILL_CHAT === 'true';
+
+  log(`Starting Kapture → High Pain Tracker sync via Metabase…${BACKFILL_CHAT ? '  [CHAT BACKFILL MODE — no age cap, Slack silent]' : ''}`);
   const today = todayStr();
 
   // ── Step 1: Query SERVICE_TICKET_MODEL via Metabase ──────────────────────
@@ -199,78 +257,77 @@ async function queryMetabase(sql, apiKey) {
       AND stm.KAPTURE_TICKET_ID != ''
   `;
 
-  log('Running Metabase query…');
-  let tickets;
-  try {
-    tickets = await queryMetabase(sql, apiKey);
-  } catch (e) {
-    console.error('ERROR querying Metabase:', e.message);
-    process.exit(1);
-  }
-
-  log(`Qualifying tickets from Metabase: ${tickets.length}`);
-
-  // ── Step 2: Add to Firebase (skip duplicates) ──────────
-  let added = 0, skipped = 0;
-
-  if (tickets.length === 0) {
-    log('No qualifying cases found.');
-  }
-
-  for (const t of tickets) {
-    const ticketId = String(t.KAPTURE_TICKET_ID || '').trim();
-    if (!ticketId) continue;
-
-    const key      = ticketKey(ticketId);
-    const existing = await fbGet('/cases/' + key);
-
-    if (existing !== null) {
-      // Case already exists — skip entirely. Don't touch the date or any fields
-      // so that engineer/remarks work done by the team is never disrupted.
-      log(`  Already exists — skip ticket=${ticketId} (added ${existing.case_added_on})`);
-      skipped++;
-      continue;
-    }
-
-    const tatHours = t.TAT_HOURS || 72;
-    const tatLabel = tatHours >= 120 ? '>120 hrs' : tatHours >= 72 ? '>72 hrs' : tatHours + ' hrs';
-
-    const payload = {
-      case_added_on:  todayStr(),
-      ticket_no:      ticketId,
-      created_date:   String(t.CREATED_DATE || '').trim(),
-      mobile:         String(t.CUSTOMER_MOBILE || '').trim(),
-      subcat:         String(t.SUB_CATEGORY    || '').trim(),
-      cust_name:      String(t.CUSTOMER_NAME || '').trim(),
-      partner:        String(t.PARTNER         || '').trim(),
-      tat:            tatLabel,
-      remarks:        '',
-      easy_remarks:   '',
-      engineer:       '',
-      ticket_url:     kaptureUrl(ticketId),
-      col12:          '',
-      col13:          '',
-      migration_date: '',
-      source:         'cron',
-      added_at:       Date.now(),
-    };
-
+  // ── Step 1: Internet sync (SERVICE_TICKET_MODEL) ─────────────────────────
+  // Skipped during a chat-only backfill so the backfill stays focused & silent.
+  let internetAdded = 0, internetSkipped = 0;
+  if (!BACKFILL_CHAT) {
+    log('Running internet-ticket query (SERVICE_TICKET_MODEL)…');
+    let tickets;
     try {
-      await fbPut('/cases/' + key, payload);
-      log(`  Added ticket=${ticketId} subcat="${t.SUB_CATEGORY}" tat="${tatLabel}"`);
-      added++;
+      tickets = await queryMetabase(sql, apiKey);
     } catch (e) {
-      log(`  ERROR adding ticket=${ticketId}: ${e.message}`);
+      console.error('ERROR querying Metabase (internet):', e.message);
+      process.exit(1);
     }
+    log(`Qualifying internet tickets: ${tickets.length}`);
+    ({ added: internetAdded, skipped: internetSkipped } =
+      await addTicketsToFirebase(tickets, 'cron'));
   }
 
-  log(`Sync complete. Added: ${added}  Skipped (already tracked): ${skipped}`);
+  // ── Step 2: Chat sync (T_TICKETS_NEW where ticket_source = CUSTOMER_CHAT) ──
+  // Open chat tickets aged >72h. Normal runs cap at 14 days to stay live; the
+  // one-time BACKFILL_CHAT run drops the cap to clear the full aged backlog.
+  const chatAgeCap = BACKFILL_CHAT
+    ? ''
+    : 'AND t.CREATED_TIME >= DATEADD(DAY, -14, CURRENT_TIMESTAMP())';
 
-  // ── Step 3: Notify Slack ──
-  const slackToken  = process.env.SLACK_BOT_TOKEN;
-  if (slackToken) {
+  const chatSql = `
+    SELECT
+      t.KAPTURE_TICKET_ID,
+      t.MOBILE                                          AS CUSTOMER_MOBILE,
+      c.NAME                                            AS CUSTOMER_NAME,
+      t.TITLE                                           AS SUB_CATEGORY,
+      FLOOR(DATEDIFF(MINUTE, t.CREATED_TIME, CURRENT_TIMESTAMP()) / 60) AS TAT_HOURS,
+      t.STATUS                                          AS CURRENT_TICKET_STATUS,
+      TO_CHAR(t.CREATED_TIME, 'DD/Mon/YYYY')            AS CREATED_DATE,
+      'Chat'                                            AS CHANNEL
+    FROM T_TICKETS_NEW t
+    LEFT JOIN COMBINED_T_WG_CUSTOMER c
+      ON c.MOBILE = t.MOBILE
+    WHERE t.STATUS = 'OPEN'
+      AND t.EXTRA_DATA:ticket_source::string = 'CUSTOMER_CHAT'
+      AND t.CREATED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
+      ${chatAgeCap}
+      AND t.KAPTURE_TICKET_ID IS NOT NULL
+  `;
+
+  log(`Running chat-ticket query (CUSTOMER_CHAT)${BACKFILL_CHAT ? ' [no age cap]' : ' [72h-14d]'}…`);
+  let chatTickets = [];
+  try {
+    chatTickets = await queryMetabase(chatSql, apiKey);
+  } catch (e) {
+    // Don't fail the whole run on a chat-query error — internet sync already ran.
+    console.error('ERROR querying Metabase (chat):', e.message);
+  }
+  log(`Qualifying chat tickets: ${chatTickets.length}`);
+  const { added: chatAdded, skipped: chatSkipped } =
+    await addTicketsToFirebase(chatTickets, BACKFILL_CHAT ? 'chat-backfill' : 'chat-cron');
+
+  const added   = internetAdded + chatAdded;
+  const skipped = internetSkipped + chatSkipped;
+  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded})  Skipped: ${skipped}`);
+
+  // ── Step 3: Notify Slack (suppressed entirely during a silent backfill) ──
+  const slackToken = process.env.SLACK_BOT_TOKEN;
+  if (BACKFILL_CHAT) {
+    log('Backfill mode — Slack notification suppressed.');
+  } else if (slackToken) {
     log('Sending Slack notification…');
     try {
+      const parts = [];
+      if (internetAdded > 0) parts.push(`${internetAdded} internet`);
+      if (chatAdded > 0)     parts.push(`${chatAdded} chat`);
+      const breakdown = parts.length ? ` (${parts.join(', ')})` : '';
       const slackRes = await httpRequest(
         'POST',
         'https://slack.com/api/chat.postMessage',
@@ -279,7 +336,7 @@ async function queryMetabase(sql, apiKey) {
           username: "Shariq's Slack Agent",
           icon_url: 'https://raw.githubusercontent.com/shariqkhan-ui/hp-customer-tracker/master/shariq-agent.jpg',
           text:     added > 0
-            ? `<!channel> *${added} new case(s) added* to the High Pain Tracker \u2014 check it here: https://shariqkhan-ui.github.io/hp-customer-tracker/`
+            ? `<!channel> *${added} new case(s) added*${breakdown} to the High Pain Tracker \u2014 check it here: https://shariqkhan-ui.github.io/hp-customer-tracker/`
             : `Hourly sync complete \u2014 no new cases this run (${skipped} already tracked). https://shariqkhan-ui.github.io/hp-customer-tracker/`
         },
         { 'Authorization': 'Bearer ' + slackToken }
