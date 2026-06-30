@@ -304,24 +304,43 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     ? ''
     : 'AND t.CREATED_TIME >= DATEADD(DAY, -14, CURRENT_TIMESTAMP())';
 
+  // T_TICKETS_NEW has no partner column, so CSP/partner is resolved from two
+  // deduped lookups and COALESCEd: (1) the customer's current partner by mobile,
+  // (2) the partner the ticket is assigned to by account. Combined ~99% coverage.
+  // Lookups are GROUP BY'd to one row per key so they never fan out the tickets.
   const chatSql = `
+    WITH pmob AS (
+      SELECT MOBILE AS MOB, MAX(CURRENT_PARTNER_NAME) AS PNAME
+      FROM CUSTOMER_ENRICHED_DBT
+      WHERE MOBILE IS NOT NULL AND CURRENT_PARTNER_NAME IS NOT NULL
+      GROUP BY 1
+    ),
+    pacct AS (
+      SELECT PARTNER_ACCOUNT_ID AS ACCT, MAX(PARTNER_NAME) AS PNAME
+      FROM CUSTOMER_BASE
+      WHERE PARTNER_ACCOUNT_ID IS NOT NULL AND PARTNER_NAME IS NOT NULL
+      GROUP BY 1
+    ),
+    nmob AS (
+      SELECT MOBILE AS MOB, MAX(NAME) AS CNAME
+      FROM COMBINED_T_WG_CUSTOMER
+      WHERE MOBILE IS NOT NULL AND NAME IS NOT NULL
+      GROUP BY 1
+    )
     SELECT
       t.KAPTURE_TICKET_ID,
       t.MOBILE                                          AS CUSTOMER_MOBILE,
-      c.NAME                                            AS CUSTOMER_NAME,
-      ce.CURRENT_PARTNER_NAME                           AS PARTNER,
+      nmob.CNAME                                        AS CUSTOMER_NAME,
+      COALESCE(pmob.PNAME, pacct.PNAME)                 AS PARTNER,
       t.TITLE                                           AS SUB_CATEGORY,
       FLOOR(DATEDIFF(MINUTE, t.CREATED_TIME, CURRENT_TIMESTAMP()) / 60) AS TAT_HOURS,
       t.STATUS                                          AS CURRENT_TICKET_STATUS,
       TO_CHAR(t.CREATED_TIME, 'DD/Mon/YYYY')            AS CREATED_DATE,
       'Chat'                                            AS CHANNEL
     FROM T_TICKETS_NEW t
-    LEFT JOIN COMBINED_T_WG_CUSTOMER c
-      ON c.MOBILE = t.MOBILE
-    -- CSP/partner name: T_TICKETS_NEW has no partner column, so resolve it from
-    -- the customer master (mobile → current partner). ~89% coverage.
-    LEFT JOIN CUSTOMER_ENRICHED_DBT ce
-      ON ce.MOBILE = t.MOBILE
+    LEFT JOIN pmob  ON pmob.MOB   = t.MOBILE
+    LEFT JOIN pacct ON pacct.ACCT = t.ASSIGNED_ACCOUNT_ID
+    LEFT JOIN nmob  ON nmob.MOB   = t.MOBILE
     WHERE t.STATUS = 'OPEN'
       AND t.EXTRA_DATA:ticket_source::string = 'CUSTOMER_CHAT'
       AND t.CREATED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
