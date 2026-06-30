@@ -122,6 +122,13 @@ async function fbPut(path, value) {
   return httpRequest('PUT', FIREBASE_DB + path + '.json?access_token=' + token, value, {});
 }
 
+// Partial update — only the keys in `value` are written; all other fields
+// (engineer/remarks/etc.) are left exactly as they are.
+async function fbPatch(path, value) {
+  const token = await getFirebaseToken();
+  return httpRequest('PATCH', FIREBASE_DB + path + '.json?access_token=' + token, value, {});
+}
+
 // ── Metabase query ────────────────────────────────────────────────────────────
 
 async function queryMetabase(sql, apiKey) {
@@ -152,15 +159,31 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     tickets.map(t => [String(t.KAPTURE_TICKET_ID || '').trim(), t])
   ).values()];
 
-  let added = 0, skipped = 0;
+  let added = 0, skipped = 0, enriched = 0;
   for (const t of uniq) {
     const ticketId = String(t.KAPTURE_TICKET_ID || '').trim();
     if (!ticketId) continue;
 
+    const newPartner = String(t.PARTNER       || '').trim();
+    const newName    = String(t.CUSTOMER_NAME || '').trim();
+
     const key      = ticketKey(ticketId);
     const existing = await fbGet('/cases/' + key);
     if (existing !== null) {
-      // Already tracked — never touch it (preserves the team's engineer/remarks work).
+      // Already tracked. Don't re-add or disturb engineer/remarks — but DO backfill
+      // CSP/customer details that were missing, by patching only those blank fields.
+      const patch = {};
+      if (newPartner && !String(existing.partner   || '').trim()) patch.partner   = newPartner;
+      if (newName    && !String(existing.cust_name || '').trim()) patch.cust_name = newName;
+      if (Object.keys(patch).length) {
+        try {
+          await fbPatch('/cases/' + key, patch);
+          log(`  Enriched ticket=${ticketId} ${Object.keys(patch).join('+')}`);
+          enriched++;
+        } catch (e) {
+          log(`  ERROR enriching ticket=${ticketId}: ${e.message}`);
+        }
+      }
       skipped++;
       continue;
     }
@@ -197,7 +220,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       log(`  ERROR adding ticket=${ticketId}: ${e.message}`);
     }
   }
-  return { added, skipped };
+  return { added, skipped, enriched };
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
@@ -259,7 +282,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
 
   // ── Step 1: Internet sync (SERVICE_TICKET_MODEL) ─────────────────────────
   // Skipped during a chat-only backfill so the backfill stays focused & silent.
-  let internetAdded = 0, internetSkipped = 0;
+  let internetAdded = 0, internetSkipped = 0, internetEnriched = 0;
   if (!BACKFILL_CHAT) {
     log('Running internet-ticket query (SERVICE_TICKET_MODEL)…');
     let tickets;
@@ -270,7 +293,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       process.exit(1);
     }
     log(`Qualifying internet tickets: ${tickets.length}`);
-    ({ added: internetAdded, skipped: internetSkipped } =
+    ({ added: internetAdded, skipped: internetSkipped, enriched: internetEnriched } =
       await addTicketsToFirebase(tickets, 'cron'));
   }
 
@@ -286,6 +309,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       t.KAPTURE_TICKET_ID,
       t.MOBILE                                          AS CUSTOMER_MOBILE,
       c.NAME                                            AS CUSTOMER_NAME,
+      ce.CURRENT_PARTNER_NAME                           AS PARTNER,
       t.TITLE                                           AS SUB_CATEGORY,
       FLOOR(DATEDIFF(MINUTE, t.CREATED_TIME, CURRENT_TIMESTAMP()) / 60) AS TAT_HOURS,
       t.STATUS                                          AS CURRENT_TICKET_STATUS,
@@ -294,6 +318,10 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     FROM T_TICKETS_NEW t
     LEFT JOIN COMBINED_T_WG_CUSTOMER c
       ON c.MOBILE = t.MOBILE
+    -- CSP/partner name: T_TICKETS_NEW has no partner column, so resolve it from
+    -- the customer master (mobile → current partner). ~89% coverage.
+    LEFT JOIN CUSTOMER_ENRICHED_DBT ce
+      ON ce.MOBILE = t.MOBILE
     WHERE t.STATUS = 'OPEN'
       AND t.EXTRA_DATA:ticket_source::string = 'CUSTOMER_CHAT'
       AND t.CREATED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
@@ -310,12 +338,13 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     console.error('ERROR querying Metabase (chat):', e.message);
   }
   log(`Qualifying chat tickets: ${chatTickets.length}`);
-  const { added: chatAdded, skipped: chatSkipped } =
+  const { added: chatAdded, skipped: chatSkipped, enriched: chatEnriched } =
     await addTicketsToFirebase(chatTickets, BACKFILL_CHAT ? 'chat-backfill' : 'chat-cron');
 
-  const added   = internetAdded + chatAdded;
-  const skipped = internetSkipped + chatSkipped;
-  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded})  Skipped: ${skipped}`);
+  const added    = internetAdded + chatAdded;
+  const skipped  = internetSkipped + chatSkipped;
+  const enriched = internetEnriched + chatEnriched;
+  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded})  Enriched: ${enriched}  Skipped: ${skipped}`);
 
   // ── Step 3: Notify Slack (suppressed entirely during a silent backfill) ──
   const slackToken = process.env.SLACK_BOT_TOKEN;
