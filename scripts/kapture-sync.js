@@ -172,8 +172,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     const ticketId = String(t.KAPTURE_TICKET_ID || '').trim();
     if (!ticketId) continue;
 
-    const newPartner = String(t.PARTNER       || '').trim();
-    const newName    = String(t.CUSTOMER_NAME || '').trim();
+    const newPartner = String(t.PARTNER         || '').trim();
+    const newName    = String(t.CUSTOMER_NAME   || '').trim();
+    const newMobile  = String(t.CUSTOMER_MOBILE || '').trim();
 
     const key      = ticketKey(ticketId);
     const existing = await fbGet('/cases/' + key);
@@ -183,6 +184,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       const patch = {};
       if (newPartner && !String(existing.partner   || '').trim()) patch.partner   = newPartner;
       if (newName    && !String(existing.cust_name || '').trim()) patch.cust_name = newName;
+      if (newMobile  && !String(existing.mobile    || '').trim()) patch.mobile    = newMobile;
       if (Object.keys(patch).length) {
         try {
           await fbPatch('/cases/' + key, patch);
@@ -250,27 +252,43 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // Table: PUBLIC.SERVICE_TICKET_MODEL (Metabase table ID 5599, DB 113)
   const sql = `
     WITH nmob AS (
-      -- One row per mobile, keyed on the last 10 digits so a stored '+91'/leading
-      -- zero/whitespace mismatch can't cause the name join to miss. GROUP BY keeps
-      -- the join from fanning out tickets when a mobile has several customer rows.
+      -- Customer name is resolved by the last 10 digits of mobile (so a stored
+      -- '+91'/leading-zero/whitespace mismatch can't make the join miss), deduped
+      -- to one name per mobile. Names come from three sources in priority order via
+      -- COALESCE below: the legacy COMBINED table first, then the installs model
+      -- (near-complete), then the active base — because COMBINED_T_WG_CUSTOMER alone
+      -- covers <1% of these customers.
       SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB,
              MAX(NAME) AS CNAME
       FROM COMBINED_T_WG_CUSTOMER
       WHERE MOBILE IS NOT NULL AND NAME IS NOT NULL AND TRIM(NAME) != ''
       GROUP BY 1
+    ),
+    n_inst AS (
+      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(CUSTOMER_NAME) AS CNAME
+      FROM STG_INVENTORY_MODEL_CUSTOMER_INSTALLS
+      WHERE MOBILE IS NOT NULL AND CUSTOMER_NAME IS NOT NULL AND TRIM(CUSTOMER_NAME) != ''
+      GROUP BY 1
+    ),
+    n_actv AS (
+      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(CUSTOMER_NAME) AS CNAME
+      FROM ACTIVE_CUST
+      WHERE MOBILE IS NOT NULL AND CUSTOMER_NAME IS NOT NULL AND TRIM(CUSTOMER_NAME) != ''
+      GROUP BY 1
     )
     SELECT
       stm.KAPTURE_TICKET_ID,
       stm.CUSTOMER_MOBILE,
-      nmob.CNAME                                         AS CUSTOMER_NAME,
+      COALESCE(nmob.CNAME, n_inst.CNAME, n_actv.CNAME)  AS CUSTOMER_NAME,
       stm.CURRENT_PARTNER_NAME                          AS PARTNER,
       stm.FIRST_TITLE                                   AS SUB_CATEGORY,
       FLOOR(stm.TOTALTAT_TILLNOW_MINS_CALENDARHRS / 60) AS TAT_HOURS,
       stm.CURRENT_TICKET_STATUS,
       TO_CHAR(stm.TICKET_ADDED_TIME, 'DD/Mon/YYYY')    AS CREATED_DATE
     FROM SERVICE_TICKET_MODEL stm
-    LEFT JOIN nmob
-      ON nmob.MOB = RIGHT(REGEXP_REPLACE(stm.CUSTOMER_MOBILE, '[^0-9]', ''), 10)
+    LEFT JOIN nmob   ON nmob.MOB   = RIGHT(REGEXP_REPLACE(stm.CUSTOMER_MOBILE, '[^0-9]', ''), 10)
+    LEFT JOIN n_inst ON n_inst.MOB = RIGHT(REGEXP_REPLACE(stm.CUSTOMER_MOBILE, '[^0-9]', ''), 10)
+    LEFT JOIN n_actv ON n_actv.MOB = RIGHT(REGEXP_REPLACE(stm.CUSTOMER_MOBILE, '[^0-9]', ''), 10)
     WHERE
       -- Internet-related sub-category
       (
@@ -344,11 +362,23 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       FROM COMBINED_T_WG_CUSTOMER
       WHERE MOBILE IS NOT NULL AND NAME IS NOT NULL AND TRIM(NAME) != ''
       GROUP BY 1
+    ),
+    n_inst AS (
+      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(CUSTOMER_NAME) AS CNAME
+      FROM STG_INVENTORY_MODEL_CUSTOMER_INSTALLS
+      WHERE MOBILE IS NOT NULL AND CUSTOMER_NAME IS NOT NULL AND TRIM(CUSTOMER_NAME) != ''
+      GROUP BY 1
+    ),
+    n_actv AS (
+      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(CUSTOMER_NAME) AS CNAME
+      FROM ACTIVE_CUST
+      WHERE MOBILE IS NOT NULL AND CUSTOMER_NAME IS NOT NULL AND TRIM(CUSTOMER_NAME) != ''
+      GROUP BY 1
     )
     SELECT
       t.KAPTURE_TICKET_ID,
       t.MOBILE                                          AS CUSTOMER_MOBILE,
-      nmob.CNAME                                        AS CUSTOMER_NAME,
+      COALESCE(nmob.CNAME, n_inst.CNAME, n_actv.CNAME)  AS CUSTOMER_NAME,
       COALESCE(pmob.PNAME, pacct.PNAME)                 AS PARTNER,
       t.TITLE                                           AS SUB_CATEGORY,
       FLOOR(DATEDIFF(MINUTE, t.CREATED_TIME, CURRENT_TIMESTAMP()) / 60) AS TAT_HOURS,
@@ -356,9 +386,11 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       TO_CHAR(t.CREATED_TIME, 'DD/Mon/YYYY')            AS CREATED_DATE,
       'Chat'                                            AS CHANNEL
     FROM T_TICKETS_NEW t
-    LEFT JOIN pmob  ON pmob.MOB   = RIGHT(REGEXP_REPLACE(t.MOBILE, '[^0-9]', ''), 10)
-    LEFT JOIN pacct ON pacct.ACCT = t.ASSIGNED_ACCOUNT_ID
-    LEFT JOIN nmob  ON nmob.MOB   = RIGHT(REGEXP_REPLACE(t.MOBILE, '[^0-9]', ''), 10)
+    LEFT JOIN pmob   ON pmob.MOB   = RIGHT(REGEXP_REPLACE(t.MOBILE, '[^0-9]', ''), 10)
+    LEFT JOIN pacct  ON pacct.ACCT = t.ASSIGNED_ACCOUNT_ID
+    LEFT JOIN nmob   ON nmob.MOB   = RIGHT(REGEXP_REPLACE(t.MOBILE, '[^0-9]', ''), 10)
+    LEFT JOIN n_inst ON n_inst.MOB = RIGHT(REGEXP_REPLACE(t.MOBILE, '[^0-9]', ''), 10)
+    LEFT JOIN n_actv ON n_actv.MOB = RIGHT(REGEXP_REPLACE(t.MOBILE, '[^0-9]', ''), 10)
     WHERE t.STATUS = 'OPEN'
       AND t.EXTRA_DATA:ticket_source::string = 'CUSTOMER_CHAT'
       AND t.CREATED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
