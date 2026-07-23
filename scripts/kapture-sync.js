@@ -155,9 +155,17 @@ async function queryMetabase(sql, apiKey) {
 // ── Add a batch of tickets to Firebase (skip any already tracked) ────────────
 async function addTicketsToFirebase(tickets, sourceLabel) {
   // Dedup within this batch — the mobile join can yield duplicate rows per ticket.
-  const uniq = [...new Map(
-    tickets.map(t => [String(t.KAPTURE_TICKET_ID || '').trim(), t])
-  ).values()];
+  // When duplicates exist, keep the most-complete row (has a name/partner) rather
+  // than whichever happened to arrive last, so a blank row can't win.
+  const score = r => (String(r.CUSTOMER_NAME || '').trim() ? 1 : 0)
+                   + (String(r.PARTNER || '').trim() ? 1 : 0);
+  const uniq = [...tickets.reduce((m, t) => {
+    const k = String(t.KAPTURE_TICKET_ID || '').trim();
+    if (!k) return m;
+    const prev = m.get(k);
+    if (!prev || score(t) > score(prev)) m.set(k, t);
+    return m;
+  }, new Map()).values()];
 
   let added = 0, skipped = 0, enriched = 0;
   for (const t of uniq) {
@@ -241,18 +249,28 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // ── Step 1: Query SERVICE_TICKET_MODEL via Metabase ──────────────────────
   // Table: PUBLIC.SERVICE_TICKET_MODEL (Metabase table ID 5599, DB 113)
   const sql = `
+    WITH nmob AS (
+      -- One row per mobile, keyed on the last 10 digits so a stored '+91'/leading
+      -- zero/whitespace mismatch can't cause the name join to miss. GROUP BY keeps
+      -- the join from fanning out tickets when a mobile has several customer rows.
+      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB,
+             MAX(NAME) AS CNAME
+      FROM COMBINED_T_WG_CUSTOMER
+      WHERE MOBILE IS NOT NULL AND NAME IS NOT NULL AND TRIM(NAME) != ''
+      GROUP BY 1
+    )
     SELECT
       stm.KAPTURE_TICKET_ID,
       stm.CUSTOMER_MOBILE,
-      c.NAME                                             AS CUSTOMER_NAME,
+      nmob.CNAME                                         AS CUSTOMER_NAME,
       stm.CURRENT_PARTNER_NAME                          AS PARTNER,
       stm.FIRST_TITLE                                   AS SUB_CATEGORY,
       FLOOR(stm.TOTALTAT_TILLNOW_MINS_CALENDARHRS / 60) AS TAT_HOURS,
       stm.CURRENT_TICKET_STATUS,
       TO_CHAR(stm.TICKET_ADDED_TIME, 'DD/Mon/YYYY')    AS CREATED_DATE
     FROM SERVICE_TICKET_MODEL stm
-    LEFT JOIN COMBINED_T_WG_CUSTOMER c
-      ON c.MOBILE = stm.CUSTOMER_MOBILE
+    LEFT JOIN nmob
+      ON nmob.MOB = RIGHT(REGEXP_REPLACE(stm.CUSTOMER_MOBILE, '[^0-9]', ''), 10)
     WHERE
       -- Internet-related sub-category
       (
@@ -310,7 +328,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // Lookups are GROUP BY'd to one row per key so they never fan out the tickets.
   const chatSql = `
     WITH pmob AS (
-      SELECT MOBILE AS MOB, MAX(CURRENT_PARTNER_NAME) AS PNAME
+      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(CURRENT_PARTNER_NAME) AS PNAME
       FROM CUSTOMER_ENRICHED_DBT
       WHERE MOBILE IS NOT NULL AND CURRENT_PARTNER_NAME IS NOT NULL
       GROUP BY 1
@@ -322,9 +340,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       GROUP BY 1
     ),
     nmob AS (
-      SELECT MOBILE AS MOB, MAX(NAME) AS CNAME
+      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(NAME) AS CNAME
       FROM COMBINED_T_WG_CUSTOMER
-      WHERE MOBILE IS NOT NULL AND NAME IS NOT NULL
+      WHERE MOBILE IS NOT NULL AND NAME IS NOT NULL AND TRIM(NAME) != ''
       GROUP BY 1
     )
     SELECT
@@ -338,9 +356,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       TO_CHAR(t.CREATED_TIME, 'DD/Mon/YYYY')            AS CREATED_DATE,
       'Chat'                                            AS CHANNEL
     FROM T_TICKETS_NEW t
-    LEFT JOIN pmob  ON pmob.MOB   = t.MOBILE
+    LEFT JOIN pmob  ON pmob.MOB   = RIGHT(REGEXP_REPLACE(t.MOBILE, '[^0-9]', ''), 10)
     LEFT JOIN pacct ON pacct.ACCT = t.ASSIGNED_ACCOUNT_ID
-    LEFT JOIN nmob  ON nmob.MOB   = t.MOBILE
+    LEFT JOIN nmob  ON nmob.MOB   = RIGHT(REGEXP_REPLACE(t.MOBILE, '[^0-9]', ''), 10)
     WHERE t.STATUS = 'OPEN'
       AND t.EXTRA_DATA:ticket_source::string = 'CUSTOMER_CHAT'
       AND t.CREATED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())

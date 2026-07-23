@@ -1978,7 +1978,7 @@ function parseBulkRows(text) {
       tat:         get(5),
       caseAddedOn: get(6) || todayFmt,
     };
-  }).filter(r => r.ticket || r.mobile);
+  }).filter(r => String(r.ticket || '').trim());  // ticket is the DB key; drop rows without one
 
   if (!rows.length) return { ok: false, error: 'Header found but no data rows.', rows: [] };
   return { ok: true, error: '', rows };
@@ -2007,20 +2007,24 @@ async function submitBulkAdd() {
   const btn = document.getElementById('bulkSubmitBtn');
   btn.disabled = true; btn.textContent = 'Adding…';
 
-  // Insert all rows into Firebase first — then update local UI
-  // db.ref().update() is naturally an upsert: existing tickets are overwritten, no duplicate error
+  // Insert each row under its own /cases/<key> with a PATCH. Two reasons this is a
+  // per-key PATCH and not one root-level update():
+  //  1. Safety: a blank/undefined ticket yields an empty key, which under the old
+  //     root update() built the path 'cases/' and REPLACED the entire /cases node.
+  //     Here an empty key is skipped, and the path is always a specific child.
+  //  2. Non-destructive: PATCH only writes the fields below, so re-adding an existing
+  //     ticket no longer wipes the engineer/remarks/migration_status a human has set.
   const bulkAddedAt = Date.now();
-  const updates = {};
-  rows.forEach(function(r) {
-    updates['cases/' + ticketKey(r.ticket)] = {
-      case_added_on: r.caseAddedOn, ticket_no: r.ticket, mobile: r.mobile,
-      subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat,
-      remarks: '', easy_remarks: '', engineer: '', ticket_url: '', col12: '', col13: '', migration_date: '',
-      owner_assigned_at: bulkAddedAt, source: 'manual', added_at: bulkAddedAt
-    };
-  });
   try {
-    await fbPatch('', updates);
+    for (const r of rows) {
+      const key = ticketKey(String(r.ticket || '').trim());
+      if (!key) continue;  // never target the /cases root
+      await fbPatch('/cases/' + key, {
+        case_added_on: r.caseAddedOn, ticket_no: r.ticket, mobile: r.mobile,
+        subcat: r.subcat, cust_name: r.name, partner: r.partner, tat: r.tat,
+        source: 'manual', added_at: bulkAddedAt
+      });
+    }
   } catch(e) {
     toast('ERROR saving to database: ' + e.message, 'error');
     btn.disabled = false; btn.textContent = '\u2795 Add All Cases';
