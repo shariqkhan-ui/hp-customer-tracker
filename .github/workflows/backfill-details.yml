@@ -1,0 +1,43 @@
+name: Backfill Customer Details
+
+# One-off (re-runnable) manual job to fill blank customer name / mobile on existing
+# cases, using the same fallback sources the live sync uses. Only fills BLANK fields
+# — it never overwrites existing values.
+#
+# How to run:
+#   Actions tab -> "Backfill Customer Details" -> Run workflow
+#     apply = false (default) -> DRY RUN: logs what it would fill, writes nothing
+#     apply = true            -> actually patches Firebase
+# Run once with apply=false to check the counts, then again with apply=true.
+
+on:
+  workflow_dispatch:
+    inputs:
+      apply:
+        description: 'Write to Firebase? Leave false for a dry-run preview first.'
+        type: boolean
+        default: false
+
+jobs:
+  backfill:
+    name: Backfill blank name / mobile
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run backfill
+        working-directory: scripts
+        env:
+          METABASE_API_KEY: ${{ secrets.METABASE_API_KEY }}
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          # '1' only when dispatched with apply=true; otherwise a dry run.
+          APPLY: ${{ github.event.inputs.apply == 'true' && '1' || '0' }}
+        run: node backfill-names.js
