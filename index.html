@@ -569,11 +569,13 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Partner</th>
             <th>Sub-category</th>
             <th>TAT</th>
+            <th>48h TAT &#x23F3;</th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Migration Status &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Owner &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Pending Since</th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
+            <th>Engineer Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Case Added On</th>
             <th>Migration Date</th>
             <th>Status</th>
@@ -586,11 +588,13 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('partner',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('subcat',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
+            <th></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('migStatus',this.value)"></th>
             <th><input class="col-filter" placeholder="Cx / NQT" oninput="setColFilter('owner',this.value)"></th>
             <th></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engRemarks',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('caseAdded',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('migDate',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('status',this.value)"></th>
@@ -781,12 +785,13 @@ function dbRowToArray(r) {
     r.source             || '',  // 18 — 'cron' | 'manual'
     r.added_at           || 0,   // 19 — Unix ms when case was first added to tracker
     r.remarks_updated_at || 0,   // 20 — Unix ms when remarks were last changed
-    r.engineer_assigned_at || 0  // 21 — Unix ms when engineer was last assigned
+    r.engineer_assigned_at || 0, // 21 — Unix ms when engineer was last assigned
+    r.engineer_remarks   || ''   // 22 — Engineer remarks (dropdown)
   ];
 }
 
 // Map edit field name → Supabase column name
-const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status' };
+const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks' };
 
 let allRows = [], visRows = [], charts = {};
 
@@ -854,7 +859,7 @@ function effectiveVal(r, col) { return (r[col] || '').trim(); }
 
 
 // ── Save edit: patch allRows in memory + write to Firebase ──
-const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17 };
+const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17, engineer_remarks: 22 };
 async function saveToSheet(ticket, field, value) {
   const dbCol = DB_COL[field];
   if (!dbCol) return;
@@ -899,6 +904,12 @@ const REMARKS_OPTIONS = [
   'OLD CSP is working to resolve complaint',
   'Migration is in Progress','Cx not contactable/Reachable',
   'Migration not possible/Refund','Customer not interested in Migration'
+];
+const ENGINEER_REMARKS_OPTIONS = [
+  'CSP Not Responding',
+  'Customer Plan Expired',
+  'Plan Status Disconnected',
+  'CSP Denied to work with Wiom'
 ];
 // Map old free-text remarks to the closest standard dropdown option
 function mapOldRemark(raw) {
@@ -1125,6 +1136,45 @@ function startEdit(td) {
         td.className = 'edit-cell' + (cur.trim() !== orig.trim() ? ' edited' : '');
         td.innerHTML = cellInner(cur);
         td.onclick   = () => startEdit(td);
+      }
+    });
+    return;
+  }
+
+  // Engineer Remarks field: show predefined dropdown
+  if (field === 'engineer_remarks') {
+    const sel = document.createElement('select');
+    sel.className = 'edit-input';
+    sel.innerHTML = '<option value="">— Select —</option>' +
+      ENGINEER_REMARKS_OPTIONS.map(function(o) {
+        return '<option value="' + esc(o) + '"' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>';
+      }).join('');
+    td.innerHTML = '';
+    td.appendChild(sel);
+    sel.focus();
+
+    let erCommitted = false;
+    async function commitEngRemarks() {
+      if (erCommitted) return; erCommitted = true;
+      const nv = sel.value;
+      addAuditEntry(ticket, field, cur, nv);
+      await saveToSheet(ticket, field, nv);
+      applyFilters();
+    }
+    sel.addEventListener('change', commitEngRemarks);
+    sel.addEventListener('blur', function() {
+      if (!erCommitted) {
+        td.className = 'edit-cell';
+        td.innerHTML = cellInner(cur);
+        td.onclick = () => startEdit(td);
+      }
+    });
+    sel.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        erCommitted = true;
+        td.className = 'edit-cell';
+        td.innerHTML = cellInner(cur);
+        td.onclick = () => startEdit(td);
       }
     });
     return;
@@ -1584,6 +1634,7 @@ function applyColFilters() {
     if (!chk(effectiveVal(r,8), 'remarks'))    return false;
     if (!chk((r[17]||''),       'migStatus'))  return false;
     if (!chk(effectiveVal(r,10),'engineer'))   return false;
+    if (!chk(effectiveVal(r,22),'engRemarks')) return false;
     if (!chk(r[0],              'caseAdded'))return false;
     if (!chk(effectiveVal(r,14),'migDate'))  return false;
     if (!chk(getStatus(r),      'status'))   return false;
@@ -1726,6 +1777,59 @@ function pendingSinceColor(r) {
   return 'var(--green)';
 }
 
+// ── 48-Hour TAT Countdown ──
+// Clock starts at added_at (col 19), falls back to owner_assigned_at (col 16),
+// then to the Case Added On date (col 0). When it reaches 0 the case is
+// flagged "Need to Refund to Customer". Resolved cases show Closed instead.
+const TAT_LIMIT_MS = 48 * 3600000;
+function caseStartTs(r) {
+  const ts = Number(r[19]) || Number(r[16]) || 0;
+  if (ts > 0) return ts;
+  const d = parseDate((r[0] || '').trim());
+  return d ? d.getTime() : 0;
+}
+function isTatExpired(r) {
+  const start = caseStartTs(r);
+  return start > 0 && (Date.now() - start) >= TAT_LIMIT_MS;
+}
+function tatClockInner(deadline) {
+  const left = deadline - Date.now();
+  if (left <= 0) {
+    return '<span class="badge badge-red tat-clock" data-deadline="' + deadline + '" style="white-space:nowrap">&#x26D4; Need to Refund to Customer</span>';
+  }
+  const h = Math.floor(left / 3600000);
+  const m = Math.floor((left % 3600000) / 60000);
+  const color = h >= 24 ? 'var(--green)' : h >= 12 ? 'var(--yellow)' : 'var(--red)';
+  return '<span class="tat-clock" data-deadline="' + deadline + '" style="font-weight:800;white-space:nowrap;color:' + color + '">&#x23F3; ' + h + 'h ' + String(m).padStart(2,'0') + 'm</span>';
+}
+function tatClockText(r) {
+  const st = getStatus(r);
+  if (st === 'Migrated' || st === 'Ping Up') return 'Closed';
+  const start = caseStartTs(r);
+  if (!start) return '';
+  const left = start + TAT_LIMIT_MS - Date.now();
+  if (left <= 0) return 'Need to Refund to Customer';
+  const h = Math.floor(left / 3600000);
+  const m = Math.floor((left % 3600000) / 60000);
+  return h + 'h ' + m + 'm left';
+}
+function makeTatClockCell(r) {
+  const st = getStatus(r);
+  if (st === 'Migrated' || st === 'Ping Up') {
+    return '<td style="white-space:nowrap"><span class="badge badge-green">&#x2714; Closed</span></td>';
+  }
+  const start = caseStartTs(r);
+  if (!start) return '<td style="color:var(--muted)">—</td>';
+  return '<td style="white-space:nowrap">' + tatClockInner(start + TAT_LIMIT_MS) + '</td>';
+}
+// Tick every 60s — updates only the clock spans so in-progress cell edits are untouched
+setInterval(function() {
+  document.querySelectorAll('.tat-clock').forEach(function(el) {
+    const dl = Number(el.dataset.deadline);
+    if (dl) el.outerHTML = tatClockInner(dl);
+  });
+}, 60000);
+
 // ── Owner cell helpers ──
 function ownerBadgeCell(owner) {
   const badge = owner === 'NQT'
@@ -1756,7 +1860,7 @@ function renderTable(rows) {
   document.getElementById('rowCount').textContent = rows.length + ' records';
   const tbody = document.getElementById('tBody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="15" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="17" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
     return;
   }
   const statusBadge = s =>
@@ -1781,11 +1885,13 @@ function renderTable(rows) {
       '<td style="font-size:12px">' + esc((r[6]||'').trim() || '—') + '</td>' +
       '<td>' + esc((r[4]||'').trim() || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
+      makeTatClockCell(r) +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim(), r[20] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[20]) + '</div>' : '') +
       makeMigStatusCell(ticket, (r[17]||'').trim()) +
       makeOwnerCell(ticket, owner) +
       '<td style="font-size:12px;font-weight:700;color:' + pendingSinceColor(r) + ';white-space:nowrap">' + getPendingSince(r) + '</td>' +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
+      makeEditCell(ticket, 'engineer_remarks', (r[22]||'').trim()) +
       (function() {
         const caseTs = r[19] || r[16] || 0;
         // source field set explicitly, or infer from ticket_url (cron always sets kapturecrm.com URL)
@@ -1806,8 +1912,8 @@ function renderTable(rows) {
 function downloadCSV() {
   const headers = [
     '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Customer Name','Partner',
-    'Sub-category','TAT','Ground Remarks','Remarks Updated At','Engineer','Engineer Assigned At',
-    'Owner','Pending Since','Migration Date','Status','Ticket URL',
+    'Sub-category','TAT','48h TAT','Ground Remarks','Remarks Updated At','Engineer','Engineer Assigned At',
+    'Engineer Remarks','Owner','Pending Since','Migration Date','Status','Ticket URL',
     'Col12','Col13'
   ];
   const esc2 = v => '"' + String(v).replace(/"/g, '""') + '"';
@@ -1826,10 +1932,12 @@ function downloadCSV() {
       (r[6]||'').trim(),
       (r[4]||'').trim(),
       (r[7]||'').trim(),
+      tatClockText(r),
       (r[8]||'').trim(),
       fmtTs(r[20]),
       (r[10]||'').trim(),
       fmtTs(r[21]),
+      (r[22]||'').trim(),
       getOwner(r),
       getPendingSince(r),
       (r[14]||'').trim(),
@@ -2291,7 +2399,7 @@ function renderAuditLog(log) {
   document.getElementById('auditCount').textContent = log.length + ' edit(s) recorded';
   if (!log.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-  const FIELD_LABEL = { remarks: 'Ground Remarks', engineer: 'Engineer Name', migration_date: 'Migration Date' };
+  const FIELD_LABEL = { remarks: 'Ground Remarks', engineer: 'Engineer Name', migration_date: 'Migration Date', engineer_remarks: 'Engineer Remarks', owner: 'Owner', migration_status: 'Migration Status' };
   tbody.innerHTML = log.map(function(e) {
     const dt = new Date(e.ts).toLocaleString('en-IN');
     return '<tr style="border-bottom:1px solid #1a0018">' +
