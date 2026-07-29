@@ -1778,13 +1778,18 @@ function pendingSinceColor(r) {
 }
 
 // ── 48-Hour TAT Countdown ──
-// Clock starts at added_at (col 19), falls back to owner_assigned_at (col 16),
-// then to the Case Added On date (col 0). When it reaches 0 the case is
-// flagged "Need to Refund to Customer". Resolved cases show Closed instead.
+// Clock starts when the case is ASSIGNED to an engineer (engineer_assigned_at,
+// col 21). Unassigned cases show "Not Assigned" — no clock running. When the
+// clock reaches 0 the case is flagged "Need to Refund to Customer". Resolved
+// cases show Closed instead.
 const TAT_LIMIT_MS = 48 * 3600000;
 function caseStartTs(r) {
-  const ts = Number(r[19]) || Number(r[16]) || 0;
+  if (!(r[10] || '').trim()) return 0; // no engineer assigned — clock hasn't started
+  const ts = Number(r[21]) || 0;
   if (ts > 0) return ts;
+  // Older rows: engineer was assigned before timestamps existed — fall back to case added time
+  const fb = Number(r[19]) || Number(r[16]) || 0;
+  if (fb > 0) return fb;
   const d = parseDate((r[0] || '').trim());
   return d ? d.getTime() : 0;
 }
@@ -1806,7 +1811,7 @@ function tatClockText(r) {
   const st = getStatus(r);
   if (st === 'Migrated' || st === 'Ping Up') return 'Closed';
   const start = caseStartTs(r);
-  if (!start) return '';
+  if (!start) return 'Not Assigned';
   const left = start + TAT_LIMIT_MS - Date.now();
   if (left <= 0) return 'Need to Refund to Customer';
   const h = Math.floor(left / 3600000);
@@ -1819,7 +1824,7 @@ function makeTatClockCell(r) {
     return '<td style="white-space:nowrap"><span class="badge badge-green">&#x2714; Closed</span></td>';
   }
   const start = caseStartTs(r);
-  if (!start) return '<td style="color:var(--muted)">—</td>';
+  if (!start) return '<td style="white-space:nowrap"><span class="badge badge-yellow">Not Assigned</span></td>';
   return '<td style="white-space:nowrap">' + tatClockInner(start + TAT_LIMIT_MS) + '</td>';
 }
 // Tick every 60s — updates only the clock spans so in-progress cell edits are untouched
