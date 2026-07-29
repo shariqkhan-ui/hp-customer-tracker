@@ -570,6 +570,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Sub-category</th>
             <th>TAT</th>
             <th>48h TAT &#x23F3;</th>
+            <th>Cx Action &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Migration Status &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Owner &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
@@ -589,6 +590,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('subcat',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
             <th></th>
+            <th><input class="col-filter" placeholder="Pending / Done" oninput="setColFilter('cxAction',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('migStatus',this.value)"></th>
             <th><input class="col-filter" placeholder="Cx / NQT" oninput="setColFilter('owner',this.value)"></th>
@@ -786,12 +788,13 @@ function dbRowToArray(r) {
     r.added_at           || 0,   // 19 — Unix ms when case was first added to tracker
     r.remarks_updated_at || 0,   // 20 — Unix ms when remarks were last changed
     r.engineer_assigned_at || 0, // 21 — Unix ms when engineer was last assigned
-    r.engineer_remarks   || ''   // 22 — Engineer remarks (dropdown)
+    r.engineer_remarks   || '',  // 22 — Engineer remarks (dropdown)
+    r.cx_action          || ''   // 23 — Cx team refund action (Refund Pending / Refund Done)
   ];
 }
 
 // Map edit field name → Supabase column name
-const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks' };
+const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action' };
 
 let allRows = [], visRows = [], charts = {};
 
@@ -859,7 +862,7 @@ function effectiveVal(r, col) { return (r[col] || '').trim(); }
 
 
 // ── Save edit: patch allRows in memory + write to Firebase ──
-const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17, engineer_remarks: 22 };
+const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17, engineer_remarks: 22, cx_action: 23 };
 async function saveToSheet(ticket, field, value) {
   const dbCol = DB_COL[field];
   if (!dbCol) return;
@@ -1174,6 +1177,43 @@ function startEdit(td) {
         erCommitted = true;
         td.className = 'edit-cell';
         td.innerHTML = cellInner(cur);
+        td.onclick = () => startEdit(td);
+      }
+    });
+    return;
+  }
+
+  // Cx Action field: refund status dropdown
+  if (field === 'cx_action') {
+    const sel = document.createElement('select');
+    sel.className = 'edit-input';
+    sel.innerHTML = '<option value="">— Select —</option>' +
+      CX_ACTION_OPTS.map(function(o) {
+        return '<option value="' + esc(o) + '"' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>';
+      }).join('');
+    td.innerHTML = '';
+    td.appendChild(sel);
+    sel.focus();
+
+    let caCommitted = false;
+    async function commitCxAction() {
+      if (caCommitted) return; caCommitted = true;
+      const nv = sel.value;
+      addAuditEntry(ticket, field, cur, nv);
+      await saveToSheet(ticket, field, nv);
+      applyFilters();
+    }
+    sel.addEventListener('change', commitCxAction);
+    sel.addEventListener('blur', function() {
+      if (!caCommitted) {
+        td.innerHTML = cxActionBadgeCell(cur);
+        td.onclick = () => startEdit(td);
+      }
+    });
+    sel.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') {
+        caCommitted = true;
+        td.innerHTML = cxActionBadgeCell(cur);
         td.onclick = () => startEdit(td);
       }
     });
@@ -1635,6 +1675,7 @@ function applyColFilters() {
     if (!chk((r[17]||''),       'migStatus'))  return false;
     if (!chk(effectiveVal(r,10),'engineer'))   return false;
     if (!chk(effectiveVal(r,22),'engRemarks')) return false;
+    if (!chk(effectiveVal(r,23),'cxAction'))   return false;
     if (!chk(r[0],              'caseAdded'))return false;
     if (!chk(effectiveVal(r,14),'migDate'))  return false;
     if (!chk(getStatus(r),      'status'))   return false;
@@ -1871,6 +1912,20 @@ function makeOwnerCell(ticket, owner) {
   return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="owner" data-orig="' + esc(owner) + '" onclick="startEdit(this)" style="min-width:70px">' + ownerBadgeCell(owner) + '</td>';
 }
 
+// ── Cx Action (refund) cell helpers ──
+const CX_ACTION_OPTS = ['Refund Pending', 'Refund Done'];
+function cxActionBadgeCell(val) {
+  const badge = val === 'Refund Done'
+    ? '<span class="badge badge-green">&#x2714; Refund Done</span>'
+    : val === 'Refund Pending'
+      ? '<span class="badge badge-yellow">&#x23F3; Refund Pending</span>'
+      : '<span style="color:var(--muted)">—</span>';
+  return badge + '<span class="edit-hint">&#x270F;</span>';
+}
+function makeCxActionCell(ticket, val) {
+  return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="cx_action" data-orig="' + esc(val) + '" onclick="startEdit(this)" style="min-width:120px;white-space:nowrap">' + cxActionBadgeCell(val) + '</td>';
+}
+
 // ── Migration Status cell helpers ──
 const MIG_STATUS_OPTS = ['Proceed with migration', 'Hold migration'];
 function migStatusBadgeCell(val) {
@@ -1890,7 +1945,7 @@ function renderTable(rows) {
   document.getElementById('rowCount').textContent = rows.length + ' records';
   const tbody = document.getElementById('tBody');
   if (!rows.length) {
-    tbody.innerHTML = '<tr><td colspan="17" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="18" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
     return;
   }
   const statusBadge = s =>
@@ -1916,6 +1971,7 @@ function renderTable(rows) {
       '<td>' + esc((r[4]||'').trim() || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
       makeTatClockCell(r) +
+      makeCxActionCell(ticket, (r[23]||'').trim()) +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim(), r[20] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[20]) + '</div>' : '') +
       makeMigStatusCell(ticket, (r[17]||'').trim()) +
       makeOwnerCell(ticket, owner) +
@@ -1942,7 +1998,7 @@ function renderTable(rows) {
 function downloadCSV() {
   const headers = [
     '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Customer Name','Partner',
-    'Sub-category','TAT','48h TAT','Ground Remarks','Remarks Updated At','Engineer','Engineer Assigned At',
+    'Sub-category','TAT','48h TAT','Cx Action','Ground Remarks','Remarks Updated At','Engineer','Engineer Assigned At',
     'Engineer Remarks','Owner','Pending Since','Migration Date','Status','Ticket URL',
     'Col12','Col13'
   ];
@@ -1963,6 +2019,7 @@ function downloadCSV() {
       (r[4]||'').trim(),
       (r[7]||'').trim(),
       tatClockText(r),
+      (r[23]||'').trim(),
       (r[8]||'').trim(),
       fmtTs(r[20]),
       (r[10]||'').trim(),
@@ -2429,7 +2486,7 @@ function renderAuditLog(log) {
   document.getElementById('auditCount').textContent = log.length + ' edit(s) recorded';
   if (!log.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-  const FIELD_LABEL = { remarks: 'Ground Remarks', engineer: 'Engineer Name', migration_date: 'Migration Date', engineer_remarks: 'Engineer Remarks', owner: 'Owner', migration_status: 'Migration Status' };
+  const FIELD_LABEL = { remarks: 'Ground Remarks', engineer: 'Engineer Name', migration_date: 'Migration Date', engineer_remarks: 'Engineer Remarks', owner: 'Owner', migration_status: 'Migration Status', cx_action: 'Cx Action' };
   tbody.innerHTML = log.map(function(e) {
     const dt = new Date(e.ts).toLocaleString('en-IN');
     return '<tr style="border-bottom:1px solid #1a0018">' +
