@@ -1808,6 +1808,11 @@ function tatClockInner(deadline) {
   return '<span class="tat-clock" data-deadline="' + deadline + '" style="font-weight:800;white-space:nowrap;color:' + color + '">&#x23F3; ' + h + 'h ' + String(m).padStart(2,'0') + 'm</span>';
 }
 function tatClockText(r) {
+  if (effectiveVal(r, 8).toLowerCase() === 'resolved by old partner') {
+    const left = frozenTatLeft(r);
+    if (left === null) return 'Stopped';
+    return left <= 0 ? 'Expired (frozen)' : fmtHm(left) + ' left (frozen)';
+  }
   const st = getStatus(r);
   if (st === 'Migrated' || st === 'Ping Up') return 'Closed';
   const start = caseStartTs(r);
@@ -1818,7 +1823,30 @@ function tatClockText(r) {
   const m = Math.floor((left % 3600000) / 60000);
   return h + 'h ' + m + 'm left';
 }
+// Remaining ms at the moment the clock was stopped (Resolved by Old Partner).
+// Freeze point = remarks_updated_at (col 20); null when it can't be computed.
+function frozenTatLeft(r) {
+  const start = caseStartTs(r);
+  const stopAt = Number(r[20]) || 0;
+  if (!start || !stopAt) return null;
+  return (start + TAT_LIMIT_MS) - stopAt;
+}
+function fmtHm(ms) {
+  const h = Math.floor(ms / 3600000);
+  const m = Math.floor((ms % 3600000) / 60000);
+  return h + 'h ' + String(m).padStart(2,'0') + 'm';
+}
 function makeTatClockCell(r) {
+  // "Resolved by Old Partner" → clock STOPS and freezes at the time the remark was set
+  if (effectiveVal(r, 8).toLowerCase() === 'resolved by old partner') {
+    const left = frozenTatLeft(r);
+    const frozen = left === null
+      ? '<span class="badge badge-blue">&#x23F8; Stopped</span>'
+      : left <= 0
+        ? '<span class="badge badge-red" style="white-space:nowrap">&#x23F8; Expired (frozen)</span>'
+        : '<span style="font-weight:800;white-space:nowrap;color:var(--blue)">&#x23F8; ' + fmtHm(left) + '</span> <span style="font-size:10px;color:var(--muted)">frozen</span>';
+    return '<td style="white-space:nowrap">' + frozen + '</td>';
+  }
   const st = getStatus(r);
   if (st === 'Migrated' || st === 'Ping Up') {
     return '<td style="white-space:nowrap"><span class="badge badge-green">&#x2714; Closed</span></td>';
