@@ -41,7 +41,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .main { padding: 20px 24px; }
 
 /* Status row */
-.status-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 12px; margin-bottom: 20px; }
+.status-row { display: grid; grid-template-columns: repeat(5,1fr); gap: 12px; margin-bottom: 20px; }
 .status-card { background: var(--card); border: 2px solid var(--border);
   border-radius: 10px; padding: 16px 18px; text-align: center; }
 .status-count { font-size: 36px; font-weight: 900; line-height: 1; }
@@ -55,6 +55,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .status-card.pingup    .status-count { color: var(--blue); }
 .status-card.unresolved{ border-color: var(--red); }
 .status-card.unresolved .status-count { color: var(--red); }
+.status-card.exp48     { border-color: #ff8c00; }
+.status-card.exp48     .status-count { color: #ff8c00; }
+.status-card.exp48     .status-pct   { font-size: 15px; font-weight: 800; color: #ff8c00; opacity: .8; }
 
 /* Filters */
 .filters-bar { background: var(--card); border: 1px solid var(--border);
@@ -506,6 +509,10 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="status-card unresolved">
       <div class="status-count" id="sUnresCount">—</div>
       <div class="status-label">&#x1F534; Unresolved</div>
+    </div>
+    <div class="status-card exp48">
+      <div class="status-count"><span id="sExp48Count">—</span> <span class="status-pct" id="sExp48Pct"></span></div>
+      <div class="status-label">&#x23F0; Unresolved &gt; 48 Hrs</div>
     </div>
   </div>
 
@@ -1697,10 +1704,14 @@ function renderAll() {
   const partners = new Set(rows.map(r => (r[6]||'').trim()).filter(Boolean)).size;
   const pct = n => total ? Math.round(n / total * 100) + '%' : '—';
 
+  const exp48 = rows.filter(r => getStatus(r) === 'Unresolved' && isTatExpired(r)).length;
+
   setText('sTotalCount', total);
   setText('sMigCount',   mig);
   setText('sPingCount',  ping);
   setText('sUnresCount', unres);
+  setText('sExp48Count', exp48);
+  setText('sExp48Pct',   total ? '(' + Math.round(exp48 / total * 100) + '%)' : '');
   setText('kTotal',   total);
   setText('kMigPct',  pct(mig));
   setText('kPingPct', pct(ping));
