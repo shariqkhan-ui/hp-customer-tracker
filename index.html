@@ -1836,11 +1836,17 @@ function pendingSinceColor(r) {
 // reaches 0 the case is flagged "Need to Refund to Customer". Resolved
 // cases show Closed instead.
 const TAT_LIMIT_MS = 48 * 3600000;
+// The 48h flag only applies to cases added AFTER the feature went live
+// (29 Jul 2026 IST). Older cases show no clock and are excluded from the
+// "Unresolved > 48 Hrs" bucket — otherwise every legacy case reads as expired.
+const TAT_LAUNCH_TS = new Date('2026-07-29T00:00:00+05:30').getTime();
 function caseStartTs(r) {
-  const ts = Number(r[19]) || Number(r[16]) || 0;
-  if (ts > 0) return ts;
-  const d = parseDate((r[0] || '').trim());
-  return d ? d.getTime() : 0;
+  let ts = Number(r[19]) || Number(r[16]) || 0;
+  if (!ts) {
+    const d = parseDate((r[0] || '').trim());
+    ts = d ? d.getTime() : 0;
+  }
+  return ts >= TAT_LAUNCH_TS ? ts : 0; // pre-launch case — no clock
 }
 function isTatExpired(r) {
   const start = caseStartTs(r);
@@ -1857,6 +1863,7 @@ function tatClockInner(deadline) {
   return '<span class="tat-clock" data-deadline="' + deadline + '" style="font-weight:800;white-space:nowrap;color:' + color + '">&#x23F3; ' + h + 'h ' + String(m).padStart(2,'0') + 'm</span>';
 }
 function tatClockText(r) {
+  if (!caseStartTs(r)) return '';
   if (effectiveVal(r, 8).toLowerCase() === 'resolved by old partner') {
     const left = frozenTatLeft(r);
     if (left === null) return 'Stopped';
@@ -1886,6 +1893,8 @@ function fmtHm(ms) {
   return h + 'h ' + String(m).padStart(2,'0') + 'm';
 }
 function makeTatClockCell(r) {
+  // Pre-launch cases (added before the 48h flag existed) — no clock at all
+  if (!caseStartTs(r)) return '<td style="color:var(--muted)">—</td>';
   // "Resolved by Old Partner" → clock STOPS and freezes at the time the remark was set
   if (effectiveVal(r, 8).toLowerCase() === 'resolved by old partner') {
     const left = frozenTatLeft(r);
