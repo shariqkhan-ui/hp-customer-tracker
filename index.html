@@ -58,6 +58,8 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .status-card.exp48     { border-color: #ff8c00; }
 .status-card.exp48     .status-count { color: #ff8c00; }
 .status-card.exp48     .status-pct   { font-size: 15px; font-weight: 800; color: #ff8c00; opacity: .8; }
+.status-card.exp48:hover { background: rgba(255,140,0,.12); }
+.status-card.exp48.active { background: rgba(255,140,0,.18); box-shadow: 0 0 0 2px #ff8c00 inset; }
 
 /* Filters */
 .filters-bar { background: var(--card); border: 1px solid var(--border);
@@ -510,9 +512,9 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div class="status-count" id="sUnresCount">—</div>
       <div class="status-label">&#x1F534; Unresolved</div>
     </div>
-    <div class="status-card exp48">
+    <div class="status-card exp48" id="exp48Card" onclick="toggleExp48Filter()" style="cursor:pointer" title="Click to see these cases — oldest first. % is out of cases added since 29 Jul (48h flag launch).">
       <div class="status-count"><span id="sExp48Count">—</span> <span class="status-pct" id="sExp48Pct"></span></div>
-      <div class="status-label">&#x23F0; Unresolved &gt; 48 Hrs</div>
+      <div class="status-label">&#x23F0; Unresolved &gt; 48 Hrs <span id="exp48Hint" style="font-size:10px;opacity:.7">(click to view)</span></div>
     </div>
   </div>
 
@@ -1387,6 +1389,7 @@ function isDupe(r) { const n = (r[3]||'').trim(); return n !== '' && dupeNumbers
 
 // ── Load Data from Firebase REST API ──
 let realtimeReady = false;
+let sseConnected = false;  // true while the SSE stream is delivering events
 
 async function loadData() {
   try {
@@ -1409,12 +1412,14 @@ async function loadData() {
     if (!realtimeReady) showNamePromptIfNeeded();
     toast('Data loaded \u2713 \u2014 ' + allRows.length + ' cases', 'success');
     realtimeReady = true;
-    setTimeout(loadData, 30000);
+    // Poll ONLY while SSE is down \u2014 the old unconditional 30s loop re-downloaded
+    // the full ~9MB dataset forever, which is what made the tracker heavy.
+    if (!sseConnected) setTimeout(function() { if (!sseConnected) loadData(); }, 60000);
   } catch(e) {
     console.error('loadData crash:', e);
     const banner = document.getElementById('errorBanner');
     if (banner) { banner.style.display = 'block'; banner.innerHTML = '<b>\u26a0 Failed to load: ' + e.message + ' \u2014 check Firebase database rules (must be public)</b>'; }
-    setTimeout(loadData, 30000);
+    if (!sseConnected) setTimeout(function() { if (!sseConnected) loadData(); }, 60000);
   }
 }
 
@@ -1437,7 +1442,7 @@ function setupRealtime() {
 
     // First 'put' event delivers the full cases snapshot for initial load
     evtSource.addEventListener('put', function(e) {
-      clearTimeout(sseTimer); sseReady = true;
+      clearTimeout(sseTimer); sseReady = true; sseConnected = true;
       var payload;
       try { payload = JSON.parse(e.data); } catch(ex) { return; }
       var path = payload.path || '/';
@@ -1477,7 +1482,7 @@ function setupRealtime() {
     // 'patch' event fires for partial field updates within a case
     evtSource.addEventListener('patch', function(e) {
       if (!realtimeReady) return;
-      clearTimeout(sseTimer); sseReady = true;
+      clearTimeout(sseTimer); sseReady = true; sseConnected = true;
       var payload;
       try { payload = JSON.parse(e.data); } catch(ex) { return; }
       var tKey = (payload.path || '').replace(/^\//, '');
@@ -1493,6 +1498,7 @@ function setupRealtime() {
 
     evtSource.addEventListener('error', function() {
       console.warn('Firebase SSE disconnected — reconnecting in 10s');
+      sseConnected = false;
       if (!sseReady && !realtimeReady) {
         // SSE never connected — start polling as backup
         clearTimeout(sseTimer);
@@ -1600,9 +1606,24 @@ function populateDropdowns() {
 }
 
 // ── Filters ──
+// ── 48h bucket click-filter ──
+// When on: table shows only breached (Unresolved + past 48h) cases, OLDEST first.
+let exp48Only = false;
+function toggleExp48Filter() {
+  exp48Only = !exp48Only;
+  document.getElementById('exp48Card').classList.toggle('active', exp48Only);
+  applyFilters();
+  if (exp48Only) {
+    const tbl = document.getElementById('tBody');
+    if (tbl) tbl.closest('.card, table, div').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+
 function applyFilters() {
+  renderLimit = RENDER_INITIAL;
   const fA = document.getElementById('fAction').value;
   visRows = allRows.filter(r => {
+    if (exp48Only && !(getStatus(r) === 'Unresolved' && isTatExpired(r))) return false;
     if (msState.fDate.size > 0    && !msState.fDate.has(dKey(parseDate((r[0]||'').trim())))) return false;
     if (msState.fPartner.size > 0 && !msState.fPartner.has((r[6]||'').trim())) return false;
     if (msState.fSubcat.size > 0  && !msState.fSubcat.has((r[4]||'').trim())) return false;
@@ -1628,10 +1649,15 @@ function applyFilters() {
     }
     return true;
   });
-  visRows.sort(function(a, b) {
-    const da = parseDate((a[0]||'').trim()), db = parseDate((b[0]||'').trim());
-    return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
-  });
+  if (exp48Only) {
+    // Oldest breached case on top, latest last
+    visRows.sort(function(a, b) { return caseStartTs(a) - caseStartTs(b); });
+  } else {
+    visRows.sort(function(a, b) {
+      const da = parseDate((a[0]||'').trim()), db = parseDate((b[0]||'').trim());
+      return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
+    });
+  }
   renderAll();
   renderFilterSummary();
 }
@@ -1640,6 +1666,8 @@ function clearFilters() {
   document.getElementById('fAction').value = '';
   colFilters = {};
   document.querySelectorAll('.col-filter').forEach(el => el.value = '');
+  exp48Only = false;
+  document.getElementById('exp48Card').classList.remove('active');
   applyFilters();
 }
 function renderFilterSummary() {
@@ -1653,6 +1681,7 @@ function renderFilterSummary() {
   });
   const fA = document.getElementById('fAction').value;
   if (fA) parts.push('Action: <b>' + esc(document.querySelector('#fAction option:checked')?.textContent || fA) + '</b>');
+  if (exp48Only) parts.push('<b style="color:#ff8c00">&#x23F0; Unresolved &gt; 48 Hrs only — oldest first</b> (click the orange card again to exit)');
   if (parts.length) {
     el.style.display = 'block';
     el.innerHTML = parts.join(' &nbsp;·&nbsp; ') + ' &nbsp;·&nbsp; Showing <b>' + visRows.length + '</b> of <b>' + allRows.length + '</b> records';
@@ -1665,6 +1694,7 @@ function renderFilterSummary() {
 let colFilters = {};
 function setColFilter(key, val) {
   colFilters[key] = val.trim().toLowerCase();
+  renderLimit = RENDER_INITIAL;
   applyColFilters();
 }
 function applyColFilters() {
@@ -1705,13 +1735,16 @@ function renderAll() {
   const pct = n => total ? Math.round(n / total * 100) + '%' : '—';
 
   const exp48 = rows.filter(r => getStatus(r) === 'Unresolved' && isTatExpired(r)).length;
+  // % denominator = only cases carrying the 48h flag (added on/after 29 Jul launch),
+  // not the all-time base — legacy cases would dilute it to a meaningless 1%.
+  const flagged = rows.filter(r => caseStartTs(r) > 0).length;
 
   setText('sTotalCount', total);
   setText('sMigCount',   mig);
   setText('sPingCount',  ping);
   setText('sUnresCount', unres);
   setText('sExp48Count', exp48);
-  setText('sExp48Pct',   total ? '(' + Math.round(exp48 / total * 100) + '%)' : '');
+  setText('sExp48Pct',   flagged ? '(' + Math.round(exp48 / flagged * 100) + '% of ' + flagged + ' since 29 Jul)' : '');
   setText('kTotal',   total);
   setText('kMigPct',  pct(mig));
   setText('kPingPct', pct(ping));
@@ -1961,13 +1994,24 @@ function makeMigStatusCell(ticket, val) {
 }
 
 // ── Table ──
-function renderTable(rows) {
-  document.getElementById('rowCount').textContent = rows.length + ' records';
+// Chunked rendering: only the first RENDER_INITIAL rows hit the DOM (16k+ rows
+// at once froze the page); "Show more" reveals the rest in steps. Stats, charts
+// and CSV export always use the full row set — only the visible table is capped.
+const RENDER_INITIAL = 300, RENDER_STEP = 700;
+let renderLimit = RENDER_INITIAL;
+let lastTableRows = [];
+function showMoreRows() { renderLimit += RENDER_STEP; renderTable(lastTableRows); }
+
+function renderTable(allTableRows) {
+  lastTableRows = allTableRows;
+  document.getElementById('rowCount').textContent = allTableRows.length + ' records';
   const tbody = document.getElementById('tBody');
-  if (!rows.length) {
+  if (!allTableRows.length) {
     tbody.innerHTML = '<tr><td colspan="18" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
     return;
   }
+  const rows = allTableRows.slice(0, renderLimit);
+  const remaining = allTableRows.length - rows.length;
   const statusBadge = s =>
     s === 'Migrated'   ? '<span class="badge badge-green">Migrated</span>' :
     s === 'Ping Up'    ? '<span class="badge badge-blue">Ping Up</span>' :
@@ -2011,7 +2055,9 @@ function renderTable(rows) {
       '<td>' + statusBadge(st) + (dup ? ' <span class="badge badge-yellow">Dupe</span>' : '') + '</td>' +
       '<td>' + link + '</td>' +
       '</tr>';
-  }).join('');
+  }).join('') + (remaining > 0
+    ? '<tr><td colspan="18" style="text-align:center;padding:14px"><button class="btn btn-primary" onclick="showMoreRows()" style="font-size:13px;padding:8px 22px">&#x2B07; Show ' + Math.min(RENDER_STEP, remaining) + ' more (' + remaining + ' remaining)</button></td></tr>'
+    : '');
 }
 
 // ── Download CSV ──
