@@ -1357,6 +1357,25 @@ function fmtTsTime(ts) {
 }
 function dKey(d) { if (!d) return ''; const dd = new Date(d); dd.setHours(0,0,0,0); return dd.getFullYear()+'-'+String(dd.getMonth()+1).padStart(2,'0')+'-'+String(dd.getDate()).padStart(2,'0'); }
 
+// ── Cached per-row date values ──
+// Regex-parsing 16k+ dates on every sort/filter/day-table pass was a major
+// page-load cost. The cache lives as non-index properties on each row array;
+// full reloads build new arrays, so caches recompute naturally.
+function rowTs(r) {
+  if (r._ts === undefined) { const d = parseDate((r[0]||'').trim()); r._ts = d ? d.getTime() : 0; }
+  return r._ts;
+}
+function rowDk(r) {
+  if (r._dk === undefined) { const d = parseDate((r[0]||'').trim()); r._dk = d ? dKey(d) : ''; }
+  return r._dk;
+}
+function rowMigDk(r) {
+  // migration_date (col 14) changes on edit — cache is keyed to the current value
+  const v = (r[14]||'').trim();
+  if (r._mdv !== v) { const d = parseDate(v); r._mdk = d ? dKey(d) : ''; r._mdv = v; }
+  return r._mdk;
+}
+
 // ── Status Logic ──
 function getStatus(r) {
   if (effectiveVal(r, 14).trim() !== '') return 'Migrated';
@@ -1398,10 +1417,7 @@ async function loadData() {
 
     const rawData = await fbGet('/cases') || {};
     allRows = Object.entries(rawData).filter(function(e) { return !String(e[0]).startsWith('__'); }).map(function(e) { return dbRowToArray(e[1]); }).filter(function(r) { return r[1]; });
-    allRows.sort(function(a, b) {
-      const da = parseDate((a[0]||'').trim()), db2 = parseDate((b[0]||'').trim());
-      return (db2 ? db2.getTime() : 0) - (da ? da.getTime() : 0);
-    });
+    allRows.sort(function(a, b) { return rowTs(b) - rowTs(a); });
 
     buildDupeSet(allRows);
     document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
@@ -1452,10 +1468,7 @@ function setupRealtime() {
         // Full dataset (initial load or full replace)
         var raw = data || {};
         allRows = Object.entries(raw).filter(function(e) { return !String(e[0]).startsWith('__'); }).map(function(e) { return dbRowToArray(e[1]); }).filter(function(r) { return r[1]; });
-        allRows.sort(function(a, b) {
-          var da = parseDate((a[0]||'').trim()), db2 = parseDate((b[0]||'').trim());
-          return (db2 ? db2.getTime() : 0) - (da ? da.getTime() : 0);
-        });
+        allRows.sort(function(a, b) { return rowTs(b) - rowTs(a); });
         buildDupeSet(allRows);
         document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
         if (!realtimeReady) {
@@ -1586,7 +1599,7 @@ document.addEventListener('click', e => {
 function populateDropdowns() {
   const uniq = fn => [...new Set(allRows.map(fn).filter(Boolean))].sort();
   // Dates sorted descending, shown as formatted labels
-  const dateKeys = [...new Set(allRows.map(r => dKey(parseDate((r[0]||'').trim()))).filter(Boolean))].sort().reverse();
+  const dateKeys = [...new Set(allRows.map(rowDk).filter(Boolean))].sort().reverse();
   const dateLabels = dateKeys.map(dk => fmtDate(new Date(dk + 'T00:00:00')));
   // Build date opts manually with formatted labels
   const dateEl = document.getElementById('ms_opts_fDate');
@@ -1624,7 +1637,7 @@ function applyFilters() {
   const fA = document.getElementById('fAction').value;
   visRows = allRows.filter(r => {
     if (exp48Only && !(getStatus(r) === 'Unresolved' && isTatExpired(r))) return false;
-    if (msState.fDate.size > 0    && !msState.fDate.has(dKey(parseDate((r[0]||'').trim())))) return false;
+    if (msState.fDate.size > 0    && !msState.fDate.has(rowDk(r))) return false;
     if (msState.fPartner.size > 0 && !msState.fPartner.has((r[6]||'').trim())) return false;
     if (msState.fSubcat.size > 0  && !msState.fSubcat.has((r[4]||'').trim())) return false;
     if (msState.fTat.size > 0     && !msState.fTat.has((r[7]||'').trim())) return false;
@@ -1653,10 +1666,7 @@ function applyFilters() {
     // Oldest breached case on top, latest last
     visRows.sort(function(a, b) { return caseStartTs(a) - caseStartTs(b); });
   } else {
-    visRows.sort(function(a, b) {
-      const da = parseDate((a[0]||'').trim()), db = parseDate((b[0]||'').trim());
-      return (db ? db.getTime() : 0) - (da ? da.getTime() : 0);
-    });
+    visRows.sort(function(a, b) { return rowTs(b) - rowTs(a); });
   }
   renderAll();
   renderFilterSummary();
@@ -1799,9 +1809,9 @@ function renderDayTable(rows) {
   ];
 
   const statsForKey = (dk) => {
-    const created  = rows.filter(r => dKey(parseDate((r[0]||'').trim()))  === dk);
+    const created  = rows.filter(r => rowDk(r) === dk);
     // Migrated uses allRows — independent of any filter or created date
-    const migrated = allRows.filter(r => dKey(parseDate(effectiveVal(r, 14))) === dk);
+    const migrated = allRows.filter(r => rowMigDk(r) === dk);
     return {
       n:    created.length,
       mig:  migrated.length,
