@@ -90,6 +90,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .sheet-table th.total { background:#1F3864; }
 .sheet-table td { border:1px solid #D9D9D9; padding:7px 10px; text-align:center; font-variant-numeric:tabular-nums; color:#1a1a1a; white-space:nowrap; }
 .sheet-table td.rowh { text-align:left; font-weight:600; white-space:normal; min-width:170px; }
+.sheet-title { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+.sheet-csv-btn { background:#2F5496; color:#fff; border:none; border-radius:5px; padding:4px 12px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; }
+.sheet-csv-btn:hover { background:#1F3864; }
 
 /* Filters */
 .filters-bar { background: var(--card); border: 1px solid var(--border);
@@ -712,19 +715,19 @@ table.main-tbl tbody tr:hover { background: #220020; }
 
   <!-- ═══ Reports tab ═══ -->
   <div id="tabReports" style="display:none">
-    <div class="sheet-panel"><div class="sheet-title">Total complaints sent for resolution</div><div class="sheet-scroll" id="sheetComplaints"></div></div>
-    <div class="sheet-panel"><div class="sheet-title">Engineer assignment TAT % (Case added &#x2192; Engineer assigned)</div><div class="sheet-scroll" id="sheetAssignTat"></div></div>
-    <div class="sheet-panel"><div class="sheet-title">NQT team revert TAT % (Engineer assigned &#x2192; Remarks updated)</div><div class="sheet-scroll" id="sheetRevertTat"></div></div>
-    <div class="sheet-panel"><div class="sheet-title">NQT team remarks</div><div class="sheet-scroll" id="sheetRemarks"></div></div>
-    <div class="sheet-panel"><div class="sheet-title">NQT team remarks %</div><div class="sheet-scroll" id="sheetRemarksPct"></div></div>
-    <div class="sheet-panel"><div class="sheet-title">Average TAT (in hours)</div><div class="sheet-scroll" id="sheetAvgTat"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>Total complaints sent for resolution</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetComplaints','complaints-for-resolution')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetComplaints"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>Engineer assignment TAT % (Case added &#x2192; Engineer assigned)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAssignTat','engineer-assignment-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAssignTat"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>NQT team revert TAT % (Engineer assigned &#x2192; Remarks updated)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRevertTat','nqt-revert-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRevertTat"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>NQT team remarks</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRemarks','nqt-remarks')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRemarks"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>NQT team remarks %</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRemarksPct','nqt-remarks-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRemarksPct"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>Average TAT (in hours)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAvgTat','average-tat-hours')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAvgTat"></div></div>
     <div class="report-card">
       <h3>&#x1F4DE; C. Cx closure time after engineer closed</h3>
       <p class="rc-sub">Engineer close = resolved-type Ground Remark set (proxy for Kapture "Completed / disposed by PFT" — Kapture status isn't synced into the tracker). Cx close = Cx Action set. Timestamps for Cx Action start accruing from 4 Aug 2026, so this report fills up as the team works.</p>
       <div id="rptCxClose" style="font-size:14px"></div>
     </div>
     <div class="report-card">
-      <h3>&#x1F501; Reopened within 24 hrs</h3>
+      <h3 style="display:flex;justify-content:space-between;align-items:center">&#x1F501; Reopened within 24 hrs <button class="sheet-csv-btn" onclick="downloadSheetCSV('rptReopenBody','reopened-within-24h')">&#x2B07; CSV</button></h3>
       <p class="rc-sub">Cases an engineer marked resolved that were reverted to unresolved within 24 hours. Tracked from remark edits (dashboard + backfilled from the audit trail).</p>
       <div id="rptReopenHead" style="font-size:14px;margin-bottom:10px"></div>
       <table class="rpt-table"><thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Engineer</th><th>Reopened On</th><th>Current Remark</th><th>Status</th></tr></thead><tbody id="rptReopenBody"></tbody></table>
@@ -2160,6 +2163,21 @@ async function editRefundAmt(ticket) {
 }
 
 // ── Reports tab ──
+// Download any rendered report table as CSV (reads the table DOM directly,
+// so the export always matches exactly what's on screen incl. active filters)
+function downloadSheetCSV(elId, name) {
+  const host = document.getElementById(elId);
+  const tbl = host ? (host.querySelector('table') || host.closest('table')) : null;
+  if (!tbl) { toast('Nothing to download yet', 'error'); return; }
+  const lines = [...tbl.querySelectorAll('tr')].map(tr =>
+    [...tr.children].map(c => '"' + c.textContent.trim().replace(/"/g, '""') + '"').join(','));
+  const blob = new Blob(['﻿' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = name + '-' + new Date().toISOString().slice(0, 10) + '.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
 function renderReports() {
   // Respect the global filter bar (week, date, partner, status…) — falls back
   // to the full base when no filters have been applied yet.
