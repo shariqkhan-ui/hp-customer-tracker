@@ -2066,38 +2066,34 @@ function weekOptionLabels() {
 }
 
 // ── Period columns for the sheet-style reports ──
-// Jun 2026 in halves (like the original analysis sheet); every later month in
-// weekly slices 1-7 / 8-14 / 15-21 / 22-end; current month capped at today
-// ("TillDate"); one Grand Total column across everything from 1 Jun.
+// Rolling two-month window: LAST month's final 3 weekly slices + its month
+// total, then THIS month's weeks (1-7 / 8-14 / 15-21 / 22-end) + TillDate,
+// then a Grand Total from the 1st of last month to today. Older months are
+// deliberately excluded.
 function buildPeriods() {
   const periods = [];
   const nowD = new Date();
-  const months = [];
-  let m = new Date(2026, 5, 1);
-  while (m <= nowD) { months.push(new Date(m)); m = new Date(m.getFullYear(), m.getMonth() + 1, 1); }
-  months.forEach(ms => {
+  const monthsToShow = [new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1), new Date(nowD.getFullYear(), nowD.getMonth(), 1)];
+  monthsToShow.forEach((ms, mi) => {
     const y = ms.getFullYear(), mo = ms.getMonth();
+    const isCur = mi === 1;
     const name = ms.toLocaleString('en', { month: 'short' });
     const lastDay = new Date(y, mo + 1, 0).getDate();
     const monthEnd = new Date(y, mo, lastDay, 23, 59, 59, 999).getTime();
-    const isCur = mo === nowD.getMonth() && y === nowD.getFullYear();
-    if (y === 2026 && mo === 5) {
-      periods.push({ label: name + ' (1-15)',  from: new Date(y, mo, 1).getTime(),  to: new Date(y, mo, 15, 23, 59, 59, 999).getTime() });
-      periods.push({ label: name + ' (16-30)', from: new Date(y, mo, 16).getTime(), to: monthEnd });
-      periods.push({ label: name + ' Total', from: new Date(y, mo, 1).getTime(), to: monthEnd, cls: 'total' });
-      return;
-    }
     const ranges = [[1, 7], [8, 14], [15, 21], [22, lastDay]];
+    const weeks = [];
     let wi = 0;
     for (const [a, b] of ranges) {
       const from = new Date(y, mo, a).getTime();
       if (from > nowD.getTime()) break;
       wi++;
-      periods.push({ label: name + ' W' + wi + ' (' + a + '-' + b + ')', from, to: new Date(y, mo, b, 23, 59, 59, 999).getTime() });
+      weeks.push({ label: name + ' W' + wi + ' (' + a + '-' + b + ')', from, to: new Date(y, mo, b, 23, 59, 59, 999).getTime() });
     }
+    // Last month: only its final 3 weeks; current month: all weeks so far
+    periods.push(...(isCur ? weeks : weeks.slice(-3)));
     periods.push({ label: name + (isCur ? ' TillDate' : ' Total'), from: new Date(y, mo, 1).getTime(), to: isCur ? nowD.getTime() : monthEnd, cls: 'total' });
   });
-  periods.push({ label: 'Grand Total', from: new Date(2026, 5, 1).getTime(), to: nowD.getTime(), cls: 'grand' });
+  periods.push({ label: 'Grand Total', from: monthsToShow[0].getTime(), to: nowD.getTime(), cls: 'grand' });
   return periods;
 }
 function renderWeekTable(rows) {
