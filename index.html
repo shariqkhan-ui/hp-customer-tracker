@@ -80,6 +80,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .day-toggle button { background:var(--card); color:var(--muted); border:none; padding:4px 12px; font-size:11px; font-weight:700; cursor:pointer; }
 .day-toggle button.active { background:var(--primary); color:#fff; }
 
+/* ── Sheet-style report tables (migration analysis view) ── */
+.sheet-panel { background:#EAF1FA; border-radius:8px; padding:10px 12px 14px; margin-bottom:18px; }
+.sheet-title { font-weight:800; font-size:14px; color:#17233a; padding:6px 4px 10px; }
+.sheet-scroll { overflow-x:auto; }
+.sheet-table { border-collapse:collapse; width:100%; min-width:900px; font-size:12.5px; background:#fff; }
+.sheet-table th { background:#2F5496; color:#fff; font-weight:700; padding:8px 10px; text-align:center; border:1px solid #fff; font-size:11.5px; white-space:nowrap; }
+.sheet-table th.rowh { text-align:left; }
+.sheet-table th.total { background:#1F3864; }
+.sheet-table td { border:1px solid #D9D9D9; padding:7px 10px; text-align:center; font-variant-numeric:tabular-nums; color:#1a1a1a; white-space:nowrap; }
+.sheet-table td.rowh { text-align:left; font-weight:600; white-space:normal; min-width:170px; }
+
 /* Filters */
 .filters-bar { background: var(--card); border: 1px solid var(--border);
   border-radius: 10px; padding: 14px 18px; margin-bottom: 16px;
@@ -701,26 +712,16 @@ table.main-tbl tbody tr:hover { background: #220020; }
 
   <!-- ═══ Reports tab ═══ -->
   <div id="tabReports" style="display:none">
-    <div class="report-card">
-      <h3>&#x1F527; A. Engineer-remarks-wise tickets — pending vs resolved</h3>
-      <p class="rc-sub">Grouped by the Engineer Remarks dropdown; Pending = status Unresolved. Avg pending age = days since case was added.</p>
-      <table class="rpt-table"><thead><tr><th>Engineer Remark</th><th class="num">Total</th><th class="num">Resolved</th><th class="num">Pending</th><th class="num">Resolved %</th><th class="num">Avg pending age (days)</th></tr></thead><tbody id="rptEngRemarks"></tbody></table>
-    </div>
-    <div class="report-card">
-      <h3>&#x23F1; B. Average TAT of engineer assignment</h3>
-      <p class="rc-sub">Time from case entering the tracker to an engineer being assigned. Only cases with both timestamps count.</p>
-      <div id="rptEngTatHead" style="font-size:14px;margin-bottom:10px"></div>
-      <table class="rpt-table"><thead><tr><th>Engineer</th><th class="num">Cases Assigned</th><th class="num">Avg assignment TAT (hrs)</th></tr></thead><tbody id="rptEngTat"></tbody></table>
-    </div>
+    <div class="sheet-panel"><div class="sheet-title">Total complaints sent for migration</div><div class="sheet-scroll" id="sheetComplaints"></div></div>
+    <div class="sheet-panel"><div class="sheet-title">Engineer assignment TAT % (Case added &#x2192; Engineer assigned)</div><div class="sheet-scroll" id="sheetAssignTat"></div></div>
+    <div class="sheet-panel"><div class="sheet-title">Migration team revert TAT % (Engineer assigned &#x2192; Remarks updated)</div><div class="sheet-scroll" id="sheetRevertTat"></div></div>
+    <div class="sheet-panel"><div class="sheet-title">Migration team remarks</div><div class="sheet-scroll" id="sheetRemarks"></div></div>
+    <div class="sheet-panel"><div class="sheet-title">Migration team remarks %</div><div class="sheet-scroll" id="sheetRemarksPct"></div></div>
+    <div class="sheet-panel"><div class="sheet-title">Average TAT (in hours)</div><div class="sheet-scroll" id="sheetAvgTat"></div></div>
     <div class="report-card">
       <h3>&#x1F4DE; C. Cx closure time after engineer closed</h3>
       <p class="rc-sub">Engineer close = resolved-type Ground Remark set (proxy for Kapture "Completed / disposed by PFT" — Kapture status isn't synced into the tracker). Cx close = Cx Action set. Timestamps for Cx Action start accruing from 4 Aug 2026, so this report fills up as the team works.</p>
       <div id="rptCxClose" style="font-size:14px"></div>
-    </div>
-    <div class="report-card">
-      <h3>&#x1F4CA; D. Category-wise complaints</h3>
-      <p class="rc-sub">All High Pain complaints by sub-category.</p>
-      <table class="rpt-table"><thead><tr><th>Sub-category</th><th class="num">Cases</th><th class="num">% of all</th><th class="num">Pending</th><th class="num">Resolved</th></tr></thead><tbody id="rptCategory"></tbody></table>
     </div>
     <div class="report-card">
       <h3>&#x1F501; Reopened within 24 hrs</h3>
@@ -2024,6 +2025,42 @@ function weekOptionLabels() {
   const idxs = [...new Set(allRows.map(weekIdxOf).filter(k => k !== null))].sort((a,b) => a - b);
   return idxs.map(weekLabelForIdx);
 }
+
+// ── Period columns for the sheet-style reports ──
+// Jun 2026 in halves (like the original analysis sheet); every later month in
+// weekly slices 1-7 / 8-14 / 15-21 / 22-end; current month capped at today
+// ("TillDate"); one Grand Total column across everything from 1 Jun.
+function buildPeriods() {
+  const periods = [];
+  const nowD = new Date();
+  const months = [];
+  let m = new Date(2026, 5, 1);
+  while (m <= nowD) { months.push(new Date(m)); m = new Date(m.getFullYear(), m.getMonth() + 1, 1); }
+  months.forEach(ms => {
+    const y = ms.getFullYear(), mo = ms.getMonth();
+    const name = ms.toLocaleString('en', { month: 'short' });
+    const lastDay = new Date(y, mo + 1, 0).getDate();
+    const monthEnd = new Date(y, mo, lastDay, 23, 59, 59, 999).getTime();
+    const isCur = mo === nowD.getMonth() && y === nowD.getFullYear();
+    if (y === 2026 && mo === 5) {
+      periods.push({ label: name + ' (1-15)',  from: new Date(y, mo, 1).getTime(),  to: new Date(y, mo, 15, 23, 59, 59, 999).getTime() });
+      periods.push({ label: name + ' (16-30)', from: new Date(y, mo, 16).getTime(), to: monthEnd });
+      periods.push({ label: name + ' Total', from: new Date(y, mo, 1).getTime(), to: monthEnd, cls: 'total' });
+      return;
+    }
+    const ranges = [[1, 7], [8, 14], [15, 21], [22, lastDay]];
+    let wi = 0;
+    for (const [a, b] of ranges) {
+      const from = new Date(y, mo, a).getTime();
+      if (from > nowD.getTime()) break;
+      wi++;
+      periods.push({ label: name + ' W' + wi + ' (' + a + '-' + b + ')', from, to: new Date(y, mo, b, 23, 59, 59, 999).getTime() });
+    }
+    periods.push({ label: name + (isCur ? ' TillDate' : ' Total'), from: new Date(y, mo, 1).getTime(), to: isCur ? nowD.getTime() : monthEnd, cls: 'total' });
+  });
+  periods.push({ label: 'Grand Total', from: new Date(2026, 5, 1).getTime(), to: nowD.getTime(), cls: 'grand' });
+  return periods;
+}
 function renderWeekTable(rows) {
   const tbody = document.getElementById('weekBody');
   if (!tbody) return;
@@ -2128,43 +2165,107 @@ function renderReports() {
   // to the full base when no filters have been applied yet.
   const rows = visRows.length || Object.keys(msState).some(k => msState[k].size) ? visRows : allRows;
   const now = Date.now();
-  const ageDays = r => { const ts = rowStartTsAny(r); return ts ? (now - ts) / 86400000 : null; };
+  // ── Period columns, exactly like the migration-analysis sheet:
+  // Jun in halves + Jun Total, later months weekly (1-7, 8-14, 15-21, 22-end)
+  // + Month Total / TillDate, then a Grand Total column.
+  const periods = buildPeriods();
+  const perCases = periods.map(p => rows.filter(r => { const ts = rowStartTsAny(r); return ts >= p.from && ts <= p.to; }));
 
-  // A. Engineer-remarks-wise pending/resolved — covers EVERY case in the current
-  // filter (cases without an engineer or remark get their own buckets, so the
-  // total reconciles with the full base).
-  const groups = {};
-  rows.forEach(r => {
-    const er = effectiveVal(r, 22);
-    const key = er || (effectiveVal(r, 10) ? '(Engineer assigned — no remark yet)' : '(No engineer assigned)');
-    (groups[key] = groups[key] || []).push(r);
+  const startOf  = rowStartTsAny;
+  const assignTs = r => Number(r[21]) || 0;
+  const remarkTs = r => Number(r[20]) || 0;
+  const numFmt = n => n ? n.toLocaleString('en-IN') : '-';
+  const GOOD = '#D5EAD8', YEL = '#FFF2CC', ORG = '#FCE4D6', PNK = '#F8CBD0', ROSE = '#FADBD8';
+  const heatBad = v => v >= 25 ? PNK : v >= 15 ? ORG : v >= 8 ? YEL : null;
+
+  function sheetTable(elId, rowLabel, rowSpecs, cellFn) {
+    let html = '<table class="sheet-table"><thead><tr><th class="rowh">' + esc(rowLabel) + '</th>' +
+      periods.map(p => '<th' + (p.cls ? ' class="total"' : '') + '>' + esc(p.label) + '</th>').join('') + '</tr></thead><tbody>';
+    rowSpecs.forEach((spec, ri) => {
+      const zebra = ri % 2 ? '#F4F4EE' : '#fff';
+      html += '<tr><td class="rowh" style="background:' + (spec.gtot ? '#D6E4F0;font-weight:800' : zebra) + '">' + esc(spec.label) + '</td>';
+      periods.forEach((p, pi) => {
+        const c = cellFn(spec, perCases[pi], pi) || { text: '-' };
+        const bg = c.bg || (spec.gtot ? '#D6E4F0' : p.cls === 'grand' ? '#CFE0F1' : p.cls === 'total' ? '#DEEAF6' : zebra);
+        const fw = (spec.gtot || p.cls) ? ';font-weight:700' : '';
+        html += '<td style="background:' + bg + fw + '">' + c.text + '</td>';
+      });
+      html += '</tr>';
+    });
+    document.getElementById(elId).innerHTML = html + '</tbody></table>';
+  }
+
+  // 1. Total complaints sent for migration — category × period.
+  // Sub-category is free text with typos ("hifting Request", ticket ids…),
+  // so bucket by keyword into the sheet's five canonical categories.
+  const catOf = r => {
+    const s = effectiveVal(r, 4).toLowerCase();
+    if (/misbehav/.test(s)) return 'Partner Misbehavior';
+    if (/shift/.test(s)) return 'Shifting Request';
+    if (/chat/.test(s)) return 'Chat tickets';
+    if (/internet|supply down|speed|ping|recharge|wifi|router|slow|link/.test(s)) return 'Internet Issues';
+    return 'Others';
+  };
+  const grandList = perCases[perCases.length - 1];
+  const catSpecs = ['Partner Misbehavior', 'Shifting Request', 'Others', 'Chat tickets', 'Internet Issues']
+    .map(c => ({ label: c, key: c }))
+    .concat([{ label: 'Grand Total', gtot: true }]);
+  sheetTable('sheetComplaints', 'Category', catSpecs, (spec, list) =>
+    ({ text: numFmt(spec.gtot ? list.length : list.filter(r => catOf(r) === spec.key).length) }));
+
+  // 2+3. TAT % tables
+  const BUCKETS = [
+    { label: '0-24 hrs',  test: h => h < 24, good: true },
+    { label: '24-48 hrs', test: h => h >= 24 && h < 48 },
+    { label: '48-72 hrs', test: h => h >= 48 && h < 72 },
+    { label: '>72 hrs',   test: h => h >= 72 },
+    { label: 'No update available', noupd: true }
+  ];
+  function tatPctTable(elId, baseFn, fromFn, toFn) {
+    sheetTable(elId, 'TAT', BUCKETS, (spec, list) => {
+      const base = list.filter(baseFn);
+      if (!base.length) return { text: '-' };
+      const ok = r => { const t = toFn(r), f = fromFn(r); return t > 0 && f > 0 && t >= f; };
+      const n = spec.noupd ? base.filter(r => !ok(r)).length
+        : base.filter(r => ok(r) && spec.test((toFn(r) - fromFn(r)) / 3600000)).length;
+      const v = Math.round(n / base.length * 100);
+      const bg = spec.good ? GOOD : spec.noupd ? (v >= 5 ? ROSE : null) : heatBad(v);
+      return { text: v + '%', bg };
+    });
+  }
+  tatPctTable('sheetAssignTat', r => startOf(r) > 0, startOf, assignTs);
+  tatPctTable('sheetRevertTat', r => assignTs(r) > 0, assignTs, remarkTs);
+
+  // 4+5. Migration team remarks — counts and %
+  const remOf = r => effectiveVal(r, 8) || 'No update available';
+  const remCounts = {};
+  grandList.forEach(r => { const m = remOf(r); remCounts[m] = (remCounts[m] || 0) + 1; });
+  const remSpecs = Object.keys(remCounts).sort((a, b) => remCounts[b] - remCounts[a]).slice(0, 12)
+    .map(m => ({ label: m, key: m }));
+  sheetTable('sheetRemarks', 'Remark', remSpecs.concat([{ label: 'Grand Total', gtot: true }]), (spec, list) =>
+    ({ text: numFmt(spec.gtot ? list.length : list.filter(r => remOf(r) === spec.key).length) }));
+  sheetTable('sheetRemarksPct', 'Remark', remSpecs, (spec, list) => {
+    if (!list.length) return { text: '-' };
+    const v = Math.round(list.filter(r => remOf(r) === spec.key).length / list.length * 100);
+    const isGood = /resolved by old partner|^migrated$/i.test(spec.key);
+    const isBad  = /no update|not possible|not contactable/i.test(spec.key);
+    return { text: v + '%', bg: isGood ? (v >= 40 ? GOOD : null) : isBad ? heatBad(v) : null };
   });
-  const gKeys = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
-  let totA = { n:0, res:0, pen:0 };
-  document.getElementById('rptEngRemarks').innerHTML = gKeys.map(k => {
-    const list = groups[k];
-    const pen  = list.filter(r => getStatus(r) === 'Unresolved');
-    const res  = list.length - pen.length;
-    const ages = pen.map(ageDays).filter(v => v !== null);
-    const avgAge = ages.length ? (ages.reduce((a,b) => a+b, 0) / ages.length).toFixed(1) : '—';
-    totA.n += list.length; totA.res += res; totA.pen += pen.length;
-    return '<tr><td>' + esc(k) + '</td><td class="num">' + list.length + '</td><td class="num" style="color:var(--green)">' + res + '</td><td class="num" style="color:var(--red)">' + pen.length + '</td><td class="num">' + (list.length ? Math.round(res/list.length*100) + '%' : '—') + '</td><td class="num">' + avgAge + '</td></tr>';
-  }).join('') + '<tr class="tot"><td>Total</td><td class="num">' + totA.n + '</td><td class="num">' + totA.res + '</td><td class="num">' + totA.pen + '</td><td class="num">' + (totA.n ? Math.round(totA.res/totA.n*100) + '%' : '—') + '</td><td class="num"></td></tr>';
 
-  // B. Avg TAT of engineer assignment
-  const assigned = rows.filter(r => Number(r[21]) > 0 && rowStartTsAny(r) > 0 && Number(r[21]) >= rowStartTsAny(r));
-  const tatHrs = r => (Number(r[21]) - rowStartTsAny(r)) / 3600000;
-  const allTats = assigned.map(tatHrs);
-  const avgAll = allTats.length ? (allTats.reduce((a,b) => a+b, 0) / allTats.length) : 0;
-  document.getElementById('rptEngTatHead').innerHTML = assigned.length
-    ? 'Overall: <b style="color:var(--primary-light)">' + avgAll.toFixed(1) + ' hrs</b> average from case added &#x2192; engineer assigned <span style="color:var(--muted)">(' + assigned.length + ' cases with both timestamps)</span>'
-    : '<span style="color:var(--muted)">No cases with assignment timestamps yet.</span>';
-  const byEng = {};
-  assigned.forEach(r => { const e = effectiveVal(r, 10) || '(unnamed)'; (byEng[e] = byEng[e] || []).push(tatHrs(r)); });
-  document.getElementById('rptEngTat').innerHTML = Object.keys(byEng).sort((a,b) => byEng[b].length - byEng[a].length).map(e => {
-    const l = byEng[e];
-    return '<tr><td>' + esc(e) + '</td><td class="num">' + l.length + '</td><td class="num">' + (l.reduce((a,b) => a+b, 0) / l.length).toFixed(1) + '</td></tr>';
-  }).join('');
+  // 6. Average TAT (hours)
+  const avgOf = (list, fromFn, toFn) => {
+    const vals = list.map(r => { const f = fromFn(r), t = toFn(r); return (f > 0 && t > 0 && t >= f) ? (t - f) / 3600000 : null; }).filter(v => v !== null);
+    return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
+  };
+  sheetTable('sheetAvgTat', 'Metric', [
+    { label: 'Added → Eng assigned',           from: startOf,  to: assignTs },
+    { label: 'Eng assigned → Remarks',         from: assignTs, to: remarkTs },
+    { label: 'End-to-end (Added → Remarks)',   from: startOf,  to: remarkTs }
+  ], (spec, list) => {
+    const v = avgOf(list, spec.from, spec.to);
+    if (v === null) return { text: '-' };
+    return { text: v.toFixed(1), bg: v <= 10 ? GOOD : v <= 24 ? null : v <= 40 ? YEL : v <= 60 ? ORG : PNK };
+  });
 
   // C. Cx closure after engineer close (proxy: resolved remark ts → cx_action ts)
   const cxRows = rows.filter(r => {
@@ -2179,16 +2280,6 @@ function renderReports() {
   } else {
     document.getElementById('rptCxClose').innerHTML = '<span style="color:var(--muted)">No measurable cases yet — Cx Action timestamps started on 4 Aug 2026. As the Cx team marks Refund Pending / Done, this fills up automatically.</span>';
   }
-
-  // D. Category-wise complaints
-  const cats = {};
-  rows.forEach(r => { const c = effectiveVal(r, 4) || '(blank)'; (cats[c] = cats[c] || []).push(r); });
-  const total = rows.length;
-  document.getElementById('rptCategory').innerHTML = Object.keys(cats).sort((a,b) => cats[b].length - cats[a].length).map(c => {
-    const l = cats[c];
-    const pen = l.filter(r => getStatus(r) === 'Unresolved').length;
-    return '<tr><td>' + esc(c) + '</td><td class="num">' + l.length + '</td><td class="num">' + (total ? (l.length/total*100).toFixed(1) : 0) + '%</td><td class="num" style="color:var(--red)">' + pen + '</td><td class="num" style="color:var(--green)">' + (l.length - pen) + '</td></tr>';
-  }).join('');
 
   // Reopened within 24h
   const reopened = rows.filter(r => Number(r[26]) > 0).sort((a,b) => Number(b[26]) - Number(a[26]));
