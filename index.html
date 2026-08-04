@@ -983,6 +983,14 @@ function getRemarksTs(ticket) {
 //   b) Remarks exist but are NOT a final resolution (migrated / refund to customer)
 //      AND have not been updated in the last 24 hours
 const RESOLVED_KW = ['migrated', 'refund to customer', 'refunded', 'ping up', 'internet working', 'no overlapping'];
+// True resolutions only (for reopen detection) — a remark that means "the
+// internet is fixed", not a refund/exit categorisation like No Overlapping.
+function isResolutionRemark(v) {
+  const l = String(v || '').toLowerCase().trim();
+  if (!l) return false;
+  return l === 'resolved by old partner' || l.includes('migrated') ||
+    ['ping up', 'internet working', 'internet up', 'speed up', 'link up'].some(k => l.includes(k));
+}
 function isCaseNeedsAction(r) {
   const remarks = effectiveVal(r, 8).trim();
   if (!remarks) return true;   // (a) no comment at all
@@ -1006,13 +1014,15 @@ async function saveToSheet(ticket, field, value) {
   const dbCol = DB_COL[field];
   if (!dbCol) return;
 
-  // Reopen detection: a resolved-type remark reverted to unresolved within 24h
-  // of being set → stamp reopened_at (drives the "Reopened < 24h" report).
+  // Reopen detection: a RESOLUTION remark reverted to a non-resolution remark
+  // within 24h of being set → stamp reopened_at (drives the "Reopened < 24h"
+  // views). Resolution = Resolved by Old Partner / Migrated / ping-up remark —
+  // NOT refund/no-overlap categorisations (those never meant "fixed").
   if (field === 'remarks') {
     const row = allRows.find(r => (r[1]||'').trim() === String(ticket).trim());
     if (row) {
-      const oldRes = RESOLVED_KW.some(kw => (row[8]||'').toLowerCase().includes(kw));
-      const newRes = RESOLVED_KW.some(kw => String(value||'').toLowerCase().includes(kw));
+      const oldRes = isResolutionRemark(row[8]);
+      const newRes = isResolutionRemark(value);
       const setAt  = Number(row[20]) || 0;
       if (oldRes && !newRes && setAt > 0 && (Date.now() - setAt) <= 24*3600000) {
         const now = Date.now();
