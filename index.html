@@ -61,6 +61,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .status-card.exp48:hover { background: rgba(255,140,0,.12); }
 .status-card.exp48.active { background: rgba(255,140,0,.18); box-shadow: 0 0 0 2px #ff8c00 inset; }
 
+/* ── Main tabs ── */
+.main-tabs { display:flex; gap:8px; margin:14px 0 4px; flex-wrap:wrap; }
+.main-tab { padding:9px 20px; border-radius:8px 8px 0 0; border:1px solid var(--border); border-bottom:none;
+  background:var(--card); color:var(--muted); font-weight:700; font-size:13px; cursor:pointer; user-select:none; }
+.main-tab:hover { color:var(--text); }
+.main-tab.active { background:var(--card2); color:var(--primary-light); border-color:var(--primary);
+  box-shadow:0 -2px 0 var(--primary) inset; }
+.report-card { background:var(--card); border:1px solid var(--border); border-radius:10px; padding:16px 18px; margin-bottom:16px; }
+.report-card h3 { margin:0 0 4px; font-size:15px; color:var(--primary-light); }
+.report-card .rc-sub { color:var(--muted); font-size:12px; margin:0 0 12px; }
+.rpt-table { border-collapse:collapse; width:100%; font-size:13px; }
+.rpt-table th { text-align:left; font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); padding:8px 10px; border-bottom:1px solid var(--border); }
+.rpt-table td { padding:7px 10px; border-bottom:1px solid var(--border); }
+.rpt-table th.num, .rpt-table td.num { text-align:right; font-variant-numeric:tabular-nums; }
+.rpt-table tr.tot td { font-weight:800; background:var(--card2); }
+.day-toggle { display:inline-flex; gap:0; margin-left:12px; border:1px solid var(--border); border-radius:6px; overflow:hidden; vertical-align:2px; }
+.day-toggle button { background:var(--card); color:var(--muted); border:none; padding:4px 12px; font-size:11px; font-weight:700; cursor:pointer; }
+.day-toggle button.active { background:var(--primary); color:#fff; }
+
 /* Filters */
 .filters-bar { background: var(--card); border: 1px solid var(--border);
   border-radius: 10px; padding: 14px 18px; margin-bottom: 16px;
@@ -383,6 +402,14 @@ table.main-tbl tbody tr:hover { background: #220020; }
     </div>
   </div>
 
+  <!-- Main Tabs -->
+  <div class="main-tabs">
+    <div class="main-tab active" id="mtab_cases"  onclick="showMainTab('cases')">&#x1F4CB; Cases</div>
+    <div class="main-tab" id="mtab_refund"  onclick="showMainTab('refund')">&#x1F4B8; Refund Done</div>
+    <div class="main-tab" id="mtab_reports" onclick="showMainTab('reports')">&#x1F4C8; Reports</div>
+  </div>
+
+  <div id="tabCases">
   <!-- Filters -->
   <div class="filters-bar">
     <div class="filter-item">
@@ -540,10 +567,15 @@ table.main-tbl tbody tr:hover { background: #220020; }
     </div>
   </div>
 
-  <!-- Day-wise -->
+  <!-- Day-wise / Week-wise -->
   <div class="day-card">
-    <div class="chart-title" style="margin-bottom:14px;">&#x1F4CA; Day-wise Activity &nbsp;<span style="color:var(--muted);font-size:10px;font-weight:400;text-transform:none;">by Case Added Date</span></div>
-    <table class="day-table">
+    <div class="chart-title" style="margin-bottom:14px;">&#x1F4CA; <span id="dayWiseTitle">Day-wise</span> Activity &nbsp;<span style="color:var(--muted);font-size:10px;font-weight:400;text-transform:none;">by Case Added Date</span>
+      <span class="day-toggle">
+        <button id="dtDaily" class="active" onclick="setDayView('daily')">Daily</button>
+        <button id="dtWeekly" onclick="setDayView('weekly')">Weekly</button>
+      </span>
+    </div>
+    <table class="day-table" id="dayTableEl">
       <thead>
         <tr>
           <th style="text-align:left">Date (Case Added)</th>
@@ -554,6 +586,19 @@ table.main-tbl tbody tr:hover { background: #220020; }
         </tr>
       </thead>
       <tbody id="dayBody"></tbody>
+    </table>
+    <table class="day-table" id="weekTableEl" style="display:none">
+      <thead>
+        <tr>
+          <th style="text-align:left">Week (from 29 Jul flag launch)</th>
+          <th>Cases Added</th>
+          <th>Migrated</th>
+          <th>Ping Up</th>
+          <th>Unresolved</th>
+          <th title="Unresolved and past 48 hrs">Breached &gt;48h</th>
+        </tr>
+      </thead>
+      <tbody id="weekBody"></tbody>
     </table>
   </div>
 
@@ -614,6 +659,58 @@ table.main-tbl tbody tr:hover { background: #220020; }
         </thead>
         <tbody id="tBody"></tbody>
       </table>
+    </div>
+  </div>
+  </div><!-- /tabCases -->
+
+  <!-- ═══ Refund Done tab ═══ -->
+  <div id="tabRefund" style="display:none">
+    <div class="report-card">
+      <h3>&#x1F4B8; Refund Done — completed refunds with pro-rata amount</h3>
+      <p class="rc-sub">Cases where the Cx team marked <b>Refund Done</b>. Amount = pro-rata refund (days of plan remaining at complaint × plan daily rate). Click an amount to edit it.</p>
+      <div style="display:flex;gap:26px;flex-wrap:wrap;margin-bottom:14px">
+        <div><div style="font-size:24px;font-weight:800;color:var(--green)" id="rfDoneCount">—</div><div style="font-size:11px;color:var(--muted)">REFUNDS DONE</div></div>
+        <div><div style="font-size:24px;font-weight:800;color:var(--green)" id="rfDoneTotal">—</div><div style="font-size:11px;color:var(--muted)">TOTAL REFUNDED (&#8377;)</div></div>
+        <div><div style="font-size:24px;font-weight:800;color:var(--yellow)" id="rfPendCount">—</div><div style="font-size:11px;color:var(--muted)">REFUND PENDING</div></div>
+        <div><div style="font-size:24px;font-weight:800;color:var(--yellow)" id="rfPendTotal">—</div><div style="font-size:11px;color:var(--muted)">PENDING AMOUNT (&#8377;)</div></div>
+      </div>
+      <div class="tbl-wrap" style="max-height:none">
+        <table class="rpt-table">
+          <thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Case Added</th><th>Refund Marked On</th><th class="num">Amount (&#8377;) &#x270F;</th><th>Cx Action</th></tr></thead>
+          <tbody id="refundBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- ═══ Reports tab ═══ -->
+  <div id="tabReports" style="display:none">
+    <div class="report-card">
+      <h3>&#x1F527; A. Engineer-remarks-wise tickets — pending vs resolved</h3>
+      <p class="rc-sub">Grouped by the Engineer Remarks dropdown; Pending = status Unresolved. Avg pending age = days since case was added.</p>
+      <table class="rpt-table"><thead><tr><th>Engineer Remark</th><th class="num">Total</th><th class="num">Resolved</th><th class="num">Pending</th><th class="num">Resolved %</th><th class="num">Avg pending age (days)</th></tr></thead><tbody id="rptEngRemarks"></tbody></table>
+    </div>
+    <div class="report-card">
+      <h3>&#x23F1; B. Average TAT of engineer assignment</h3>
+      <p class="rc-sub">Time from case entering the tracker to an engineer being assigned. Only cases with both timestamps count.</p>
+      <div id="rptEngTatHead" style="font-size:14px;margin-bottom:10px"></div>
+      <table class="rpt-table"><thead><tr><th>Engineer</th><th class="num">Cases Assigned</th><th class="num">Avg assignment TAT (hrs)</th></tr></thead><tbody id="rptEngTat"></tbody></table>
+    </div>
+    <div class="report-card">
+      <h3>&#x1F4DE; C. Cx closure time after engineer closed</h3>
+      <p class="rc-sub">Engineer close = resolved-type Ground Remark set (proxy for Kapture "Completed / disposed by PFT" — Kapture status isn't synced into the tracker). Cx close = Cx Action set. Timestamps for Cx Action start accruing from 4 Aug 2026, so this report fills up as the team works.</p>
+      <div id="rptCxClose" style="font-size:14px"></div>
+    </div>
+    <div class="report-card">
+      <h3>&#x1F4CA; D. Category-wise complaints</h3>
+      <p class="rc-sub">All High Pain complaints by sub-category.</p>
+      <table class="rpt-table"><thead><tr><th>Sub-category</th><th class="num">Cases</th><th class="num">% of all</th><th class="num">Pending</th><th class="num">Resolved</th></tr></thead><tbody id="rptCategory"></tbody></table>
+    </div>
+    <div class="report-card">
+      <h3>&#x1F501; Reopened within 24 hrs</h3>
+      <p class="rc-sub">Cases an engineer marked resolved that were reverted to unresolved within 24 hours. Tracked from remark edits (dashboard + backfilled from the audit trail).</p>
+      <div id="rptReopenHead" style="font-size:14px;margin-bottom:10px"></div>
+      <table class="rpt-table"><thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Engineer</th><th>Reopened On</th><th>Current Remark</th><th>Status</th></tr></thead><tbody id="rptReopenBody"></tbody></table>
     </div>
   </div>
 
@@ -798,12 +895,15 @@ function dbRowToArray(r) {
     r.remarks_updated_at || 0,   // 20 — Unix ms when remarks were last changed
     r.engineer_assigned_at || 0, // 21 — Unix ms when engineer was last assigned
     r.engineer_remarks   || '',  // 22 — Engineer remarks (dropdown)
-    r.cx_action          || ''   // 23 — Cx team refund action (Refund Pending / Refund Done)
+    r.cx_action          || '',  // 23 — Cx team refund action (Refund Pending / Refund Done)
+    r.refund_amount      || '',  // 24 — Pro-rata refund amount (₹), editable
+    r.cx_action_updated_at || 0, // 25 — Unix ms when cx_action was last changed
+    r.reopened_at        || 0    // 26 — Unix ms when a resolved remark was reverted within 24h
   ];
 }
 
 // Map edit field name → Supabase column name
-const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action' };
+const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action', refund_amount: 'refund_amount' };
 
 let allRows = [], visRows = [], charts = {};
 
@@ -871,10 +971,33 @@ function effectiveVal(r, col) { return (r[col] || '').trim(); }
 
 
 // ── Save edit: patch allRows in memory + write to Firebase ──
-const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17, engineer_remarks: 22, cx_action: 23 };
+const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17, engineer_remarks: 22, cx_action: 23, refund_amount: 24 };
 async function saveToSheet(ticket, field, value) {
   const dbCol = DB_COL[field];
   if (!dbCol) return;
+
+  // Reopen detection: a resolved-type remark reverted to unresolved within 24h
+  // of being set → stamp reopened_at (drives the "Reopened < 24h" report).
+  if (field === 'remarks') {
+    const row = allRows.find(r => (r[1]||'').trim() === String(ticket).trim());
+    if (row) {
+      const oldRes = RESOLVED_KW.some(kw => (row[8]||'').toLowerCase().includes(kw));
+      const newRes = RESOLVED_KW.some(kw => String(value||'').toLowerCase().includes(kw));
+      const setAt  = Number(row[20]) || 0;
+      if (oldRes && !newRes && setAt > 0 && (Date.now() - setAt) <= 24*3600000) {
+        const now = Date.now();
+        row[26] = now;
+        fbPut('/cases/' + ticketKey(ticket) + '/reopened_at', now).catch(function(){});
+      }
+    }
+  }
+  // Stamp when Cx action changes (drives the engineer-close → Cx-close report)
+  if (field === 'cx_action') {
+    const row = allRows.find(r => (r[1]||'').trim() === String(ticket).trim());
+    const now = Date.now();
+    if (row) row[25] = now;
+    fbPut('/cases/' + ticketKey(ticket) + '/cx_action_updated_at', now).catch(function(){});
+  }
 
   // Save to Firebase FIRST — only update local state if it succeeds
   try {
@@ -1766,7 +1889,11 @@ function renderAll() {
 
   renderCharts(rows);
   renderDayTable(rows);
+  renderWeekTable(rows);
   applyColFilters();
+  // Keep the non-Cases tabs fresh when data changes while they're open
+  if (document.getElementById('tabRefund').style.display !== 'none') renderRefundTab();
+  if (document.getElementById('tabReports').style.display !== 'none') renderReports();
 }
 function setText(id, v) { document.getElementById(id).textContent = v; }
 
@@ -1839,6 +1966,176 @@ function renderDayTable(rows) {
   tbody.innerHTML =
     dateRows.map(({ label, dk }) => row(label, statsForKey(dk), false)).join('') +
     row('FTD — Final Till Date', ftd, true);
+}
+
+// ── Week-wise table (weeks anchored at the 29 Jul flag launch) ──
+let dayView = 'daily';
+function setDayView(v) {
+  dayView = v;
+  document.getElementById('dtDaily').classList.toggle('active', v === 'daily');
+  document.getElementById('dtWeekly').classList.toggle('active', v === 'weekly');
+  document.getElementById('dayTableEl').style.display  = v === 'daily'  ? '' : 'none';
+  document.getElementById('weekTableEl').style.display = v === 'weekly' ? '' : 'none';
+  document.getElementById('dayWiseTitle').textContent  = v === 'daily' ? 'Day-wise' : 'Week-wise';
+}
+function rowStartTsAny(r) {
+  let ts = Number(r[19]) || Number(r[16]) || 0;
+  if (!ts) { const d = parseDate((r[0]||'').trim()); ts = d ? d.getTime() : 0; }
+  return ts;
+}
+function renderWeekTable(rows) {
+  const tbody = document.getElementById('weekBody');
+  if (!tbody) return;
+  const WEEK = 7 * 86400000;
+  const buckets = {};   // key: -1 = pre-launch, 0.. = week index
+  rows.forEach(r => {
+    const ts = rowStartTsAny(r);
+    if (!ts) return;
+    const k = ts < TAT_LAUNCH_TS ? -1 : Math.floor((ts - TAT_LAUNCH_TS) / WEEK);
+    (buckets[k] = buckets[k] || []).push(r);
+  });
+  const fmtD = d => String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0');
+  const mk = (label, list, isTot) => {
+    const mig  = list.filter(r => getStatus(r) === 'Migrated').length;
+    const ping = list.filter(r => getStatus(r) === 'Ping Up').length;
+    const unres= list.filter(r => getStatus(r) === 'Unresolved').length;
+    const br   = list.filter(r => getStatus(r) === 'Unresolved' && isTatExpired(r)).length;
+    return '<tr class="' + (isTot ? 'ftd-row' : '') + '"><td>' + label + '</td>' +
+      '<td style="text-align:right">' + list.length + '</td>' +
+      '<td class="num-green" style="text-align:right">' + mig + '</td>' +
+      '<td class="num-blue" style="text-align:right">' + ping + '</td>' +
+      '<td class="num-red" style="text-align:right">' + unres + '</td>' +
+      '<td style="text-align:right;color:#ff8c00;font-weight:700">' + br + '</td></tr>';
+  };
+  const keys = Object.keys(buckets).map(Number).sort((a,b) => a - b);
+  let html = '';
+  keys.forEach(k => {
+    if (k === -1) { html += mk('Pre 29 Jul (no 48h flag)', buckets[k], false); return; }
+    const from = new Date(TAT_LAUNCH_TS + k * WEEK);
+    const to   = new Date(TAT_LAUNCH_TS + (k+1) * WEEK - 86400000);
+    html += mk('<b>W' + (k+1) + '</b> <span style="color:var(--muted);font-size:11px">(' + fmtD(from) + ' – ' + fmtD(to) + ')</span>', buckets[k], false);
+  });
+  html += mk('Total', rows.filter(r => rowStartTsAny(r) > 0), true);
+  tbody.innerHTML = html;
+}
+
+// ── Main tabs ──
+function showMainTab(t) {
+  ['cases','refund','reports'].forEach(x => {
+    document.getElementById('mtab_' + x).classList.toggle('active', x === t);
+  });
+  document.getElementById('tabCases').style.display   = t === 'cases'   ? '' : 'none';
+  document.getElementById('tabRefund').style.display  = t === 'refund'  ? '' : 'none';
+  document.getElementById('tabReports').style.display = t === 'reports' ? '' : 'none';
+  if (t === 'refund')  renderRefundTab();
+  if (t === 'reports') renderReports();
+}
+const inr = v => '₹' + Math.round(Number(v) || 0).toLocaleString('en-IN');
+const ticketLink = t => t ? '<a class="ticket-link" href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/' + esc(t) + '?query=' + esc(t) + '" target="_blank">' + esc(t) + '</a>' : '—';
+const fmtTsDate = ts => ts ? new Date(Number(ts)).toLocaleString('en-IN', { timeZone:'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
+
+// ── Refund Done tab ──
+function renderRefundTab() {
+  const done = allRows.filter(r => effectiveVal(r, 23) === 'Refund Done');
+  const pend = allRows.filter(r => effectiveVal(r, 23) === 'Refund Pending');
+  const sum  = list => list.reduce((a, r) => a + (Number(r[24]) || 0), 0);
+  setText('rfDoneCount', done.length);
+  setText('rfDoneTotal', inr(sum(done)));
+  setText('rfPendCount', pend.length);
+  setText('rfPendTotal', inr(sum(pend)));
+  done.sort((a, b) => (Number(b[25])||0) - (Number(a[25])||0));
+  document.getElementById('refundBody').innerHTML = done.length ? done.map((r, i) => {
+    const t = (r[1]||'').trim();
+    return '<tr><td>' + (i+1) + '</td><td>' + ticketLink(t) + '</td><td>' + esc(r[3]||'') + '</td><td>' + esc(r[5]||'') + '</td><td>' + esc(r[6]||'') + '</td>' +
+      '<td>' + esc((r[0]||'').trim()) + '</td><td>' + fmtTsDate(r[25]) + '</td>' +
+      '<td class="num" style="cursor:pointer;color:var(--green);font-weight:800" title="Click to edit amount" onclick="editRefundAmt(\'' + esc(t).replace(/'/g,"\\'") + '\')">' + (r[24] !== '' && r[24] != null ? inr(r[24]) : '—') + ' &#x270F;</td>' +
+      '<td><span class="badge badge-green">Refund Done</span></td></tr>';
+  }).join('') : '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No refunds marked Done yet — set Cx Action = "Refund Done" on a case to see it here</td></tr>';
+}
+async function editRefundAmt(ticket) {
+  const row = allRows.find(r => (r[1]||'').trim() === ticket);
+  const cur = row ? (row[24] || '') : '';
+  const val = window.prompt('Pro-rata refund amount (₹) for ticket ' + ticket + ':', cur);
+  if (val === null) return;
+  const num = Number(val);
+  if (isNaN(num) || num < 0) { toast('Enter a valid amount', 'error'); return; }
+  addAuditEntry(ticket, 'refund_amount', cur, num);
+  await saveToSheet(ticket, 'refund_amount', num);
+  renderRefundTab();
+}
+
+// ── Reports tab ──
+function renderReports() {
+  const rows = allRows;
+  const now = Date.now();
+  const ageDays = r => { const ts = rowStartTsAny(r); return ts ? (now - ts) / 86400000 : null; };
+
+  // A. Engineer-remarks-wise pending/resolved
+  const groups = {};
+  rows.forEach(r => {
+    const er = effectiveVal(r, 22);
+    const key = er || (effectiveVal(r, 10) ? '(Engineer assigned — no remark)' : null);
+    if (!key) return;
+    (groups[key] = groups[key] || []).push(r);
+  });
+  const gKeys = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
+  let totA = { n:0, res:0, pen:0 };
+  document.getElementById('rptEngRemarks').innerHTML = gKeys.map(k => {
+    const list = groups[k];
+    const pen  = list.filter(r => getStatus(r) === 'Unresolved');
+    const res  = list.length - pen.length;
+    const ages = pen.map(ageDays).filter(v => v !== null);
+    const avgAge = ages.length ? (ages.reduce((a,b) => a+b, 0) / ages.length).toFixed(1) : '—';
+    totA.n += list.length; totA.res += res; totA.pen += pen.length;
+    return '<tr><td>' + esc(k) + '</td><td class="num">' + list.length + '</td><td class="num" style="color:var(--green)">' + res + '</td><td class="num" style="color:var(--red)">' + pen.length + '</td><td class="num">' + (list.length ? Math.round(res/list.length*100) + '%' : '—') + '</td><td class="num">' + avgAge + '</td></tr>';
+  }).join('') + '<tr class="tot"><td>Total</td><td class="num">' + totA.n + '</td><td class="num">' + totA.res + '</td><td class="num">' + totA.pen + '</td><td class="num">' + (totA.n ? Math.round(totA.res/totA.n*100) + '%' : '—') + '</td><td class="num"></td></tr>';
+
+  // B. Avg TAT of engineer assignment
+  const assigned = rows.filter(r => Number(r[21]) > 0 && rowStartTsAny(r) > 0 && Number(r[21]) >= rowStartTsAny(r));
+  const tatHrs = r => (Number(r[21]) - rowStartTsAny(r)) / 3600000;
+  const allTats = assigned.map(tatHrs);
+  const avgAll = allTats.length ? (allTats.reduce((a,b) => a+b, 0) / allTats.length) : 0;
+  document.getElementById('rptEngTatHead').innerHTML = assigned.length
+    ? 'Overall: <b style="color:var(--primary-light)">' + avgAll.toFixed(1) + ' hrs</b> average from case added &#x2192; engineer assigned <span style="color:var(--muted)">(' + assigned.length + ' cases with both timestamps)</span>'
+    : '<span style="color:var(--muted)">No cases with assignment timestamps yet.</span>';
+  const byEng = {};
+  assigned.forEach(r => { const e = effectiveVal(r, 10) || '(unnamed)'; (byEng[e] = byEng[e] || []).push(tatHrs(r)); });
+  document.getElementById('rptEngTat').innerHTML = Object.keys(byEng).sort((a,b) => byEng[b].length - byEng[a].length).map(e => {
+    const l = byEng[e];
+    return '<tr><td>' + esc(e) + '</td><td class="num">' + l.length + '</td><td class="num">' + (l.reduce((a,b) => a+b, 0) / l.length).toFixed(1) + '</td></tr>';
+  }).join('');
+
+  // C. Cx closure after engineer close (proxy: resolved remark ts → cx_action ts)
+  const cxRows = rows.filter(r => {
+    const rl = effectiveVal(r, 8).toLowerCase();
+    return Number(r[25]) > 0 && Number(r[20]) > 0 && RESOLVED_KW.some(kw => rl.includes(kw)) && Number(r[25]) >= Number(r[20]);
+  });
+  if (cxRows.length) {
+    const gaps = cxRows.map(r => (Number(r[25]) - Number(r[20])) / 3600000);
+    const avg = gaps.reduce((a,b) => a+b, 0) / gaps.length;
+    document.getElementById('rptCxClose').innerHTML =
+      'Average: <b style="color:var(--primary-light)">' + avg.toFixed(1) + ' hrs</b> from engineer close &#x2192; Cx action <span style="color:var(--muted)">(' + cxRows.length + ' cases measured)</span>';
+  } else {
+    document.getElementById('rptCxClose').innerHTML = '<span style="color:var(--muted)">No measurable cases yet — Cx Action timestamps started on 4 Aug 2026. As the Cx team marks Refund Pending / Done, this fills up automatically.</span>';
+  }
+
+  // D. Category-wise complaints
+  const cats = {};
+  rows.forEach(r => { const c = effectiveVal(r, 4) || '(blank)'; (cats[c] = cats[c] || []).push(r); });
+  const total = rows.length;
+  document.getElementById('rptCategory').innerHTML = Object.keys(cats).sort((a,b) => cats[b].length - cats[a].length).map(c => {
+    const l = cats[c];
+    const pen = l.filter(r => getStatus(r) === 'Unresolved').length;
+    return '<tr><td>' + esc(c) + '</td><td class="num">' + l.length + '</td><td class="num">' + (total ? (l.length/total*100).toFixed(1) : 0) + '%</td><td class="num" style="color:var(--red)">' + pen + '</td><td class="num" style="color:var(--green)">' + (l.length - pen) + '</td></tr>';
+  }).join('');
+
+  // Reopened within 24h
+  const reopened = rows.filter(r => Number(r[26]) > 0).sort((a,b) => Number(b[26]) - Number(a[26]));
+  document.getElementById('rptReopenHead').innerHTML = '<b style="color:#ff8c00">' + reopened.length + '</b> case(s) reopened within 24 hrs of being marked resolved';
+  document.getElementById('rptReopenBody').innerHTML = reopened.length ? reopened.map((r, i) => {
+    const st = getStatus(r);
+    return '<tr><td>' + (i+1) + '</td><td>' + ticketLink((r[1]||'').trim()) + '</td><td>' + esc(r[3]||'') + '</td><td>' + esc(r[5]||'') + '</td><td>' + esc(r[6]||'') + '</td><td>' + esc(effectiveVal(r,10) || '—') + '</td><td>' + fmtTsDate(r[26]) + '</td><td>' + esc(effectiveVal(r,8) || '—') + '</td><td>' + esc(st) + '</td></tr>';
+  }).join('') : '<tr><td colspan="9" style="text-align:center;padding:20px;color:var(--muted)">None yet — flagged automatically when a resolved remark is reverted within 24 hrs</td></tr>';
 }
 
 // ── Pending Since ──
