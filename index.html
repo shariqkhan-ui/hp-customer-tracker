@@ -60,6 +60,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .status-card.exp48     .status-pct   { font-size: 15px; font-weight: 800; color: #ff8c00; opacity: .8; }
 .status-card.exp48:hover { background: rgba(255,140,0,.12); }
 .status-card.exp48.active { background: rgba(255,140,0,.18); box-shadow: 0 0 0 2px #ff8c00 inset; }
+.status-card.reopen { border-color: #a371f7; }
+.status-card.reopen .status-count { color: #a371f7; }
+.status-card.reopen:hover { background: rgba(163,113,247,.12); }
+.status-card.reopen.active { background: rgba(163,113,247,.18); box-shadow: 0 0 0 2px #a371f7 inset; }
 
 /* ── Main tabs ── */
 .main-tabs { display:flex; gap:8px; margin:14px 0 4px; flex-wrap:wrap; }
@@ -571,6 +575,10 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="status-card exp48" id="exp48Card" onclick="toggleExp48Filter()" style="cursor:pointer" title="Click to see these cases — oldest first. % is out of cases added since 29 Jul (48h flag launch).">
       <div class="status-count"><span id="sExp48Count">—</span> <span class="status-pct" id="sExp48Pct"></span></div>
       <div class="status-label">&#x23F0; Unresolved &gt; 48 Hrs <span id="exp48Hint" style="font-size:10px;opacity:.7">(click to view)</span></div>
+    </div>
+    <div class="status-card reopen" id="reopenCard" onclick="toggleReopenFilter()" style="cursor:pointer" title="Tickets marked resolved that were reverted to unresolved within 24 hours. Click to view them.">
+      <div class="status-count" id="sReopenCount">—</div>
+      <div class="status-label">&#x1F501; Reopened &lt; 24 Hrs <span style="font-size:10px;opacity:.7">(click to view)</span></div>
     </div>
   </div>
 
@@ -1767,11 +1775,23 @@ function populateDropdowns() {
 // ── 48h bucket click-filter ──
 // When on: table shows only breached (Unresolved + past 48h) cases, OLDEST first.
 let exp48Only = false;
+let reopenOnly = false;
 function toggleExp48Filter() {
   exp48Only = !exp48Only;
+  if (exp48Only) { reopenOnly = false; document.getElementById('reopenCard').classList.remove('active'); }
   document.getElementById('exp48Card').classList.toggle('active', exp48Only);
   applyFilters();
   if (exp48Only) {
+    const tbl = document.getElementById('tBody');
+    if (tbl) tbl.closest('.card, table, div').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+}
+function toggleReopenFilter() {
+  reopenOnly = !reopenOnly;
+  if (reopenOnly) { exp48Only = false; document.getElementById('exp48Card').classList.remove('active'); }
+  document.getElementById('reopenCard').classList.toggle('active', reopenOnly);
+  applyFilters();
+  if (reopenOnly) {
     const tbl = document.getElementById('tBody');
     if (tbl) tbl.closest('.card, table, div').scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
@@ -1782,6 +1802,7 @@ function applyFilters() {
   const fA = document.getElementById('fAction').value;
   visRows = allRows.filter(r => {
     if (exp48Only && !(getStatus(r) === 'Unresolved' && isTatExpired(r))) return false;
+    if (reopenOnly && !(Number(r[26]) > 0)) return false;
     if (msState.fDate.size > 0    && !msState.fDate.has(rowDk(r))) return false;
     if (msState.fPartner.size > 0 && !msState.fPartner.has((r[6]||'').trim())) return false;
     if (msState.fSubcat.size > 0  && !msState.fSubcat.has((r[4]||'').trim())) return false;
@@ -1827,6 +1848,8 @@ function clearFilters() {
   document.querySelectorAll('.col-filter').forEach(el => el.value = '');
   exp48Only = false;
   document.getElementById('exp48Card').classList.remove('active');
+  reopenOnly = false;
+  document.getElementById('reopenCard').classList.remove('active');
   applyFilters();
 }
 function renderFilterSummary() {
@@ -1841,6 +1864,7 @@ function renderFilterSummary() {
   const fA = document.getElementById('fAction').value;
   if (fA) parts.push('Action: <b>' + esc(document.querySelector('#fAction option:checked')?.textContent || fA) + '</b>');
   if (exp48Only) parts.push('<b style="color:#ff8c00">&#x23F0; Unresolved &gt; 48 Hrs only — oldest first</b> (click the orange card again to exit)');
+  if (reopenOnly) parts.push('<b style="color:#a371f7">&#x1F501; Reopened &lt; 24 Hrs only</b> (click the purple card again to exit)');
   if (parts.length) {
     el.style.display = 'block';
     el.innerHTML = parts.join(' &nbsp;·&nbsp; ') + ' &nbsp;·&nbsp; Showing <b>' + visRows.length + '</b> of <b>' + allRows.length + '</b> records';
@@ -1904,6 +1928,7 @@ function renderAll() {
   setText('sUnresCount', unres);
   setText('sExp48Count', exp48);
   setText('sExp48Pct',   flagged ? '(' + Math.round(exp48 / flagged * 100) + '% of ' + flagged + ' since 29 Jul)' : '');
+  setText('sReopenCount', rows.filter(r => Number(r[26]) > 0).length);
   setText('kTotal',   total);
   setText('kMigPct',  pct(mig));
   setText('kPingPct', pct(ping));
