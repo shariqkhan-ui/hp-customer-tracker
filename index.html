@@ -409,9 +409,23 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="main-tab" id="mtab_reports" onclick="showMainTab('reports')">&#x1F4C8; Reports</div>
   </div>
 
-  <div id="tabCases">
-  <!-- Filters -->
+  <!-- Filters (visible on every tab — applies to Cases, Refund Done and Reports) -->
   <div class="filters-bar">
+    <div class="filter-item">
+      <div class="filter-label">Week</div>
+      <div class="ms-wrap" id="ms_fWeek">
+        <div class="ms-btn" id="ms_btn_fWeek" onclick="toggleMs('fWeek')">
+          <span class="ms-label">All Weeks</span><span class="ms-arrow">&#9660;</span>
+        </div>
+        <div class="ms-dropdown" id="ms_drop_fWeek">
+          <div class="ms-options" id="ms_opts_fWeek"></div>
+          <div class="ms-footer">
+            <button onclick="clearMs('fWeek')">Clear</button>
+            <button onclick="selectAllMs('fWeek')">All</button>
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="filter-item">
       <div class="filter-label">Case Added Date</div>
       <div class="ms-wrap" id="ms_fDate">
@@ -521,6 +535,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   </div>
   <div id="filterSummary"></div>
 
+  <div id="tabCases">
   <!-- Status Buckets -->
   <div class="status-row">
     <div class="status-card total">
@@ -1649,8 +1664,8 @@ function setupRealtime() {
 }
 
 // ── Multi-Select Filter Logic ──
-const MS_IDS = ['fDate','fPartner','fSubcat','fTat','fStatus','fEngineer'];
-const MS_LABELS = { fDate:'All Dates', fPartner:'All Partners', fSubcat:'All Categories', fTat:'All TAT', fStatus:'All Statuses', fEngineer:'All Engineers' };
+const MS_IDS = ['fWeek','fDate','fPartner','fSubcat','fTat','fStatus','fEngineer'];
+const MS_LABELS = { fWeek:'All Weeks', fDate:'All Dates', fPartner:'All Partners', fSubcat:'All Categories', fTat:'All TAT', fStatus:'All Statuses', fEngineer:'All Engineers' };
 const msState = {}; MS_IDS.forEach(id => msState[id] = new Set());
 
 function toggleMs(id) {
@@ -1735,10 +1750,11 @@ function populateDropdowns() {
       '<span>' + esc(dateLabels[i]) + '</span></div>'
     ).join('');
   }
+  populateMsOpts('fWeek',     weekOptionLabels());
   populateMsOpts('fPartner',  uniq(r => (r[6]||'').trim()));
   populateMsOpts('fSubcat',   uniq(r => (r[4]||'').trim()));
   populateMsOpts('fTat',      uniq(r => (r[7]||'').trim()));
-  populateMsOpts('fStatus',   ['Migrated','Ping Up','Unresolved','Duplicate']);
+  populateMsOpts('fStatus',   ['Migrated','Ping Up','Unresolved','Duplicate','Reopened < 24h']);
   const DEFAULT_ENGINEERS = ['Pinku Roy', 'Sabir Ali'];
   populateMsOpts('fEngineer', ['NA (Not Assigned)', ...new Set([...DEFAULT_ENGINEERS, ...uniq(r => effectiveVal(r, 10))])]);
 }
@@ -1766,9 +1782,13 @@ function applyFilters() {
     if (msState.fPartner.size > 0 && !msState.fPartner.has((r[6]||'').trim())) return false;
     if (msState.fSubcat.size > 0  && !msState.fSubcat.has((r[4]||'').trim())) return false;
     if (msState.fTat.size > 0     && !msState.fTat.has((r[7]||'').trim())) return false;
+    if (msState.fWeek.size > 0 && !msState.fWeek.has(weekLabelOf(r))) return false;
     if (msState.fStatus.size > 0) {
       const st = getStatus(r); const dup = isDupe(r);
-      const pass = [...msState.fStatus].some(v => v === 'Duplicate' ? dup : st === v);
+      const pass = [...msState.fStatus].some(v =>
+        v === 'Duplicate' ? dup :
+        v === 'Reopened < 24h' ? Number(r[26]) > 0 :
+        st === v);
       if (!pass) return false;
     }
     if (msState.fEngineer.size > 0) {
@@ -1985,6 +2005,25 @@ function rowStartTsAny(r) {
   if (!ts) { const d = parseDate((r[0]||'').trim()); ts = d ? d.getTime() : 0; }
   return ts;
 }
+// Week bucket labels — weeks of 7 days anchored at the 29 Jul flag launch
+function weekIdxOf(r) {
+  const ts = rowStartTsAny(r);
+  if (!ts) return null;
+  return ts < TAT_LAUNCH_TS ? -1 : Math.floor((ts - TAT_LAUNCH_TS) / (7 * 86400000));
+}
+function weekLabelForIdx(k) {
+  if (k === null) return '(no date)';
+  if (k === -1) return 'Pre 29 Jul';
+  const fmtD = d => String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0');
+  const from = new Date(TAT_LAUNCH_TS + k * 7 * 86400000);
+  const to   = new Date(TAT_LAUNCH_TS + (k+1) * 7 * 86400000 - 86400000);
+  return 'W' + (k+1) + ' (' + fmtD(from) + ' – ' + fmtD(to) + ')';
+}
+function weekLabelOf(r) { return weekLabelForIdx(weekIdxOf(r)); }
+function weekOptionLabels() {
+  const idxs = [...new Set(allRows.map(weekIdxOf).filter(k => k !== null))].sort((a,b) => a - b);
+  return idxs.map(weekLabelForIdx);
+}
 function renderWeekTable(rows) {
   const tbody = document.getElementById('weekBody');
   if (!tbody) return;
@@ -2038,8 +2077,9 @@ const fmtTsDate = ts => ts ? new Date(Number(ts)).toLocaleString('en-IN', { time
 
 // ── Refund Done tab ──
 function renderRefundTab() {
-  const done = allRows.filter(r => effectiveVal(r, 23) === 'Refund Done');
-  const pend = allRows.filter(r => effectiveVal(r, 23) === 'Refund Pending');
+  const base = visRows.length || Object.keys(msState).some(k => msState[k].size) ? visRows : allRows;
+  const done = base.filter(r => effectiveVal(r, 23) === 'Refund Done');
+  const pend = base.filter(r => effectiveVal(r, 23) === 'Refund Pending');
   const sum  = list => list.reduce((a, r) => a + (Number(r[24]) || 0), 0);
   setText('rfDoneCount', done.length);
   setText('rfDoneTotal', inr(sum(done)));
@@ -2084,16 +2124,19 @@ async function editRefundAmt(ticket) {
 
 // ── Reports tab ──
 function renderReports() {
-  const rows = allRows;
+  // Respect the global filter bar (week, date, partner, status…) — falls back
+  // to the full base when no filters have been applied yet.
+  const rows = visRows.length || Object.keys(msState).some(k => msState[k].size) ? visRows : allRows;
   const now = Date.now();
   const ageDays = r => { const ts = rowStartTsAny(r); return ts ? (now - ts) / 86400000 : null; };
 
-  // A. Engineer-remarks-wise pending/resolved
+  // A. Engineer-remarks-wise pending/resolved — covers EVERY case in the current
+  // filter (cases without an engineer or remark get their own buckets, so the
+  // total reconciles with the full base).
   const groups = {};
   rows.forEach(r => {
     const er = effectiveVal(r, 22);
-    const key = er || (effectiveVal(r, 10) ? '(Engineer assigned — no remark)' : null);
-    if (!key) return;
+    const key = er || (effectiveVal(r, 10) ? '(Engineer assigned — no remark yet)' : '(No engineer assigned)');
     (groups[key] = groups[key] || []).push(r);
   });
   const gKeys = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
@@ -2377,7 +2420,8 @@ function renderTable(allTableRows) {
           '</td>';
       })() +
       makeEditCell(ticket, 'migration_date', (r[14]||'').trim()) +
-      '<td>' + statusBadge(st) + (dup ? ' <span class="badge badge-yellow">Dupe</span>' : '') + '</td>' +
+      '<td>' + statusBadge(st) + (dup ? ' <span class="badge badge-yellow">Dupe</span>' : '') +
+        (Number(r[26]) > 0 ? ' <span class="badge" style="background:rgba(255,140,0,.18);color:#ff8c00" title="Marked resolved, reverted to unresolved within 24 hrs — ' + fmtTsDate(r[26]) + '">&#x1F501; Reopened</span>' : '') + '</td>' +
       '<td>' + link + '</td>' +
       '</tr>';
   }).join('') + (remaining > 0
