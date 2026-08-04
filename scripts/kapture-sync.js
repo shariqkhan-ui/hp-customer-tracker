@@ -281,7 +281,14 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       stm.CUSTOMER_MOBILE,
       COALESCE(nmob.CNAME, n_inst.CNAME, n_actv.CNAME)  AS CUSTOMER_NAME,
       stm.CURRENT_PARTNER_NAME                          AS PARTNER,
-      stm.FIRST_TITLE                                   AS SUB_CATEGORY,
+      -- Prefer the internet-y title: tickets opened under the generic
+      -- "Primary|Existing Customer" folder get re-dispositioned later, and the
+      -- internet category then lives in LAST_TITLE, not FIRST_TITLE.
+      CASE WHEN (
+        stm.FIRST_TITLE ILIKE '%internet%'
+        OR stm.FIRST_TITLE ILIKE '%slow speed%'
+        OR stm.FIRST_TITLE ILIKE '%frequent disconnection%'
+      ) THEN stm.FIRST_TITLE ELSE stm.LAST_TITLE END      AS SUB_CATEGORY,
       FLOOR(stm.TOTALTAT_TILLNOW_MINS_CALENDARHRS / 60) AS TAT_HOURS,
       stm.CURRENT_TICKET_STATUS,
       TO_CHAR(stm.TICKET_ADDED_TIME, 'DD/Mon/YYYY')    AS CREATED_DATE
@@ -290,16 +297,17 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     LEFT JOIN n_inst ON n_inst.MOB = RIGHT(REGEXP_REPLACE(stm.CUSTOMER_MOBILE, '[^0-9]', ''), 10)
     LEFT JOIN n_actv ON n_actv.MOB = RIGHT(REGEXP_REPLACE(stm.CUSTOMER_MOBILE, '[^0-9]', ''), 10)
     WHERE
-      -- Internet-related sub-category
+      -- Internet-related sub-category. Checked on FIRST_TITLE *and* LAST_TITLE:
+      -- ~1 in 4 missed tickets started as "Primary|Existing Customer" and were
+      -- only later re-dispositioned to Internet Issues (visible in LAST_TITLE
+      -- only) — FIRST_TITLE-only filtering silently dropped them.
       (
-        stm.FIRST_TITLE ILIKE '%internet supply down%'
+        stm.FIRST_TITLE ILIKE '%internet%'
         OR stm.FIRST_TITLE ILIKE '%slow speed%'
         OR stm.FIRST_TITLE ILIKE '%frequent disconnection%'
-        OR stm.FIRST_TITLE ILIKE '%recharge done but no internet%'
-        OR stm.FIRST_TITLE ILIKE '%internet not working%'
-        OR stm.FIRST_TITLE ILIKE '%no internet%'
-        OR stm.FIRST_TITLE ILIKE '%internet issue%'
-        OR stm.FIRST_TITLE ILIKE '%internet%'
+        OR stm.LAST_TITLE ILIKE '%internet%'
+        OR stm.LAST_TITLE ILIKE '%slow speed%'
+        OR stm.LAST_TITLE ILIKE '%frequent disconnection%'
       )
       -- Not resolved
       AND stm.IS_RESOLVED = 0
