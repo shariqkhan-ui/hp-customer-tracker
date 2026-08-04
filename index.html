@@ -2245,20 +2245,25 @@ function renderReports() {
     document.getElementById(elId).innerHTML = html + '</tbody></table>';
   }
 
-  // 1. Total complaints sent for migration — category × period.
-  // Sub-category is free text with typos ("hifting Request", ticket ids…),
-  // so bucket by keyword into the sheet's five canonical categories.
+  // 1. Total complaints sent for resolution — PRIMARY category × period.
+  // Primary = the folder before '|' in the sub-category ("Internet Issues|
+  // Supply Down" → "Internet Issues"). Typos normalised; free-text values
+  // without a primary folder fall into Others.
   const catOf = r => {
-    const s = effectiveVal(r, 4).toLowerCase();
-    if (/misbehav/.test(s)) return 'Partner Misbehavior';
-    if (/shift/.test(s)) return 'Shifting Request';
-    if (/chat/.test(s)) return 'Chat tickets';
-    if (/internet|supply down|speed|ping|recharge|wifi|router|slow|link/.test(s)) return 'Internet Issues';
-    return 'Others';
+    const s = effectiveVal(r, 4);
+    if (!s) return 'Others';
+    const primary = s.split('|')[0].trim();
+    const l = primary.toLowerCase();
+    if (/internet/.test(l) || /^nternet/.test(l)) return 'Internet Issues';
+    if (/shift/.test(l)) return 'Shifting Request';
+    if (/misbehav/.test(l)) return 'Partner Misbehavior';
+    if (/chat/.test(l)) return 'Chat tickets';
+    return s.includes('|') ? primary : 'Others';
   };
   const grandList = perCases[perCases.length - 1];
-  const catSpecs = ['Partner Misbehavior', 'Shifting Request', 'Others', 'Chat tickets', 'Internet Issues']
-    .map(c => ({ label: c, key: c }))
+  const catCounts = {};
+  grandList.forEach(r => { const c = catOf(r); catCounts[c] = (catCounts[c] || 0) + 1; });
+  const catSpecs = Object.keys(catCounts).sort((a, b) => catCounts[a] - catCounts[b]).map(c => ({ label: c, key: c }))
     .concat([{ label: 'Grand Total', gtot: true }]);
   sheetTable('sheetComplaints', 'Category', catSpecs, (spec, list) =>
     ({ text: numFmt(spec.gtot ? list.length : list.filter(r => catOf(r) === spec.key).length) }));
