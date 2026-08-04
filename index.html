@@ -2270,7 +2270,8 @@ function renderReports() {
   const grandList = perCases[perCases.length - 1];
   const catCounts = {};
   grandList.forEach(r => { const c = catOf(r); catCounts[c] = (catCounts[c] || 0) + 1; });
-  const catSpecs = Object.keys(catCounts).sort((a, b) => catCounts[a] - catCounts[b]).map(c => ({ label: c, key: c }))
+  // Highest bucket first, decreasing
+  const catSpecs = Object.keys(catCounts).sort((a, b) => catCounts[b] - catCounts[a]).map(c => ({ label: c, key: c }))
     .concat([{ label: 'Grand Total', gtot: true }]);
   sheetTable('sheetComplaints', 'Category', catSpecs, (spec, list) =>
     ({ text: numFmt(spec.gtot ? list.length : list.filter(r => catOf(r) === spec.key).length) }));
