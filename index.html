@@ -738,6 +738,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <h3 style="display:flex;justify-content:space-between;align-items:center">&#x1F501; Reopened within 24 hrs <button class="sheet-csv-btn" onclick="downloadSheetCSV('rptReopenBody','reopened-within-24h')">&#x2B07; CSV</button></h3>
       <p class="rc-sub">Cases an engineer marked resolved that were reverted to unresolved within 24 hours. Tracked from remark edits (dashboard + backfilled from the audit trail).</p>
       <div id="rptReopenHead" style="font-size:14px;margin-bottom:10px"></div>
+      <div class="sheet-scroll" id="sheetReopen" style="margin:6px 0 16px"></div>
       <table class="rpt-table"><thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Engineer</th><th>Reopened On</th><th>Current Remark</th><th>Status</th></tr></thead><tbody id="rptReopenBody"></tbody></table>
     </div>
   </div>
@@ -2324,7 +2325,21 @@ function renderReports() {
     document.getElementById('rptCxClose').innerHTML = '<span style="color:var(--muted)">No measurable cases yet — Cx Action timestamps started on 4 Aug 2026. As the Cx team marks Refund Pending / Done, this fills up automatically.</span>';
   }
 
-  // Reopened within 24h
+  // Reopened within 24h — week/month period view (bucketed by REOPEN date, not case-added date)
+  sheetTable('sheetReopen', 'Metric', [
+    { label: 'Tickets reopened < 24h' },
+    { label: 'Resolutions in period' },
+    { label: 'Reopen rate %' }
+  ], (spec, _list, pi) => {
+    const p = periods[pi];
+    const reop = rows.filter(r => { const t = Number(r[26]); return t >= p.from && t <= p.to; }).length;
+    const res  = rows.filter(r => { const t = Number(r[20]); return t >= p.from && t <= p.to && getStatus(r) !== 'Unresolved'; }).length;
+    if (spec.label === 'Tickets reopened < 24h') return { text: reop ? String(reop) : '-', bg: reop >= 5 ? ORG : null };
+    if (spec.label === 'Resolutions in period')  return { text: res ? res.toLocaleString('en-IN') : '-' };
+    const v = res ? reop / res * 100 : 0;
+    return { text: res ? v.toFixed(1) + '%' : '-', bg: v >= 5 ? PNK : v >= 2 ? ORG : null };
+  });
+
   const reopened = rows.filter(r => Number(r[26]) > 0).sort((a,b) => Number(b[26]) - Number(a[26]));
   document.getElementById('rptReopenHead').innerHTML = '<b style="color:#ff8c00">' + reopened.length + '</b> case(s) reopened within 24 hrs of being marked resolved';
   document.getElementById('rptReopenBody').innerHTML = reopened.length ? reopened.map((r, i) => {
