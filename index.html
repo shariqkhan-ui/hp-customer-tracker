@@ -627,7 +627,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <table class="day-table" id="weekTableEl" style="display:none">
       <thead>
         <tr>
-          <th style="text-align:left">Week (from 29 Jul flag launch)</th>
+          <th style="text-align:left">Week (calendar: 1-7 / 8-14 / 15-21 / 22-end)</th>
           <th>Cases Added</th>
           <th>Migrated</th>
           <th>Ping Up</th>
@@ -2041,28 +2041,36 @@ function setDayView(v) {
   document.getElementById('dayWiseTitle').textContent  = v === 'daily' ? 'Day-wise' : 'Week-wise';
 }
 function rowStartTsAny(r) {
-  let ts = Number(r[19]) || Number(r[16]) || 0;
+  // Week/period bucketing must follow when the CASE was added — prefer the
+  // precise added_at, then the Case Added On date. owner_assigned_at is only a
+  // last resort: it stamps when an owner was set, which for old cases can be
+  // weeks after they were added and used to inflate recent weeks.
+  let ts = Number(r[19]) || 0;
   if (!ts) { const d = parseDate((r[0]||'').trim()); ts = d ? d.getTime() : 0; }
+  if (!ts) ts = Number(r[16]) || 0;
   return ts;
 }
-// Week bucket labels — weeks of 7 days anchored at the 29 Jul flag launch
-function weekIdxOf(r) {
+// Week buckets — ONE definition everywhere (filter, weekly table, reports):
+// calendar-month slices 1-7 / 8-14 / 15-21 / 22-end, labelled "Aug W1 (1-7)".
+function weekSliceOf(ts) {
+  const d = new Date(ts);
+  const y = d.getFullYear(), mo = d.getMonth(), day = d.getDate();
+  const lastDay = new Date(y, mo + 1, 0).getDate();
+  const ranges = [[1, 7], [8, 14], [15, 21], [22, lastDay]];
+  let wi = 4, a = 22, b = lastDay;
+  for (let i = 0; i < 4; i++) { if (day >= ranges[i][0] && day <= ranges[i][1]) { wi = i + 1; a = ranges[i][0]; b = ranges[i][1]; break; } }
+  const name = d.toLocaleString('en', { month: 'short' });
+  const yr = y !== new Date().getFullYear() ? ' ' + y : '';
+  return { key: y * 10000 + mo * 100 + wi, label: name + ' W' + wi + ' (' + a + '-' + b + ')' + yr };
+}
+function weekLabelOf(r) {
   const ts = rowStartTsAny(r);
-  if (!ts) return null;
-  return ts < TAT_LAUNCH_TS ? -1 : Math.floor((ts - TAT_LAUNCH_TS) / (7 * 86400000));
+  return ts ? weekSliceOf(ts).label : '(no date)';
 }
-function weekLabelForIdx(k) {
-  if (k === null) return '(no date)';
-  if (k === -1) return 'Pre 29 Jul';
-  const fmtD = d => String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0');
-  const from = new Date(TAT_LAUNCH_TS + k * 7 * 86400000);
-  const to   = new Date(TAT_LAUNCH_TS + (k+1) * 7 * 86400000 - 86400000);
-  return 'W' + (k+1) + ' (' + fmtD(from) + ' – ' + fmtD(to) + ')';
-}
-function weekLabelOf(r) { return weekLabelForIdx(weekIdxOf(r)); }
 function weekOptionLabels() {
-  const idxs = [...new Set(allRows.map(weekIdxOf).filter(k => k !== null))].sort((a,b) => a - b);
-  return idxs.map(weekLabelForIdx);
+  const map = {};
+  allRows.forEach(r => { const ts = rowStartTsAny(r); if (!ts) return; const w = weekSliceOf(ts); map[w.key] = w.label; });
+  return Object.keys(map).map(Number).sort((a, b) => b - a).map(k => map[k]); // newest first
 }
 
 // ── Period columns for the sheet-style reports ──
@@ -2099,15 +2107,13 @@ function buildPeriods() {
 function renderWeekTable(rows) {
   const tbody = document.getElementById('weekBody');
   if (!tbody) return;
-  const WEEK = 7 * 86400000;
-  const buckets = {};   // key: -1 = pre-launch, 0.. = week index
+  const buckets = {};   // key → {label, list}
   rows.forEach(r => {
     const ts = rowStartTsAny(r);
     if (!ts) return;
-    const k = ts < TAT_LAUNCH_TS ? -1 : Math.floor((ts - TAT_LAUNCH_TS) / WEEK);
-    (buckets[k] = buckets[k] || []).push(r);
+    const w = weekSliceOf(ts);
+    (buckets[w.key] = buckets[w.key] || { label: w.label, list: [] }).list.push(r);
   });
-  const fmtD = d => String(d.getDate()).padStart(2,'0') + '/' + String(d.getMonth()+1).padStart(2,'0');
   const mk = (label, list, isTot) => {
     const mig  = list.filter(r => getStatus(r) === 'Migrated').length;
     const ping = list.filter(r => getStatus(r) === 'Ping Up').length;
@@ -2120,14 +2126,15 @@ function renderWeekTable(rows) {
       '<td class="num-red" style="text-align:right">' + unres + '</td>' +
       '<td style="text-align:right;color:#ff8c00;font-weight:700">' + br + '</td></tr>';
   };
-  const keys = Object.keys(buckets).map(Number).sort((a,b) => a - b);
+  // newest first; last 8 weeks individually, everything earlier as one row
+  const keys = Object.keys(buckets).map(Number).sort((a, b) => b - a);
+  const recent = keys.slice(0, 8), olderKeys = keys.slice(8);
   let html = '';
-  keys.forEach(k => {
-    if (k === -1) { html += mk('Pre 29 Jul (no 48h flag)', buckets[k], false); return; }
-    const from = new Date(TAT_LAUNCH_TS + k * WEEK);
-    const to   = new Date(TAT_LAUNCH_TS + (k+1) * WEEK - 86400000);
-    html += mk('<b>W' + (k+1) + '</b> <span style="color:var(--muted);font-size:11px">(' + fmtD(from) + ' – ' + fmtD(to) + ')</span>', buckets[k], false);
-  });
+  recent.forEach(k => { html += mk('<b>' + esc(buckets[k].label) + '</b>', buckets[k].list, false); });
+  if (olderKeys.length) {
+    const olderList = olderKeys.reduce((a, k) => a.concat(buckets[k].list), []);
+    html += mk('<span style="color:var(--muted)">Older weeks (' + olderKeys.length + ')</span>', olderList, false);
+  }
   html += mk('Total', rows.filter(r => rowStartTsAny(r) > 0), true);
   tbody.innerHTML = html;
 }
@@ -2254,8 +2261,8 @@ function renderReports() {
     if (!s) return 'Others';
     const primary = s.split('|')[0].trim();
     const l = primary.toLowerCase();
-    if (/internet/.test(l) || /^nternet/.test(l)) return 'Internet Issues';
-    if (/shift/.test(l)) return 'Shifting Request';
+    if (/internet|^nternet|^ternet/.test(l)) return 'Internet Issues';
+    if (/shift|hifting/.test(l)) return 'Shifting Request';
     if (/misbehav/.test(l)) return 'Partner Misbehavior';
     if (/chat/.test(l)) return 'Chat tickets';
     return s.includes('|') ? primary : 'Others';
