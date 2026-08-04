@@ -673,10 +673,11 @@ table.main-tbl tbody tr:hover { background: #220020; }
         <div><div style="font-size:24px;font-weight:800;color:var(--green)" id="rfDoneTotal">—</div><div style="font-size:11px;color:var(--muted)">TOTAL REFUNDED (&#8377;)</div></div>
         <div><div style="font-size:24px;font-weight:800;color:var(--yellow)" id="rfPendCount">—</div><div style="font-size:11px;color:var(--muted)">REFUND PENDING</div></div>
         <div><div style="font-size:24px;font-weight:800;color:var(--yellow)" id="rfPendTotal">—</div><div style="font-size:11px;color:var(--muted)">PENDING AMOUNT (&#8377;)</div></div>
+        <div><div style="font-size:24px;font-weight:800;color:var(--blue)"><span id="rfPickCount">—</span> <span id="rfPickPct" style="font-size:14px;opacity:.8"></span></div><div style="font-size:11px;color:var(--muted)">&#x1F4E6; DEVICES PICKED UP (of refund cases)</div></div>
       </div>
       <div class="tbl-wrap" style="max-height:none">
         <table class="rpt-table">
-          <thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Case Added</th><th>Refund Marked On</th><th class="num">Amount (&#8377;) &#x270F;</th><th>Cx Action</th></tr></thead>
+          <thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Case Added</th><th>Refund Marked On</th><th class="num">Amount (&#8377;) &#x270F;</th><th>Device Picked Up &#x270F;</th><th>Cx Action</th></tr></thead>
           <tbody id="refundBody"></tbody>
         </table>
       </div>
@@ -898,12 +899,13 @@ function dbRowToArray(r) {
     r.cx_action          || '',  // 23 — Cx team refund action (Refund Pending / Refund Done)
     r.refund_amount      || '',  // 24 — Pro-rata refund amount (₹), editable
     r.cx_action_updated_at || 0, // 25 — Unix ms when cx_action was last changed
-    r.reopened_at        || 0    // 26 — Unix ms when a resolved remark was reverted within 24h
+    r.reopened_at        || 0,   // 26 — Unix ms when a resolved remark was reverted within 24h
+    r.device_picked_up   || ''   // 27 — 'Yes' once the device is collected from a refund case
   ];
 }
 
 // Map edit field name → Supabase column name
-const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action', refund_amount: 'refund_amount' };
+const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action', refund_amount: 'refund_amount', device_picked_up: 'device_picked_up' };
 
 let allRows = [], visRows = [], charts = {};
 
@@ -971,7 +973,7 @@ function effectiveVal(r, col) { return (r[col] || '').trim(); }
 
 
 // ── Save edit: patch allRows in memory + write to Firebase ──
-const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17, engineer_remarks: 22, cx_action: 23, refund_amount: 24 };
+const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17, engineer_remarks: 22, cx_action: 23, refund_amount: 24, device_picked_up: 27 };
 async function saveToSheet(ticket, field, value) {
   const dbCol = DB_COL[field];
   if (!dbCol) return;
@@ -2043,14 +2045,30 @@ function renderRefundTab() {
   setText('rfDoneTotal', inr(sum(done)));
   setText('rfPendCount', pend.length);
   setText('rfPendTotal', inr(sum(pend)));
+  // Device pickup: across ALL refund cases (Pending + Done)
+  const refundCases = done.concat(pend);
+  const picked = refundCases.filter(r => effectiveVal(r, 27) === 'Yes').length;
+  setText('rfPickCount', picked + ' / ' + refundCases.length);
+  setText('rfPickPct', refundCases.length ? '(' + Math.round(picked / refundCases.length * 100) + '%)' : '');
   done.sort((a, b) => (Number(b[25])||0) - (Number(a[25])||0));
+  const pickCell = (t, val) => '<td style="cursor:pointer" title="Click to toggle picked up / not picked up" onclick="toggleDevicePickup(\'' + esc(t).replace(/'/g,"\\'") + '\')">' +
+    (val === 'Yes' ? '<span class="badge badge-green">&#x1F4E6; Picked Up</span>' : '<span class="badge badge-yellow">Not Picked</span>') + ' <span class="edit-hint">&#x270F;</span></td>';
   document.getElementById('refundBody').innerHTML = done.length ? done.map((r, i) => {
     const t = (r[1]||'').trim();
     return '<tr><td>' + (i+1) + '</td><td>' + ticketLink(t) + '</td><td>' + esc(r[3]||'') + '</td><td>' + esc(r[5]||'') + '</td><td>' + esc(r[6]||'') + '</td>' +
       '<td>' + esc((r[0]||'').trim()) + '</td><td>' + fmtTsDate(r[25]) + '</td>' +
       '<td class="num" style="cursor:pointer;color:var(--green);font-weight:800" title="Click to edit amount" onclick="editRefundAmt(\'' + esc(t).replace(/'/g,"\\'") + '\')">' + (r[24] !== '' && r[24] != null ? inr(r[24]) : '—') + ' &#x270F;</td>' +
+      pickCell(t, effectiveVal(r, 27)) +
       '<td><span class="badge badge-green">Refund Done</span></td></tr>';
-  }).join('') : '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No refunds marked Done yet — set Cx Action = "Refund Done" on a case to see it here</td></tr>';
+  }).join('') : '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">No refunds marked Done yet — set Cx Action = "Refund Done" on a case to see it here</td></tr>';
+}
+async function toggleDevicePickup(ticket) {
+  const row = allRows.find(r => (r[1]||'').trim() === ticket);
+  const cur = row ? effectiveVal(row, 27) : '';
+  const nv  = cur === 'Yes' ? 'No' : 'Yes';
+  addAuditEntry(ticket, 'device_picked_up', cur, nv);
+  await saveToSheet(ticket, 'device_picked_up', nv);
+  renderRefundTab();
 }
 async function editRefundAmt(ticket) {
   const row = allRows.find(r => (r[1]||'').trim() === ticket);
