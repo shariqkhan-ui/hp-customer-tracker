@@ -2188,11 +2188,10 @@ function renderRefundTab() {
   setText('rfDoneTotal', inr(sum(done)));
   setText('rfPendCount', pend.length);
   setText('rfPendTotal', inr(pend.reduce((a, r) => a + (Number(r[24]) || 0), 0)));
-  // Device pickup: across ALL refund cases (Pending + Done)
-  const refundCases = done.concat(pend);
-  const picked = refundCases.filter(r => effectiveVal(r, 27) === 'Yes').length;
-  setText('rfPickCount', picked + ' / ' + refundCases.length);
-  setText('rfPickPct', refundCases.length ? '(' + Math.round(picked / refundCases.length * 100) + '%)' : '');
+  // Device pickup: out of cases actually REFUNDED (done) — pickup follows refund
+  const picked = done.filter(r => effectiveVal(r, 27) === 'Yes').length;
+  setText('rfPickCount', picked + ' / ' + done.length);
+  setText('rfPickPct', done.length ? '(' + Math.round(picked / done.length * 100) + '%)' : '');
   // One-time baseline: the pre-29 Jul world, shown separately (not counted above)
   const preBase = filtered.filter(r => { const t = rowStartTsAny(r); return t > 0 && t < TAT_LAUNCH_TS; });
   const preDone = preBase.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetOf(r[1]));
