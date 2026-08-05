@@ -712,6 +712,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
         <div><div style="font-size:24px;font-weight:800;color:var(--yellow)" id="rfPendTotal">—</div><div style="font-size:11px;color:var(--muted)">PENDING AMOUNT (&#8377;)</div></div>
         <div><div style="font-size:24px;font-weight:800;color:var(--blue)"><span id="rfPickCount">—</span> <span id="rfPickPct" style="font-size:14px;opacity:.8"></span></div><div style="font-size:11px;color:var(--muted)">&#x1F4E6; DEVICES PICKED UP (of refund cases)</div></div>
       </div>
+      <div id="rfBaseline" style="font-size:12.5px;color:var(--muted);margin:-4px 0 14px;border-left:3px solid var(--border);padding-left:10px"></div>
       <div class="tbl-wrap" style="max-height:none">
         <table class="rpt-table">
           <thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Case Added</th><th>Refund Marked On</th><th class="num">Amount (&#8377;) &#x270F;</th><th>Device Picked Up &#x270F;</th><th>Source</th></tr></thead>
@@ -2186,6 +2187,14 @@ function renderRefundTab() {
   const picked = refundCases.filter(r => effectiveVal(r, 27) === 'Yes').length;
   setText('rfPickCount', picked + ' / ' + refundCases.length);
   setText('rfPickPct', refundCases.length ? '(' + Math.round(picked / refundCases.length * 100) + '%)' : '');
+  // One-time baseline: the pre-29 Jul world, shown separately (not counted above)
+  const preBase = filtered.filter(r => { const t = rowStartTsAny(r); return t > 0 && t < TAT_LAUNCH_TS; });
+  const preDone = preBase.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetOf(r[1]));
+  const preAmt  = preDone.reduce((a, r) => a + amtOf(r), 0);
+  document.getElementById('rfBaseline').innerHTML = preDone.length
+    ? '<b>Baseline (pre-29 Jul world, for reference only):</b> ' + preDone.length + ' refunds done totalling <b>' + inr(preAmt) + '</b> across ' + preBase.length.toLocaleString('en-IN') + ' legacy cases — excluded from the numbers above.'
+    : '';
+
   const doneTs = r => Number(r[25]) || (sheetOf(r[1]) ? Number(sheetOf(r[1]).t) || 0 : 0);
   done.sort((a, b) => doneTs(b) - doneTs(a));
   const pickCell = (t, val) => '<td style="cursor:pointer" title="Click to toggle picked up / not picked up" onclick="toggleDevicePickup(\'' + esc(t).replace(/'/g,"\\'") + '\')">' +
