@@ -293,10 +293,13 @@ async function computeProRataAmounts(apiKey) {
 // report. Kapture timestamps are IST wall-clock without a zone marker.
 async function syncKaptureResolution(apiKey) {
   const all = await fbGet('/cases') || {};
+  // Rolling window matching the report columns: 1st of LAST month → today
+  const now = new Date();
+  const windowStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
   const targets = Object.entries(all).filter(([, c]) => {
     if (!c || !c.ticket_no) return false;
     const ts = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
-    return ts >= TAT_LAUNCH_MS && !c.kapture_resolved_at;
+    return ts >= windowStart && !c.kapture_resolved_at;
   }).slice(0, 400);
   if (!targets.length) { log('Kapture resolution: nothing to sync.'); return; }
   const ids = targets.map(([, c]) => "'" + String(c.ticket_no).trim() + "'").join(',');
