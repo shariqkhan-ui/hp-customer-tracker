@@ -461,10 +461,10 @@ table.main-tbl tbody tr:hover { background: #220020; }
       </div>
     </div>
     <div class="filter-item">
-      <div class="filter-label">Partner</div>
+      <div class="filter-label">CSP</div>
       <div class="ms-wrap" id="ms_fPartner">
         <div class="ms-btn" id="ms_btn_fPartner" onclick="toggleMs('fPartner')">
-          <span class="ms-label">All Partners</span><span class="ms-arrow">&#9660;</span>
+          <span class="ms-label">All CSPs</span><span class="ms-arrow">&#9660;</span>
         </div>
         <div class="ms-dropdown" id="ms_drop_fPartner">
           <div class="ms-search"><input type="text" placeholder="Search..." oninput="filterMsOpts(this,'fPartner')"></div>
@@ -589,7 +589,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="kpi-card"><div class="kpi-val" style="color:var(--blue)" id="kPingPct">—</div><div class="kpi-lbl">Ping Up % (ISD &amp; RDNI)</div></div>
     <div class="kpi-card"><div class="kpi-val" style="color:var(--red)"><span id="kUnres">—</span> <span id="kUnresPct" style="font-size:14px;opacity:.75"></span></div><div class="kpi-lbl">Unresolved</div></div>
     <div class="kpi-card"><div class="kpi-val" style="color:var(--yellow)"><span id="kDupes">—</span> <span id="kDupesPct" style="font-size:14px;opacity:.75"></span></div><div class="kpi-lbl">Duplicates</div></div>
-    <div class="kpi-card"><div class="kpi-val" id="kPartners">—</div><div class="kpi-lbl">Partners Affected</div></div>
+    <div class="kpi-card"><div class="kpi-val" id="kPartners">—</div><div class="kpi-lbl">CSPs Affected</div></div>
   </div>
 
   <!-- Charts -->
@@ -657,7 +657,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>#</th>
             <th>Mobile</th>
             <th>Customer Name</th>
-            <th>Partner</th>
+            <th>CSP</th>
             <th>Sub-category</th>
             <th>TAT</th>
             <th>48h TAT &#x23F3;</th>
@@ -715,7 +715,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div id="rfBaseline" style="font-size:12.5px;color:var(--muted);margin:-4px 0 14px;border-left:3px solid var(--border);padding-left:10px"></div>
       <div class="tbl-wrap" style="max-height:none">
         <table class="rpt-table">
-          <thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Case Added</th><th>Refund Marked On</th><th class="num">Amount (&#8377;) &#x270F;</th><th>Device Picked Up &#x270F;</th><th>Source</th></tr></thead>
+          <thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>CSP</th><th>Case Added</th><th>Refund Marked On</th><th class="num">Amount (&#8377;) &#x270F;</th><th>Device Picked Up &#x270F;</th><th>Source</th></tr></thead>
           <tbody id="refundBody"></tbody>
         </table>
       </div>
@@ -744,7 +744,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <p class="rc-sub">Cases an engineer marked resolved that were reverted to unresolved within 24 hours. Tracked from remark edits (dashboard + backfilled from the audit trail).</p>
       <div id="rptReopenHead" style="font-size:14px;margin-bottom:10px"></div>
       <div class="sheet-scroll" id="sheetReopen" style="margin:6px 0 16px"></div>
-      <table class="rpt-table"><thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Engineer</th><th>Reopened On</th><th>Current Remark</th><th>Status</th></tr></thead><tbody id="rptReopenBody"></tbody></table>
+      <table class="rpt-table"><thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>CSP</th><th>Engineer</th><th>Reopened On</th><th>Current Remark</th><th>Status</th></tr></thead><tbody id="rptReopenBody"></tbody></table>
     </div>
   </div>
 
@@ -781,8 +781,8 @@ table.main-tbl tbody tr:hover { background: #220020; }
         <input type="text" id="nc_name" placeholder="Full name" />
       </div>
       <div class="modal-field">
-        <label>Partner</label>
-        <input type="text" id="nc_partner" placeholder="Partner name" />
+        <label>CSP</label>
+        <input type="text" id="nc_partner" placeholder="CSP name" />
       </div>
       <div class="modal-field">
         <label>Sub-category</label>
@@ -852,7 +852,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
 
     <p style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.6">
       <b style="color:var(--primary-light)">Expected column order:</b>
-      Kapture Ticket ID &nbsp;|&nbsp; Mobile &nbsp;|&nbsp; Customer Name &nbsp;|&nbsp; Partner &nbsp;|&nbsp; Sub-category &nbsp;|&nbsp; TAT &nbsp;|&nbsp; Case Added On
+      Kapture Ticket ID &nbsp;|&nbsp; Mobile &nbsp;|&nbsp; Customer Name &nbsp;|&nbsp; CSP &nbsp;|&nbsp; Sub-category &nbsp;|&nbsp; TAT &nbsp;|&nbsp; Case Added On
     </p>
     <textarea id="bulkPaste" placeholder="Paste rows here (tab-separated from Excel or comma-separated CSV)..."
       style="width:100%;height:130px;background:var(--bg);border:1px solid var(--border);border-radius:6px;
@@ -995,7 +995,7 @@ const RESOLVED_KW = ['migrated', 'refund to customer', 'refunded', 'ping up', 'i
 function isResolutionRemark(v) {
   const l = String(v || '').toLowerCase().trim();
   if (!l) return false;
-  return l === 'resolved by old partner' || l.includes('migrated') ||
+  return l === 'resolved by old partner' || l === 'resolved by old csp' || l.includes('migrated') ||
     ['ping up', 'internet working', 'internet up', 'speed up', 'link up'].some(k => l.includes(k));
 }
 function isCaseNeedsAction(r) {
@@ -1084,11 +1084,18 @@ function cellInner(val) {
 // Migration-path remarks (incl. 'Migrated') removed 5 Aug 2026 — migration
 // doesn't exist anymore; historical cases keep whatever value they were saved
 // with, and getStatus still recognises legacy 'Migrated' rows.
+// "Partner" renamed to "CSP" in option labels 5 Aug 2026; historical rows keep
+// the old "…Partner" strings and every comparator accepts both spellings.
 const REMARKS_OPTIONS = [
-  'No Overlapping Partner/Refund','Resolved by Old Partner',
+  'No Overlapping CSP/Refund','Resolved by Old CSP',
   'OLD CSP is working to resolve complaint',
   'Cx not contactable/Reachable'
 ];
+// True for both the legacy 'Resolved by Old Partner' and new 'Resolved by Old CSP'
+function isOldCspResolved(v) {
+  const l = String(v || '').toLowerCase().trim();
+  return l === 'resolved by old partner' || l === 'resolved by old csp';
+}
 const ENGINEER_REMARKS_OPTIONS = [
   'CSP Not Responding',
   'Customer Plan Expired',
@@ -1106,9 +1113,9 @@ function mapOldRemark(raw) {
   if (!raw || !raw.trim()) return null;
   const r = raw.trim().toLowerCase();
   if (REMARKS_OPTIONS.includes(raw.trim())) return null; // already standard
-  if (r.includes('no overlapping') || r.includes('no overlap')) return 'No Overlapping Partner/Refund';
+  if (r.includes('no overlapping') || r.includes('no overlap')) return 'No Overlapping CSP/Refund';
   if (r.includes('working to resolve') || (r.includes('csp') && r.includes('working'))) return 'OLD CSP is working to resolve complaint';
-  if (r.includes('resolved by old') || r.includes('old partner')) return 'Resolved by Old Partner';
+  if (r.includes('resolved by old') || r.includes('old partner') || r.includes('old csp')) return 'Resolved by Old CSP';
   if (r.includes('not possible')) return 'Migration not possible/Refund';
   if (r.includes('in progress') || r.includes('wip')) return 'Migration is in Progress';
   if (r.includes('not contactable') || r.includes('not reachable') || r.includes('cnc') || r.includes('cnr') || r.includes('not picking') || r.includes('unreachable')) return 'Cx not contactable/Reachable';
@@ -1558,7 +1565,7 @@ function rowMigDk(r) {
 function getStatus(r) {
   if (effectiveVal(r, 14).trim() !== '') return 'Migrated';
   const g = effectiveVal(r, 8).toLowerCase();
-  if (g === 'resolved by old partner') return 'Ping Up';
+  if (isOldCspResolved(g)) return 'Ping Up';
   const subcat = effectiveVal(r, 4).toLowerCase();
   const pingKw = ['ping up', 'internet working', 'internet up', 'speed up', 'link up'];
   const pingSubcats = ['internet supply down', 'recharge done but no internet'];
@@ -2317,7 +2324,7 @@ function renderReports() {
     // disposition folder (Primary / Plan active / Plan inactive / Known
     // outage), not a category — the real category sits after the '|'.
     const full = s.toLowerCase();
-    if (/misbehav/.test(full)) return 'Partner Misbehavior';
+    if (/misbehav/.test(full)) return 'CSP Misbehavior';
     if (/shift|hifting/.test(full)) return 'Shifting Request';
     if (/chat/.test(full)) return 'Chat tickets';
     if (/internet|nternet|supply down|slow speed|frequent disconnection|recharge done|speed issue|ping/.test(full)) return 'Internet Issues';
@@ -2373,7 +2380,9 @@ function renderReports() {
   tatPctTable('sheetCxTat', r => remarkTs(r) > 0 && isResolutionRemark(r[8]), remarkTs, cxActTs, true);
 
   // 4+5. Migration team remarks — counts and %
-  const remOf = r => effectiveVal(r, 8) || 'No update available';
+  // Display remarks with "CSP" wording; legacy "…Partner" values merge into
+  // the same row as their renamed equivalents.
+  const remOf = r => (effectiveVal(r, 8) || 'No update available').replace(/partner/gi, 'CSP');
   const remCounts = {};
   grandList.forEach(r => { const m = remOf(r); remCounts[m] = (remCounts[m] || 0) + 1; });
   const remSpecs = Object.keys(remCounts).sort((a, b) => remCounts[b] - remCounts[a]).slice(0, 12)
@@ -2395,7 +2404,7 @@ function renderReports() {
   sheetTable('sheetRemarksPct', 'Remark', remSpecs, (spec, list) => {
     if (!list.length) return { text: '-' };
     const v = Math.round(list.filter(r => remOf(r) === spec.key).length / list.length * 100);
-    const isGood = /resolved by old partner|^migrated$/i.test(spec.key);
+    const isGood = /resolved by old (partner|csp)|^migrated$/i.test(spec.key);
     const isBad  = /no update|not possible|not contactable/i.test(spec.key);
     return { text: v + '%', bg: isGood ? (v >= 40 ? GOOD : null) : isBad ? heatBad(v) : null };
   });
@@ -2519,7 +2528,7 @@ function tatClockInner(deadline) {
 }
 function tatClockText(r) {
   if (!caseStartTs(r)) return '';
-  if (effectiveVal(r, 8).toLowerCase() === 'resolved by old partner') {
+  if (isOldCspResolved(effectiveVal(r, 8))) {
     const left = frozenTatLeft(r);
     if (left === null) return 'Stopped';
     return left <= 0 ? 'Expired (frozen)' : fmtHm(left) + ' left (frozen)';
@@ -2550,8 +2559,8 @@ function fmtHm(ms) {
 function makeTatClockCell(r) {
   // Pre-launch cases (added before the 48h flag existed) — no clock at all
   if (!caseStartTs(r)) return '<td style="color:var(--muted)">—</td>';
-  // "Resolved by Old Partner" → clock STOPS and freezes at the time the remark was set
-  if (effectiveVal(r, 8).toLowerCase() === 'resolved by old partner') {
+  // "Resolved by Old CSP" (or legacy "…Old Partner") → clock STOPS and freezes at the time the remark was set
+  if (isOldCspResolved(effectiveVal(r, 8))) {
     const left = frozenTatLeft(r);
     const frozen = left === null
       ? '<span class="badge badge-blue">&#x23F8; Stopped</span>'
@@ -2686,7 +2695,7 @@ function renderTable(allTableRows) {
 // ── Download CSV ──
 function downloadCSV() {
   const headers = [
-    '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Customer Name','Partner',
+    '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Customer Name','CSP',
     'Sub-category','TAT','48h TAT','Cx Action','Ground Remarks','Remarks Updated At','Engineer','Engineer Assigned At',
     'Engineer Remarks','Owner','Pending Since','Migration Date','Status','Ticket URL',
     'Col12','Col13'
