@@ -187,6 +187,7 @@ async function syncRefundSheet() {
   const iS = H.indexOf('refund status');
   const iA = H.findIndex(h => h === 'refund amount');
   const iA2 = H.findIndex(h => h.startsWith('refund amount (plan'));
+  const iR = H.indexOf('router recovered');
   if (iT < 0 || iS < 0) throw new Error('expected columns not found in sheet');
   const out = {};
   rows.slice(1).forEach(r => {
@@ -197,10 +198,24 @@ async function syncRefundSheet() {
     const amt = parseFloat(String(r[iA] || '').replace(/[^\d.]/g, '')) ||
                 parseFloat(String(r[iA2] || '').replace(/[^\d.]/g, '')) || 0;
     const ts = Date.parse(r[0]) || 0;
-    if (!out[t] || ts >= out[t].t) out[t] = { s: status, a: amt, t: ts };
+    const rec = /^y/i.test(String(r[iR] || '').trim()) ? 'Yes' : 'No';
+    const prev = out[t];
+    if (!prev || ts >= prev.t) out[t] = { s: status, a: amt, t: ts, p: (rec === 'Yes' || (prev && prev.p === 'Yes')) ? 'Yes' : rec };
+    else if (rec === 'Yes') prev.p = 'Yes';
   });
   await fbPut('/refund_sheet', out);
   log(`Refund sheet sync: ${Object.keys(out).length} refund-done tickets mirrored to /refund_sheet.`);
+
+  // Backfill device_picked_up from the sheet's "Router Recovered" column —
+  // only where the tracker field is still empty (never overrides a human edit).
+  const cases = await fbGet('/cases') || {};
+  let pk = 0;
+  for (const [k, c] of Object.entries(cases)) {
+    if (!c || c.device_picked_up) continue;
+    const e = out[String(c.ticket_no || '').replace(/\D/g, '')];
+    if (e && e.p === 'Yes') { await fbPatch('/cases/' + k, { device_picked_up: 'Yes' }); pk++; }
+  }
+  if (pk) log(`Device pickup: set 'Yes' on ${pk} case(s) from Router Recovered.`);
 }
 
 // ── Pro-rata refund amounts (auto-compute) ───────────────────────────────────
