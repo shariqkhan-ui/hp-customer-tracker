@@ -704,7 +704,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <div id="tabRefund" style="display:none">
     <div class="report-card">
       <h3>&#x1F4B8; Refund Done — completed refunds with pro-rata amount</h3>
-      <p class="rc-sub">Cases refunded per the <b>Finance sheet</b> (synced every 30 min from Form Responses 2) or marked <b>Refund Done</b> by the Cx team here. Amount = tracker pro-rata figure if set, else the Finance sheet amount. Click an amount to edit/override it.</p>
+      <p class="rc-sub">Cases <b>added on/after 29 Jul</b> (48h-flag era) refunded per the <b>Finance sheet</b> (synced every 30 min from Form Responses 2) or marked <b>Refund Done</b> by the Cx team here. Amount = tracker pro-rata figure if set, else the Finance sheet amount. Click an amount to edit/override it.</p>
       <div style="display:flex;gap:26px;flex-wrap:wrap;margin-bottom:14px">
         <div><div style="font-size:24px;font-weight:800;color:var(--green)" id="rfDoneCount">—</div><div style="font-size:11px;color:var(--muted)">REFUNDS DONE</div></div>
         <div><div style="font-size:24px;font-weight:800;color:var(--green)" id="rfDoneTotal">—</div><div style="font-size:11px;color:var(--muted)">TOTAL REFUNDED (&#8377;)</div></div>
@@ -2169,7 +2169,10 @@ loadRefundSheet();
 const sheetOf = t => refundSheet[String(t || '').replace(/\D/g, '')] || null;
 
 function renderRefundTab() {
-  const base = visRows.length || Object.keys(msState).some(k => msState[k].size) ? visRows : allRows;
+  const filtered = visRows.length || Object.keys(msState).some(k => msState[k].size) ? visRows : allRows;
+  // Only flag-era cases (added on/after the 29 Jul 48h launch) — legacy
+  // refunds from before the flag are out of scope for this tab.
+  const base = filtered.filter(r => rowStartTsAny(r) >= TAT_LAUNCH_TS);
   const done = base.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetOf(r[1]));
   const pend = base.filter(r => effectiveVal(r, 23) === 'Refund Pending' && !sheetOf(r[1]));
   const amtOf = r => (r[24] !== '' && r[24] != null) ? Number(r[24]) : (sheetOf(r[1]) ? Number(sheetOf(r[1]).a) || 0 : 0);
