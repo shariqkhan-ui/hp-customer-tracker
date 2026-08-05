@@ -2345,13 +2345,16 @@ function renderReports() {
     { label: '>72 hrs',   test: h => h >= 72 },
     { label: 'No update available', noupd: true }
   ];
-  function tatPctTable(elId, baseFn, fromFn, toFn) {
+  function tatPctTable(elId, baseFn, fromFn, toFn, clampNeg) {
+    // clampNeg: a "to" timestamp EARLIER than "from" counts as a zero gap
+    // (e.g. Kapture closed before the engineer set the tracker remark) rather
+    // than being dumped into "No update available".
     sheetTable(elId, 'TAT', BUCKETS, (spec, list) => {
       const base = list.filter(baseFn);
       if (!base.length) return { text: '-' };
-      const ok = r => { const t = toFn(r), f = fromFn(r); return t > 0 && f > 0 && t >= f; };
+      const ok = r => { const t = toFn(r), f = fromFn(r); return t > 0 && f > 0 && (clampNeg || t >= f); };
       const n = spec.noupd ? base.filter(r => !ok(r)).length
-        : base.filter(r => ok(r) && spec.test((toFn(r) - fromFn(r)) / 3600000)).length;
+        : base.filter(r => ok(r) && spec.test(Math.max(0, toFn(r) - fromFn(r)) / 3600000)).length;
       const v = Math.round(n / base.length * 100);
       const bg = spec.good ? GOOD : spec.noupd ? (v >= 5 ? ROSE : null) : heatBad(v);
       return { text: v + '%', bg };
@@ -2359,12 +2362,13 @@ function renderReports() {
   }
   tatPctTable('sheetAssignTat', r => startOf(r) > 0, startOf, assignTs);
   tatPctTable('sheetRevertTat', r => assignTs(r) > 0, assignTs, remarkTs);
-  // Cx closure: engineer closed (resolved-type remark) → PFT completed the
-  // ticket in Kapture (FINAL_RESOLVED_TIME, synced by the cron); falls back to
-  // the tracker's Cx Action timestamp when Kapture hasn't closed yet.
-  const isResRemark = r => { const rl = effectiveVal(r, 8).toLowerCase(); return RESOLVED_KW.some(kw => rl.includes(kw)); };
+  // Cx closure: engineer closed (TRUE resolution remark — isResolutionRemark,
+  // which includes 'Resolved by Old Partner'; the old RESOLVED_KW list missed
+  // it and shrank the base from ~550 to 16) → PFT completed the ticket in
+  // Kapture (FINAL_RESOLVED_TIME, synced by the cron); falls back to the
+  // tracker's Cx Action timestamp when Kapture hasn't closed yet.
   const cxActTs = r => Number(r[28]) || Number(r[25]) || 0;
-  tatPctTable('sheetCxTat', r => remarkTs(r) > 0 && isResRemark(r), remarkTs, cxActTs);
+  tatPctTable('sheetCxTat', r => remarkTs(r) > 0 && isResolutionRemark(r[8]), remarkTs, cxActTs, true);
 
   // 4+5. Migration team remarks — counts and %
   const remOf = r => effectiveVal(r, 8) || 'No update available';
