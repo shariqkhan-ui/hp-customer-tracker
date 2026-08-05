@@ -1081,10 +1081,11 @@ function cellInner(val) {
     : '<span class="cell-display" style="color:var(--muted)">&#x2014;</span>';
   return disp + '<span class="edit-hint">&#x270F;</span>';
 }
-// Migration-path remarks removed 5 Aug 2026 (migration doesn't exist anymore);
-// historical cases keep whatever value they were saved with.
+// Migration-path remarks (incl. 'Migrated') removed 5 Aug 2026 — migration
+// doesn't exist anymore; historical cases keep whatever value they were saved
+// with, and getStatus still recognises legacy 'Migrated' rows.
 const REMARKS_OPTIONS = [
-  'Migrated','No Overlapping Partner/Refund','Resolved by Old Partner',
+  'No Overlapping Partner/Refund','Resolved by Old Partner',
   'OLD CSP is working to resolve complaint',
   'Cx not contactable/Reachable'
 ];
