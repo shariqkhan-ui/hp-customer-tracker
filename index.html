@@ -1081,11 +1081,12 @@ function cellInner(val) {
     : '<span class="cell-display" style="color:var(--muted)">&#x2014;</span>';
   return disp + '<span class="edit-hint">&#x270F;</span>';
 }
+// Migration-path remarks removed 5 Aug 2026 (migration doesn't exist anymore);
+// historical cases keep whatever value they were saved with.
 const REMARKS_OPTIONS = [
   'Migrated','No Overlapping Partner/Refund','Resolved by Old Partner',
   'OLD CSP is working to resolve complaint',
-  'Migration is in Progress','Cx not contactable/Reachable',
-  'Migration not possible/Refund','Customer not interested in Migration'
+  'Cx not contactable/Reachable'
 ];
 const ENGINEER_REMARKS_OPTIONS = [
   'CSP Not Responding',
