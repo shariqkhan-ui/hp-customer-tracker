@@ -731,7 +731,6 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div style="font-size:11px;color:#7a5c6e;padding:6px 4px 0">Engineer close = resolved-type Ground Remark; Cx close = Kapture completion (FINAL_RESOLVED_TIME, "disposed by PFT", synced every 30 min) or the tracker's Cx Action timestamp. "No update available" = engineer closed but PFT hasn't completed the Kapture ticket yet.</div>
     </div>
     <div class="sheet-panel"><div class="sheet-title"><span>NQT team remarks</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRemarks','nqt-remarks')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRemarks"></div></div>
-    <div class="sheet-panel"><div class="sheet-title"><span>NQT team remarks %</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRemarksPct','nqt-remarks-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRemarksPct"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Average TAT (in hours)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAvgTat','average-tat-hours')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAvgTat"></div></div>
     <div class="report-card">
       <h3>&#x1F4DE; C. Cx closure time after engineer closed</h3>
@@ -2388,14 +2387,6 @@ function renderReports() {
     .map(m => ({ label: m, key: m }));
   sheetTable('sheetRemarks', 'Remark', remSpecs.concat([{ label: 'Grand Total', gtot: true }]), (spec, list) =>
     ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => remOf(r) === spec.key).length, list.length || 1) }));
-  sheetTable('sheetRemarksPct', 'Remark', remSpecs, (spec, list) => {
-    if (!list.length) return { text: '-' };
-    const v = Math.round(list.filter(r => remOf(r) === spec.key).length / list.length * 100);
-    const isGood = /resolved by old (partner|csp)|^migrated$/i.test(spec.key);
-    const isBad  = /no update|not possible|not contactable/i.test(spec.key);
-    return { text: v + '%', bg: isGood ? (v >= 40 ? GOOD : null) : isBad ? heatBad(v) : null };
-  });
-
   // 6. Average TAT (hours)
   const avgOf = (list, fromFn, toFn) => {
     const vals = list.map(r => { const f = fromFn(r), t = toFn(r); return (f > 0 && t > 0 && t >= f) ? (t - f) / 3600000 : null; }).filter(v => v !== null);
