@@ -203,6 +203,75 @@ async function syncRefundSheet() {
   log(`Refund sheet sync: ${Object.keys(out).length} refund-done tickets mirrored to /refund_sheet.`);
 }
 
+// ── Pro-rata refund amounts (auto-compute) ───────────────────────────────────
+// For every flag-era case (added ≥ 29 Jul) with no refund_amount yet:
+// refund = (amount paid ÷ plan duration days) × plan days REMAINING at the
+// moment the case entered the tracker. Plan looked up by the tracker mobile,
+// falling back to the account's registered mobile via SERVICE_TICKET_MODEL
+// (tracker mobile ≠ registered mobile for some customers). No active paid
+// plan at complaint (lapsed/churned/free) → 0.
+const TAT_LAUNCH_MS = Date.parse('2026-07-29T00:00:00+05:30');
+
+async function computeProRataAmounts(apiKey) {
+  const all = await fbGet('/cases') || {};
+  const targets = Object.entries(all).map(([key, c]) => ({ key, c }))
+    .filter(({ c }) => {
+      if (!c || !c.ticket_no) return false;
+      const ts = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+      if (ts < TAT_LAUNCH_MS) return false;
+      return c.refund_amount === undefined || c.refund_amount === null || c.refund_amount === '';
+    })
+    .slice(0, 300);  // per-run cap; the half-hourly cadence clears any backlog fast
+  if (!targets.length) { log('Pro-rata: no cases need amounts.'); return; }
+  log(`Pro-rata: computing amounts for ${targets.length} case(s)…`);
+
+  const mobOf = c => String(c.mobile || '').replace(/\D/g, '').slice(-10);
+
+  const fetchPlans = async (mobs) => {
+    if (!mobs.length) return [];
+    const sql = "SELECT MOBILE, TOTAL_PAID, PLAN_START_TIME, PLAN_END_TIME FROM DYNAMODB.HOME_ROUTER_PLAN_INFO " +
+      "WHERE PLAN_END_TIME >= DATEADD(DAY, -45, CURRENT_TIMESTAMP()) AND MOBILE IN (" +
+      mobs.map(m => "'" + m + "'").join(',') + ")";
+    return queryMetabase(sql, apiKey);
+  };
+  const plansBy = {};
+  const addPlans = rows => rows.forEach(r => {
+    (plansBy[r.MOBILE] = plansBy[r.MOBILE] || []).push({
+      paid: Number(r.TOTAL_PAID) || 0, st: Date.parse(r.PLAN_START_TIME), en: Date.parse(r.PLAN_END_TIME)
+    });
+  });
+  addPlans(await fetchPlans([...new Set(targets.map(({ c }) => mobOf(c)).filter(m => m.length === 10))]));
+
+  // Fallback: registered mobile for cases whose tracker mobile has no plans
+  const regBy = {};
+  const noPlan = targets.filter(({ c }) => !(plansBy[mobOf(c)] || []).length);
+  if (noPlan.length) {
+    const sql2 = "SELECT KAPTURE_TICKET_ID, CUSTOMER_MOBILE FROM PUBLIC.SERVICE_TICKET_MODEL WHERE KAPTURE_TICKET_ID IN (" +
+      noPlan.map(({ c }) => "'" + String(c.ticket_no).trim() + "'").join(',') + ")";
+    (await queryMetabase(sql2, apiKey)).forEach(r => {
+      const reg = String(r.CUSTOMER_MOBILE || '').replace(/\D/g, '').slice(-10);
+      if (reg.length === 10) regBy[String(r.KAPTURE_TICKET_ID).trim()] = reg;
+    });
+    addPlans(await fetchPlans([...new Set(Object.values(regBy))].filter(m => !plansBy[m])));
+  }
+
+  let set = 0, nonZero = 0;
+  for (const { key, c } of targets) {
+    const complaint = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+    const plans = (plansBy[mobOf(c)] || []).concat(plansBy[regBy[String(c.ticket_no).trim()]] || []);
+    const active = plans.filter(p => p.st <= complaint && p.en > complaint).sort((a, b) => b.st - a.st)[0];
+    let amt = 0;
+    if (active && active.paid > 0) {
+      const dur = (active.en - active.st) / 86400000;
+      const rem = (active.en - complaint) / 86400000;
+      amt = Math.max(0, Math.round(active.paid / dur * rem));
+    }
+    await fbPatch('/cases/' + key, { refund_amount: amt });
+    set++; if (amt > 0) nonZero++;
+  }
+  log(`Pro-rata: set refund_amount on ${set} case(s) (${nonZero} non-zero).`);
+}
+
 // ── Add a batch of tickets to Firebase (skip any already tracked) ────────────
 async function addTicketsToFirebase(tickets, sourceLabel) {
   // Dedup within this batch — the mobile join can yield duplicate rows per ticket.
@@ -477,6 +546,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // ── Step 2.5: Mirror the Finance refund sheet into /refund_sheet ──
   // Failure here must never break the ticket sync.
   try { await syncRefundSheet(); } catch (e) { log('WARN: refund sheet sync failed — ' + e.message); }
+
+  // ── Step 2.6: Auto-compute pro-rata refund amounts for new flag-era cases ──
+  try { await computeProRataAmounts(apiKey); } catch (e) { log('WARN: pro-rata compute failed — ' + e.message); }
 
   // ── Step 3: Notify Slack (suppressed entirely during a silent backfill) ──
   const slackToken = process.env.SLACK_BOT_TOKEN;
