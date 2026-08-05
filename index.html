@@ -732,7 +732,6 @@ table.main-tbl tbody tr:hover { background: #220020; }
     </div>
     <div class="sheet-panel"><div class="sheet-title"><span>NQT team remarks</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRemarks','nqt-remarks')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRemarks"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>NQT team remarks %</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRemarksPct','nqt-remarks-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRemarksPct"></div></div>
-    <div class="sheet-panel"><div class="sheet-title"><span>Engineer remarks</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetEngRemarks','engineer-remarks')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetEngRemarks"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Average TAT (in hours)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAvgTat','average-tat-hours')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAvgTat"></div></div>
     <div class="report-card">
       <h3>&#x1F4DE; C. Cx closure time after engineer closed</h3>
@@ -2389,20 +2388,6 @@ function renderReports() {
     .map(m => ({ label: m, key: m }));
   sheetTable('sheetRemarks', 'Remark', remSpecs.concat([{ label: 'Grand Total', gtot: true }]), (spec, list) =>
     ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => remOf(r) === spec.key).length, list.length || 1) }));
-  // Engineer remarks — counts by period. The engineer's update lives in EITHER
-  // the Engineer Remarks dropdown or the Ground Remarks field (same thing in
-  // practice), so a case shows its engineer remark when set, else its ground
-  // remark; 'No update available' = neither filled. Every dropdown option is
-  // always a row, even at zero.
-  const engRemOf = r => (effectiveVal(r, 22) || effectiveVal(r, 8) || 'No update available').replace(/partner/gi, 'CSP');
-  const engRemCounts = {};
-  grandList.forEach(r => { const m = engRemOf(r); engRemCounts[m] = (engRemCounts[m] || 0) + 1; });
-  ENGINEER_REMARKS_OPTIONS.forEach(o => { if (!(o in engRemCounts)) engRemCounts[o] = 0; });
-  const engRemSpecs = Object.keys(engRemCounts).sort((a, b) => engRemCounts[b] - engRemCounts[a]).slice(0, 20)
-    .map(m => ({ label: m, key: m }));
-  sheetTable('sheetEngRemarks', 'Engineer Remark', engRemSpecs.concat([{ label: 'Grand Total', gtot: true }]), (spec, list) =>
-    ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => engRemOf(r) === spec.key).length, list.length || 1) }));
-
   sheetTable('sheetRemarksPct', 'Remark', remSpecs, (spec, list) => {
     if (!list.length) return { text: '-' };
     const v = Math.round(list.filter(r => remOf(r) === spec.key).length / list.length * 100);
