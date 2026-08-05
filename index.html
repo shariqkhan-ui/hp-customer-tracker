@@ -1711,7 +1711,7 @@ function setupRealtime() {
 
 // ── Multi-Select Filter Logic ──
 const MS_IDS = ['fWeek','fDate','fPartner','fSubcat','fTat','fStatus','fEngineer'];
-const MS_LABELS = { fWeek:'All Weeks', fDate:'All Dates', fPartner:'All Partners', fSubcat:'All Categories', fTat:'All TAT', fStatus:'All Statuses', fEngineer:'All Engineers' };
+const MS_LABELS = { fWeek:'All Weeks', fDate:'All Dates', fPartner:'All CSPs', fSubcat:'All Categories', fTat:'All TAT', fStatus:'All Statuses', fEngineer:'All Engineers' };
 const msState = {}; MS_IDS.forEach(id => msState[id] = new Set());
 
 function toggleMs(id) {
@@ -2220,7 +2220,7 @@ function renderRefundTab() {
   const preAmt  = preDone.reduce((a, r) => a + amtOf(r), 0);
   const prePicked = preDone.filter(r => effectiveVal(r, 27) === 'Yes').length;
   document.getElementById('rfBaseline').innerHTML = preDone.length
-    ? '<b>Baseline (pre-29 Jul world, for reference only):</b> ' + preDone.length + ' refunds done totalling <b>' + inr(preAmt) + '</b> across ' + preBase.length.toLocaleString('en-IN') + ' legacy cases &nbsp;·&nbsp; &#x1F4E6; device picked up: <b>' + prePicked + ' / ' + preDone.length + '</b> (' + Math.round(prePicked / preDone.length * 100) + '%) — excluded from the numbers above.'
+    ? '<b>Baseline (pre-29 Jul world, for reference only):</b> ' + preDone.length + ' refunds done totalling <b>' + inr(preAmt) + '</b> across ' + preBase.length.toLocaleString('en-IN') + ' legacy CSP cases &nbsp;·&nbsp; &#x1F4E6; device picked up: <b>' + prePicked + ' / ' + preDone.length + '</b> (' + Math.round(prePicked / preDone.length * 100) + '%) — excluded from the numbers above.'
     : '';
 
   const doneTs = r => Number(r[25]) || (sheetOf(r[1]) ? Number(sheetOf(r[1]).t) || 0 : 0);
