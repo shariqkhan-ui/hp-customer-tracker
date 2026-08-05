@@ -287,6 +287,41 @@ async function computeProRataAmounts(apiKey) {
   log(`Pro-rata: set refund_amount on ${set} case(s) (${nonZero} non-zero).`);
 }
 
+// ── Kapture resolution sync ──────────────────────────────────────────────────
+// Stamps each flag-era case with the PFT completion from SERVICE_TICKET_MODEL
+// (FINAL_RESOLVED_TIME + FINAL_RESOLVED_NAME) — feeds the "Cx closure TAT"
+// report. Kapture timestamps are IST wall-clock without a zone marker.
+async function syncKaptureResolution(apiKey) {
+  const all = await fbGet('/cases') || {};
+  const targets = Object.entries(all).filter(([, c]) => {
+    if (!c || !c.ticket_no) return false;
+    const ts = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+    return ts >= TAT_LAUNCH_MS && !c.kapture_resolved_at;
+  }).slice(0, 400);
+  if (!targets.length) { log('Kapture resolution: nothing to sync.'); return; }
+  const ids = targets.map(([, c]) => "'" + String(c.ticket_no).trim() + "'").join(',');
+  const rows = await queryMetabase(
+    'SELECT KAPTURE_TICKET_ID, FINAL_RESOLVED_TIME, FINAL_RESOLVED_NAME FROM PUBLIC.SERVICE_TICKET_MODEL ' +
+    'WHERE IS_RESOLVED = 1 AND FINAL_RESOLVED_TIME IS NOT NULL AND KAPTURE_TICKET_ID IN (' + ids + ')', apiKey);
+  const istMs = v => {
+    const s = String(v || '').trim().replace(' ', 'T');
+    if (!s) return 0;
+    return Date.parse(/Z$|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + '+05:30') || 0;
+  };
+  const byT = {};
+  rows.forEach(r => { byT[String(r.KAPTURE_TICKET_ID).trim()] = r; });
+  let set = 0;
+  for (const [k, c] of targets) {
+    const m = byT[String(c.ticket_no).trim()];
+    if (!m) continue;
+    const ts = istMs(m.FINAL_RESOLVED_TIME);
+    if (!ts) continue;
+    await fbPatch('/cases/' + k, { kapture_resolved_at: ts, kapture_resolved_by: String(m.FINAL_RESOLVED_NAME || '') });
+    set++;
+  }
+  log(`Kapture resolution: stamped ${set} case(s) with PFT completion time.`);
+}
+
 // ── Add a batch of tickets to Firebase (skip any already tracked) ────────────
 async function addTicketsToFirebase(tickets, sourceLabel) {
   // Dedup within this batch — the mobile join can yield duplicate rows per ticket.
@@ -564,6 +599,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
 
   // ── Step 2.6: Auto-compute pro-rata refund amounts for new flag-era cases ──
   try { await computeProRataAmounts(apiKey); } catch (e) { log('WARN: pro-rata compute failed — ' + e.message); }
+
+  // ── Step 2.7: Stamp Kapture PFT completion times (Cx closure TAT report) ──
+  try { await syncKaptureResolution(apiKey); } catch (e) { log('WARN: Kapture resolution sync failed — ' + e.message); }
 
 
   // ── Step 3: Notify Slack (suppressed entirely during a silent backfill) ──
