@@ -1647,6 +1647,7 @@ function setupRealtime() {
         // Single case added or replaced: path = '/ticketKey'
         if (!realtimeReady) return;
         var tKey = path.replace(/^\//, '');
+        if (tKey.indexOf('__') === 0) return; // __audit__/__users__ writes — not cases
         if (!data || !data.ticket_no) return;
         var idx = allRows.findIndex(function(r) { return ticketKey(r[1]||'') === tKey; });
         if (idx !== -1) { allRows[idx] = dbRowToArray(data); }
@@ -1663,7 +1664,7 @@ function setupRealtime() {
       var payload;
       try { payload = JSON.parse(e.data); } catch(ex) { return; }
       var tKey = (payload.path || '').replace(/^\//, '');
-      if (!tKey) return;
+      if (!tKey || tKey.indexOf('__') === 0) return;
       // Re-fetch just this case to get the full updated object
       fbGet('/cases/' + tKey).then(function(data) {
         if (!data || !data.ticket_no) return;
@@ -2939,12 +2940,15 @@ async function submitAddCase() {
       case_added_on: createdDate, ticket_no: ticket, mobile: mobile, subcat: subcat,
       cust_name: name, partner: partner, tat: tat,
       remarks: '', easy_remarks: '', engineer: '', ticket_url: '', col12: '', col13: '', migration_date: '',
-      owner_assigned_at: addedAt, source: 'manual', added_at: addedAt
+      owner_assigned_at: addedAt, source: 'manual', added_at: addedAt,
+      added_by: getUser()
     });
   } catch(e) {
     toast('ERROR saving to database: ' + e.message, 'error');
     return; // Do NOT add to local UI — case was not saved
   }
+  // Record WHO added the case — manual adds were previously anonymous
+  addAuditEntry(ticket, 'case_added', '', name + ' / ' + mobile + ' / ' + partner);
 
   // Insert succeeded — now update local UI
   // col 0 = Case Added On, col 1 = Ticket, col 2 = Created Date (blank), col 3 = Mobile...
@@ -3087,14 +3091,27 @@ async function saveViewerPin() {
     toast('Viewer PIN saved \u2713 — share this PIN for read-only audit access', 'success');
   } catch(e) { toast('Error saving viewer PIN: ' + e.message, 'error'); }
 }
-// ── Audit log: stored in Firebase RTDB via REST POST (push = auto-key) ──
+// ── Audit log ──
+// Written under /cases/__audit__ — NOT /audit_log: that node was made
+// write-protected around 7 Mar 2026, and every audit write since then failed
+// silently (5 months of edits unrecorded). /cases stays writable, and keys
+// starting with "__" are already excluded from case loading.
 function addAuditEntry(ticket, field, oldVal, newVal) {
   if (String(oldVal||'').trim() === String(newVal||'').trim()) return;
-  fbPost('/audit_log', {
+  fbPost('/cases/__audit__', {
     user_name: getUser(), ticket_no: String(ticket||''),
     field: String(field||''), old_value: String(oldVal||''), new_value: String(newVal||''),
     ts: new Date().toISOString()
   }).catch(function(e) { console.warn('Audit log error:', e.message); });
+}
+// Legacy pre-Mar-2026 entries live in /audit_log (now read-only); new ones in
+// /cases/__audit__ — readers merge both.
+async function fetchAuditEntries() {
+  const results = await Promise.all([
+    fbGet('/audit_log').catch(function() { return null; }),
+    fbGet('/cases/__audit__').catch(function() { return null; })
+  ]);
+  return Object.values(results[0] || {}).concat(Object.values(results[1] || {}));
 }
 async function openAuditModal() {
   const adminPin = localStorage.getItem(AUDIT_PIN_KEY);
@@ -3114,8 +3131,7 @@ async function openAuditModal() {
   document.getElementById('auditCount').textContent = 'Loading\u2026';
   document.getElementById('auditBody').innerHTML = '';
   try {
-    const raw = await fbGet('/audit_log') || {};
-    const entries = Object.values(raw).sort(function(a, b) { return b.ts > a.ts ? 1 : -1; }).slice(0, 500);
+    const entries = (await fetchAuditEntries()).sort(function(a, b) { return b.ts > a.ts ? 1 : -1; }).slice(0, 500);
     renderAuditLog(entries);
   } catch(e) {
     toast('Failed to load audit log: ' + e.message, 'error');
@@ -3128,7 +3144,7 @@ function renderAuditLog(log) {
   document.getElementById('auditCount').textContent = log.length + ' edit(s) recorded';
   if (!log.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-  const FIELD_LABEL = { remarks: 'Ground Remarks', engineer: 'Engineer Name', migration_date: 'Migration Date', engineer_remarks: 'Engineer Remarks', owner: 'Owner', migration_status: 'Migration Status', cx_action: 'Cx Action' };
+  const FIELD_LABEL = { remarks: 'Ground Remarks', engineer: 'Engineer Name', migration_date: 'Migration Date', engineer_remarks: 'Engineer Remarks', owner: 'Owner', migration_status: 'Migration Status', cx_action: 'Cx Action', refund_amount: 'Refund Amount', device_picked_up: 'Device Picked Up', case_added: 'Case Added (manual)' };
   tbody.innerHTML = log.map(function(e) {
     const dt = new Date(e.ts).toLocaleString('en-IN');
     return '<tr style="border-bottom:1px solid #1a0018">' +
@@ -3143,8 +3159,7 @@ function renderAuditLog(log) {
 }
 async function downloadAuditCSV() {
   try {
-    const raw = await fbGet('/audit_log') || {};
-    const entries = Object.values(raw).sort(function(a, b) { return b.ts > a.ts ? 1 : -1; });
+    const entries = (await fetchAuditEntries()).sort(function(a, b) { return b.ts > a.ts ? 1 : -1; });
     const q = function(v) { return '"' + String(v||'').replace(/"/g,'""') + '"'; };
     const lines = [
       ['Date & Time','Edited By','Ticket','Field','Old Value','New Value'].map(q).join(','),
