@@ -2175,7 +2175,13 @@ function renderRefundTab() {
   // refunds from before the flag are out of scope for this tab.
   const base = filtered.filter(r => rowStartTsAny(r) >= TAT_LAUNCH_TS);
   const done = base.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetOf(r[1]));
-  const pend = base.filter(r => effectiveVal(r, 23) === 'Refund Pending' && !sheetOf(r[1]));
+  // Pending = owes a refund but not yet refunded: breached the 48h TAT
+  // ("Need to Refund to Customer") or explicitly marked Refund Pending —
+  // and absent from the Finance sheet / not marked Done.
+  const pend = base.filter(r => {
+    if (sheetOf(r[1]) || effectiveVal(r, 23) === 'Refund Done') return false;
+    return effectiveVal(r, 23) === 'Refund Pending' || (getStatus(r) === 'Unresolved' && isTatExpired(r));
+  });
   const amtOf = r => (r[24] !== '' && r[24] != null) ? Number(r[24]) : (sheetOf(r[1]) ? Number(sheetOf(r[1]).a) || 0 : 0);
   const sum = list => list.reduce((a, r) => a + amtOf(r), 0);
   setText('rfDoneCount', done.length);
