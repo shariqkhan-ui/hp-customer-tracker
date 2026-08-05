@@ -2197,8 +2197,9 @@ function renderRefundTab() {
   const preBase = filtered.filter(r => { const t = rowStartTsAny(r); return t > 0 && t < TAT_LAUNCH_TS; });
   const preDone = preBase.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetOf(r[1]));
   const preAmt  = preDone.reduce((a, r) => a + amtOf(r), 0);
+  const prePicked = preDone.filter(r => effectiveVal(r, 27) === 'Yes').length;
   document.getElementById('rfBaseline').innerHTML = preDone.length
-    ? '<b>Baseline (pre-29 Jul world, for reference only):</b> ' + preDone.length + ' refunds done totalling <b>' + inr(preAmt) + '</b> across ' + preBase.length.toLocaleString('en-IN') + ' legacy cases — excluded from the numbers above.'
+    ? '<b>Baseline (pre-29 Jul world, for reference only):</b> ' + preDone.length + ' refunds done totalling <b>' + inr(preAmt) + '</b> across ' + preBase.length.toLocaleString('en-IN') + ' legacy cases &nbsp;·&nbsp; &#x1F4E6; device picked up: <b>' + prePicked + ' / ' + preDone.length + '</b> (' + Math.round(prePicked / preDone.length * 100) + '%) — excluded from the numbers above.'
     : '';
 
   const doneTs = r => Number(r[25]) || (sheetOf(r[1]) ? Number(sheetOf(r[1]).t) || 0 : 0);
