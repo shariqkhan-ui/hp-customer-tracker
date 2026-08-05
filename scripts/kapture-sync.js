@@ -152,6 +152,57 @@ async function queryMetabase(sql, apiKey) {
   });
 }
 
+// ── Finance refund sheet → /refund_sheet ─────────────────────────────────────
+// The Finance team's "Form Responses 2" (published Google Sheet) is the source
+// of truth for completed refunds. The CSV is ~7.6MB — far too heavy for the
+// dashboard to fetch client-side — so each sync mirrors just the ticket-level
+// refund-done entries into a small /refund_sheet node the Refund tab reads.
+const REFUND_SHEET_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vREJtTEloJoNZdZe8EVsnmWrigVJJXT-ciwH7uNCUz34Q10Nj0h8KH3G74rHAh4d5zwerfk0uer7fZz/pub?gid=1692552304&single=true&output=csv';
+
+function parseCSVText(s) {
+  const rows = []; let row = [], cur = '', q = false;
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i];
+    if (q) {
+      if (c === '"') { if (s[i + 1] === '"') { cur += '"'; i++; } else q = false; }
+      else cur += c;
+    } else {
+      if (c === '"') q = true;
+      else if (c === ',') { row.push(cur); cur = ''; }
+      else if (c === '\n') { row.push(cur); rows.push(row); row = []; cur = ''; }
+      else if (c !== '\r') cur += c;
+    }
+  }
+  if (cur !== '' || row.length) { row.push(cur); rows.push(row); }
+  return rows;
+}
+
+async function syncRefundSheet() {
+  log('Fetching Finance refund sheet…');
+  const res = await fetch(REFUND_SHEET_CSV, { redirect: 'follow' });
+  if (!res.ok) throw new Error('sheet HTTP ' + res.status);
+  const rows = parseCSVText(await res.text());
+  const H = rows[0].map(h => h.trim().toLowerCase());
+  const iT = H.indexOf('kapture ticket id');
+  const iS = H.indexOf('refund status');
+  const iA = H.findIndex(h => h === 'refund amount');
+  const iA2 = H.findIndex(h => h.startsWith('refund amount (plan'));
+  if (iT < 0 || iS < 0) throw new Error('expected columns not found in sheet');
+  const out = {};
+  rows.slice(1).forEach(r => {
+    const status = String(r[iS] || '').trim();
+    if (!/refund done|refunded/i.test(status)) return;
+    const t = String(r[iT] || '').replace(/\D/g, '');
+    if (t.length < 6) return;
+    const amt = parseFloat(String(r[iA] || '').replace(/[^\d.]/g, '')) ||
+                parseFloat(String(r[iA2] || '').replace(/[^\d.]/g, '')) || 0;
+    const ts = Date.parse(r[0]) || 0;
+    if (!out[t] || ts >= out[t].t) out[t] = { s: status, a: amt, t: ts };
+  });
+  await fbPut('/refund_sheet', out);
+  log(`Refund sheet sync: ${Object.keys(out).length} refund-done tickets mirrored to /refund_sheet.`);
+}
+
 // ── Add a batch of tickets to Firebase (skip any already tracked) ────────────
 async function addTicketsToFirebase(tickets, sourceLabel) {
   // Dedup within this batch — the mobile join can yield duplicate rows per ticket.
@@ -422,6 +473,10 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   const skipped  = internetSkipped + chatSkipped;
   const enriched = internetEnriched + chatEnriched;
   log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded})  Enriched: ${enriched}  Skipped: ${skipped}`);
+
+  // ── Step 2.5: Mirror the Finance refund sheet into /refund_sheet ──
+  // Failure here must never break the ticket sync.
+  try { await syncRefundSheet(); } catch (e) { log('WARN: refund sheet sync failed — ' + e.message); }
 
   // ── Step 3: Notify Slack (suppressed entirely during a silent backfill) ──
   const slackToken = process.env.SLACK_BOT_TOKEN;

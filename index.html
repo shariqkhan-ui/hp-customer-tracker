@@ -704,7 +704,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <div id="tabRefund" style="display:none">
     <div class="report-card">
       <h3>&#x1F4B8; Refund Done — completed refunds with pro-rata amount</h3>
-      <p class="rc-sub">Cases where the Cx team marked <b>Refund Done</b>. Amount = pro-rata refund (days of plan remaining at complaint × plan daily rate). Click an amount to edit it.</p>
+      <p class="rc-sub">Cases refunded per the <b>Finance sheet</b> (synced every 30 min from Form Responses 2) or marked <b>Refund Done</b> by the Cx team here. Amount = tracker pro-rata figure if set, else the Finance sheet amount. Click an amount to edit/override it.</p>
       <div style="display:flex;gap:26px;flex-wrap:wrap;margin-bottom:14px">
         <div><div style="font-size:24px;font-weight:800;color:var(--green)" id="rfDoneCount">—</div><div style="font-size:11px;color:var(--muted)">REFUNDS DONE</div></div>
         <div><div style="font-size:24px;font-weight:800;color:var(--green)" id="rfDoneTotal">—</div><div style="font-size:11px;color:var(--muted)">TOTAL REFUNDED (&#8377;)</div></div>
@@ -714,7 +714,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       </div>
       <div class="tbl-wrap" style="max-height:none">
         <table class="rpt-table">
-          <thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Case Added</th><th>Refund Marked On</th><th class="num">Amount (&#8377;) &#x270F;</th><th>Device Picked Up &#x270F;</th><th>Cx Action</th></tr></thead>
+          <thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>Partner</th><th>Case Added</th><th>Refund Marked On</th><th class="num">Amount (&#8377;) &#x270F;</th><th>Device Picked Up &#x270F;</th><th>Source</th></tr></thead>
           <tbody id="refundBody"></tbody>
         </table>
       </div>
@@ -2147,7 +2147,7 @@ function showMainTab(t) {
   document.getElementById('tabCases').style.display   = t === 'cases'   ? '' : 'none';
   document.getElementById('tabRefund').style.display  = t === 'refund'  ? '' : 'none';
   document.getElementById('tabReports').style.display = t === 'reports' ? '' : 'none';
-  if (t === 'refund')  renderRefundTab();
+  if (t === 'refund')  { renderRefundTab(); loadRefundSheet().then(renderRefundTab); }
   if (t === 'reports') renderReports();
 }
 const inr = v => '₹' + Math.round(Number(v) || 0).toLocaleString('en-IN');
@@ -2155,31 +2155,52 @@ const ticketLink = t => t ? '<a class="ticket-link" href="https://wiomin.kapture
 const fmtTsDate = ts => ts ? new Date(Number(ts)).toLocaleString('en-IN', { timeZone:'Asia/Kolkata', day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' }) : '—';
 
 // ── Refund Done tab ──
+// Refund-done status comes from TWO sources, merged per ticket:
+//  a) Cx Action set to "Refund Done" in this tracker
+//  b) the Finance team's sheet (mirrored to /refund_sheet by the cron)
+let refundSheet = {}, refundSheetAt = 0;
+function loadRefundSheet() {
+  if (Date.now() - refundSheetAt < 5 * 60000) return Promise.resolve();
+  return fbGet('/refund_sheet').then(function(d) {
+    if (d) { refundSheet = d; refundSheetAt = Date.now(); }
+  }).catch(function() {});
+}
+loadRefundSheet();
+const sheetOf = t => refundSheet[String(t || '').replace(/\D/g, '')] || null;
+
 function renderRefundTab() {
   const base = visRows.length || Object.keys(msState).some(k => msState[k].size) ? visRows : allRows;
-  const done = base.filter(r => effectiveVal(r, 23) === 'Refund Done');
-  const pend = base.filter(r => effectiveVal(r, 23) === 'Refund Pending');
-  const sum  = list => list.reduce((a, r) => a + (Number(r[24]) || 0), 0);
+  const done = base.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetOf(r[1]));
+  const pend = base.filter(r => effectiveVal(r, 23) === 'Refund Pending' && !sheetOf(r[1]));
+  const amtOf = r => (r[24] !== '' && r[24] != null) ? Number(r[24]) : (sheetOf(r[1]) ? Number(sheetOf(r[1]).a) || 0 : 0);
+  const sum = list => list.reduce((a, r) => a + amtOf(r), 0);
   setText('rfDoneCount', done.length);
   setText('rfDoneTotal', inr(sum(done)));
   setText('rfPendCount', pend.length);
-  setText('rfPendTotal', inr(sum(pend)));
+  setText('rfPendTotal', inr(pend.reduce((a, r) => a + (Number(r[24]) || 0), 0)));
   // Device pickup: across ALL refund cases (Pending + Done)
   const refundCases = done.concat(pend);
   const picked = refundCases.filter(r => effectiveVal(r, 27) === 'Yes').length;
   setText('rfPickCount', picked + ' / ' + refundCases.length);
   setText('rfPickPct', refundCases.length ? '(' + Math.round(picked / refundCases.length * 100) + '%)' : '');
-  done.sort((a, b) => (Number(b[25])||0) - (Number(a[25])||0));
+  const doneTs = r => Number(r[25]) || (sheetOf(r[1]) ? Number(sheetOf(r[1]).t) || 0 : 0);
+  done.sort((a, b) => doneTs(b) - doneTs(a));
   const pickCell = (t, val) => '<td style="cursor:pointer" title="Click to toggle picked up / not picked up" onclick="toggleDevicePickup(\'' + esc(t).replace(/'/g,"\\'") + '\')">' +
     (val === 'Yes' ? '<span class="badge badge-green">&#x1F4E6; Picked Up</span>' : '<span class="badge badge-yellow">Not Picked</span>') + ' <span class="edit-hint">&#x270F;</span></td>';
   document.getElementById('refundBody').innerHTML = done.length ? done.map((r, i) => {
     const t = (r[1]||'').trim();
+    const sh = sheetOf(t);
+    const cxDone = effectiveVal(r, 23) === 'Refund Done';
+    const src = cxDone && sh ? '<span class="badge badge-green">Cx + Finance</span>'
+      : sh ? '<span class="badge badge-blue">Finance sheet</span>'
+      : '<span class="badge badge-green">Cx Action</span>';
+    const shownAmt = amtOf(r);
     return '<tr><td>' + (i+1) + '</td><td>' + ticketLink(t) + '</td><td>' + esc(r[3]||'') + '</td><td>' + esc(r[5]||'') + '</td><td>' + esc(r[6]||'') + '</td>' +
-      '<td>' + esc((r[0]||'').trim()) + '</td><td>' + fmtTsDate(r[25]) + '</td>' +
-      '<td class="num" style="cursor:pointer;color:var(--green);font-weight:800" title="Click to edit amount" onclick="editRefundAmt(\'' + esc(t).replace(/'/g,"\\'") + '\')">' + (r[24] !== '' && r[24] != null ? inr(r[24]) : '—') + ' &#x270F;</td>' +
+      '<td>' + esc((r[0]||'').trim()) + '</td><td>' + fmtTsDate(doneTs(r)) + '</td>' +
+      '<td class="num" style="cursor:pointer;color:var(--green);font-weight:800" title="' + (r[24] !== '' && r[24] != null ? 'Tracker pro-rata amount — click to edit' : (sh ? 'Amount from Finance sheet — click to override' : 'Click to set amount')) + '" onclick="editRefundAmt(\'' + esc(t).replace(/'/g,"\\'") + '\')">' + (shownAmt ? inr(shownAmt) : '—') + ' &#x270F;</td>' +
       pickCell(t, effectiveVal(r, 27)) +
-      '<td><span class="badge badge-green">Refund Done</span></td></tr>';
-  }).join('') : '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">No refunds marked Done yet — set Cx Action = "Refund Done" on a case to see it here</td></tr>';
+      '<td>' + src + '</td></tr>';
+  }).join('') : '<tr><td colspan="10" style="text-align:center;padding:24px;color:var(--muted)">No refunds marked Done yet — set Cx Action = "Refund Done" on a case, or wait for the Finance sheet sync</td></tr>';
 }
 async function toggleDevicePickup(ticket) {
   const row = allRows.find(r => (r[1]||'').trim() === ticket);
