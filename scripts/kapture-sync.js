@@ -325,6 +325,49 @@ async function syncKaptureResolution(apiKey) {
   log(`Kapture resolution: stamped ${set} case(s) with PFT completion time.`);
 }
 
+// ── Device pickup from DBT.DEVICE_RECOVERY_MODEL ─────────────────────────────
+// For refunded cases in the report window, mark device_picked_up when the
+// recovery model shows a PICKUP_AT / RETURN_AT for the customer ON OR AFTER
+// the case was added (old pickups from earlier churn episodes don't count).
+// Complements the Finance-sheet Router Recovered stamping; never unsets 'Yes'.
+async function syncDevicePickup(apiKey) {
+  const [all, sheet] = await Promise.all([fbGet('/cases'), fbGet('/refund_sheet')]);
+  const sheetMap = sheet || {};
+  const digits = v => String(v || '').replace(/\D/g, '');
+  const now = new Date();
+  const windowStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+  const targets = Object.entries(all || {}).filter(([, c]) => {
+    if (!c || !c.ticket_no || c.device_picked_up === 'Yes') return false;
+    const ts = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+    if (ts < windowStart) return false;
+    return c.cx_action === 'Refund Done' || !!sheetMap[digits(c.ticket_no)];
+  }).slice(0, 400);
+  if (!targets.length) { log('Device pickup: nothing to check.'); return; }
+  const tix = targets.map(([, c]) => "'" + String(c.ticket_no).trim() + "'").join(',');
+  const rows = await queryMetabase(
+    'SELECT stm.KAPTURE_TICKET_ID, MAX(drm.PICKUP_AT) AS P, MAX(drm.RETURN_AT) AS RET ' +
+    'FROM PUBLIC.SERVICE_TICKET_MODEL stm JOIN DBT.DEVICE_RECOVERY_MODEL drm ' +
+    'ON drm.CUSTOMER_ACCOUNT_ID = stm.CUSTOMER_ACCOUNT_ID ' +
+    'WHERE stm.KAPTURE_TICKET_ID IN (' + tix + ') GROUP BY 1', apiKey);
+  const istMs = v => {
+    const s = String(v || '').trim().replace(' ', 'T');
+    if (!s) return 0;
+    return Date.parse(/Z$|[+-]\d{2}:?\d{2}$/.test(s) ? s : s + '+05:30') || 0;
+  };
+  const byT = {};
+  rows.forEach(r => { byT[String(r.KAPTURE_TICKET_ID).trim()] = Math.max(istMs(r.P), istMs(r.RET)); });
+  let set = 0;
+  for (const [k, c] of targets) {
+    const ts = byT[String(c.ticket_no).trim()] || 0;
+    const added = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+    if (ts && ts >= added) {
+      await fbPatch('/cases/' + k, { device_picked_up: 'Yes', device_picked_up_at: ts });
+      set++;
+    }
+  }
+  log(`Device pickup: marked ${set} case(s) picked up via DEVICE_RECOVERY_MODEL.`);
+}
+
 // ── Add a batch of tickets to Firebase (skip any already tracked) ────────────
 async function addTicketsToFirebase(tickets, sourceLabel) {
   // Dedup within this batch — the mobile join can yield duplicate rows per ticket.
@@ -605,6 +648,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
 
   // ── Step 2.7: Stamp Kapture PFT completion times (Cx closure TAT report) ──
   try { await syncKaptureResolution(apiKey); } catch (e) { log('WARN: Kapture resolution sync failed — ' + e.message); }
+
+  // ── Step 2.8: Device pickup from the recovery model ──
+  try { await syncDevicePickup(apiKey); } catch (e) { log('WARN: device pickup sync failed — ' + e.message); }
 
 
   // ── Step 3: Notify Slack (suppressed entirely during a silent backfill) ──
