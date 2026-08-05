@@ -661,13 +661,13 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Sub-category</th>
             <th>TAT</th>
             <th>48h TAT &#x23F3;</th>
-            <th>Cx Action &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
+            <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
+            <th>Engineer Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
+            <th>Cx Action &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Migration Status &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Owner &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Pending Since</th>
-            <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
-            <th>Engineer Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Case Added On</th>
             <th>Migration Date</th>
             <th>Status</th>
@@ -681,13 +681,13 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('subcat',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
             <th></th>
-            <th><input class="col-filter" placeholder="Pending / Done" oninput="setColFilter('cxAction',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engRemarks',this.value)"></th>
+            <th><input class="col-filter" placeholder="Pending / Done" oninput="setColFilter('cxAction',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('migStatus',this.value)"></th>
             <th><input class="col-filter" placeholder="Cx / NQT" oninput="setColFilter('owner',this.value)"></th>
             <th></th>
-            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
-            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engRemarks',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('caseAdded',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('migDate',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('status',this.value)"></th>
@@ -732,6 +732,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
     </div>
     <div class="sheet-panel"><div class="sheet-title"><span>NQT team remarks</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRemarks','nqt-remarks')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRemarks"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>NQT team remarks %</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRemarksPct','nqt-remarks-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRemarksPct"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>Engineer remarks</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetEngRemarks','engineer-remarks')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetEngRemarks"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Average TAT (in hours)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAvgTat','average-tat-hours')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAvgTat"></div></div>
     <div class="report-card">
       <h3>&#x1F4DE; C. Cx closure time after engineer closed</h3>
@@ -1090,7 +1091,13 @@ const ENGINEER_REMARKS_OPTIONS = [
   'CSP Not Responding',
   'Customer Plan Expired',
   'Plan Status Disconnected',
-  'CSP Denied to work with Wiom'
+  'CSP Denied to work with Wiom',
+  // Added 5 Aug 2026 (going forward — earlier options unchanged)
+  'Customer not happy with wiom service/refund / CX choose other operator',
+  'CSP denied to Resolve this ticket only',
+  "CSP don't have router to replace / Inventory Not Available",
+  'Device Not Associated / Disconnected',
+  'CSP installed his own device'
 ];
 // Map old free-text remarks to the closest standard dropdown option
 function mapOldRemark(raw) {
@@ -2367,6 +2374,16 @@ function renderReports() {
     .map(m => ({ label: m, key: m }));
   sheetTable('sheetRemarks', 'Remark', remSpecs.concat([{ label: 'Grand Total', gtot: true }]), (spec, list) =>
     ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => remOf(r) === spec.key).length, list.length || 1) }));
+  // Engineer remarks — counts by period (new dropdown values appear as rows
+  // automatically the moment they're used)
+  const engRemOf = r => effectiveVal(r, 22) || 'No update available';
+  const engRemCounts = {};
+  grandList.forEach(r => { const m = engRemOf(r); engRemCounts[m] = (engRemCounts[m] || 0) + 1; });
+  const engRemSpecs = Object.keys(engRemCounts).sort((a, b) => engRemCounts[b] - engRemCounts[a]).slice(0, 15)
+    .map(m => ({ label: m, key: m }));
+  sheetTable('sheetEngRemarks', 'Engineer Remark', engRemSpecs.concat([{ label: 'Grand Total', gtot: true }]), (spec, list) =>
+    ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => engRemOf(r) === spec.key).length, list.length || 1) }));
+
   sheetTable('sheetRemarksPct', 'Remark', remSpecs, (spec, list) => {
     if (!list.length) return { text: '-' };
     const v = Math.round(list.filter(r => remOf(r) === spec.key).length / list.length * 100);
@@ -2632,13 +2649,13 @@ function renderTable(allTableRows) {
       '<td>' + esc((r[4]||'').trim() || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
       makeTatClockCell(r) +
-      makeCxActionCell(ticket, (r[23]||'').trim()) +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim(), r[20] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[20]) + '</div>' : '') +
+      makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
+      makeEditCell(ticket, 'engineer_remarks', (r[22]||'').trim()) +
+      makeCxActionCell(ticket, (r[23]||'').trim()) +
       makeMigStatusCell(ticket, (r[17]||'').trim()) +
       makeOwnerCell(ticket, owner) +
       '<td style="font-size:12px;font-weight:700;color:' + pendingSinceColor(r) + ';white-space:nowrap">' + getPendingSince(r) + '</td>' +
-      makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
-      makeEditCell(ticket, 'engineer_remarks', (r[22]||'').trim()) +
       (function() {
         const caseTs = r[19] || r[16] || 0;
         // source field set explicitly, or infer from ticket_url (cron always sets kapturecrm.com URL)
