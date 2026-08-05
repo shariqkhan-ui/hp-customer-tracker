@@ -85,18 +85,18 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .day-toggle button.active { background:var(--primary); color:#fff; }
 
 /* ── Sheet-style report tables (migration analysis view) ── */
-.sheet-panel { background:#EAF1FA; border-radius:8px; padding:10px 12px 14px; margin-bottom:18px; }
-.sheet-title { font-weight:800; font-size:14px; color:#17233a; padding:6px 4px 10px; }
+.sheet-panel { background:#FCEBF6; border-radius:8px; padding:10px 12px 14px; margin-bottom:18px; }
+.sheet-title { font-weight:800; font-size:14px; color:#3a1029; padding:6px 4px 10px; }
 .sheet-scroll { overflow-x:auto; }
 .sheet-table { border-collapse:collapse; width:100%; min-width:900px; font-size:12.5px; background:#fff; }
-.sheet-table th { background:#2F5496; color:#fff; font-weight:700; padding:8px 10px; text-align:center; border:1px solid #fff; font-size:11.5px; white-space:nowrap; }
+.sheet-table th { background:#D9008D; color:#fff; font-weight:700; padding:8px 10px; text-align:center; border:1px solid #fff; font-size:11.5px; white-space:nowrap; }
 .sheet-table th.rowh { text-align:left; }
-.sheet-table th.total { background:#1F3864; }
+.sheet-table th.total { background:#A3006A; }
 .sheet-table td { border:1px solid #D9D9D9; padding:7px 10px; text-align:center; font-variant-numeric:tabular-nums; color:#1a1a1a; white-space:nowrap; }
 .sheet-table td.rowh { text-align:left; font-weight:600; white-space:normal; min-width:170px; }
 .sheet-title { display:flex; justify-content:space-between; align-items:center; gap:10px; }
-.sheet-csv-btn { background:#2F5496; color:#fff; border:none; border-radius:5px; padding:4px 12px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; }
-.sheet-csv-btn:hover { background:#1F3864; }
+.sheet-csv-btn { background:#D9008D; color:#fff; border:none; border-radius:5px; padding:4px 12px; font-size:11px; font-weight:700; cursor:pointer; white-space:nowrap; }
+.sheet-csv-btn:hover { background:#A3006A; }
 
 /* Filters */
 .filters-bar { background: var(--card); border: 1px solid var(--border);
@@ -2279,11 +2279,11 @@ function renderReports() {
     let html = '<table class="sheet-table"><thead><tr><th class="rowh">' + esc(rowLabel) + '</th>' +
       periods.map(p => '<th' + (p.cls ? ' class="total"' : '') + '>' + esc(p.label) + '</th>').join('') + '</tr></thead><tbody>';
     rowSpecs.forEach((spec, ri) => {
-      const zebra = ri % 2 ? '#F4F4EE' : '#fff';
-      html += '<tr><td class="rowh" style="background:' + (spec.gtot ? '#D6E4F0;font-weight:800' : zebra) + '">' + esc(spec.label) + '</td>';
+      const zebra = ri % 2 ? '#F7F3F5' : '#fff';
+      html += '<tr><td class="rowh" style="background:' + (spec.gtot ? '#F6D4EA;font-weight:800' : zebra) + '">' + esc(spec.label) + '</td>';
       periods.forEach((p, pi) => {
         const c = cellFn(spec, perCases[pi], pi) || { text: '-' };
-        const bg = c.bg || (spec.gtot ? '#D6E4F0' : p.cls === 'grand' ? '#CFE0F1' : p.cls === 'total' ? '#DEEAF6' : zebra);
+        const bg = c.bg || (spec.gtot ? '#F6D4EA' : p.cls === 'grand' ? '#F3CBE4' : p.cls === 'total' ? '#FBE3F2' : zebra);
         const fw = (spec.gtot || p.cls) ? ';font-weight:700' : '';
         html += '<td style="background:' + bg + fw + '">' + c.text + '</td>';
       });
@@ -2299,12 +2299,16 @@ function renderReports() {
   const catOf = r => {
     const s = effectiveVal(r, 4);
     if (!s) return 'Others';
+    // Match keywords on the FULL text first: many tickets lead with a
+    // disposition folder (Primary / Plan active / Plan inactive / Known
+    // outage), not a category — the real category sits after the '|'.
+    const full = s.toLowerCase();
+    if (/misbehav/.test(full)) return 'Partner Misbehavior';
+    if (/shift|hifting/.test(full)) return 'Shifting Request';
+    if (/chat/.test(full)) return 'Chat tickets';
+    if (/internet|nternet|supply down|slow speed|frequent disconnection|recharge done|speed issue|ping/.test(full)) return 'Internet Issues';
     const primary = s.split('|')[0].trim();
-    const l = primary.toLowerCase();
-    if (/internet|^nternet|^ternet/.test(l)) return 'Internet Issues';
-    if (/shift|hifting/.test(l)) return 'Shifting Request';
-    if (/misbehav/.test(l)) return 'Partner Misbehavior';
-    if (/chat/.test(l)) return 'Chat tickets';
+    if (/^(primary|plan active|plan inactive|known outage|existing customer|new customer)$/i.test(primary)) return 'Others';
     return s.includes('|') ? primary : 'Others';
   };
   const grandList = perCases[perCases.length - 1];
@@ -2313,8 +2317,13 @@ function renderReports() {
   // Highest bucket first, decreasing
   const catSpecs = Object.keys(catCounts).sort((a, b) => catCounts[b] - catCounts[a]).map(c => ({ label: c, key: c }))
     .concat([{ label: 'Grand Total', gtot: true }]);
+  // each cell: absolute (x% of the column's total)
+  const withPct = (n, colTotal) => {
+    if (!n) return '-';
+    return numFmt(n) + ' <span style="font-size:10px;color:#8a8a8a">(' + Math.round(n / colTotal * 100) + '%)</span>';
+  };
   sheetTable('sheetComplaints', 'Category', catSpecs, (spec, list) =>
-    ({ text: numFmt(spec.gtot ? list.length : list.filter(r => catOf(r) === spec.key).length) }));
+    ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => catOf(r) === spec.key).length, list.length || 1) }));
 
   // 2+3. TAT % tables
   const BUCKETS = [
@@ -2346,7 +2355,7 @@ function renderReports() {
   const remSpecs = Object.keys(remCounts).sort((a, b) => remCounts[b] - remCounts[a]).slice(0, 12)
     .map(m => ({ label: m, key: m }));
   sheetTable('sheetRemarks', 'Remark', remSpecs.concat([{ label: 'Grand Total', gtot: true }]), (spec, list) =>
-    ({ text: numFmt(spec.gtot ? list.length : list.filter(r => remOf(r) === spec.key).length) }));
+    ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => remOf(r) === spec.key).length, list.length || 1) }));
   sheetTable('sheetRemarksPct', 'Remark', remSpecs, (spec, list) => {
     if (!list.length) return { text: '-' };
     const v = Math.round(list.filter(r => remOf(r) === spec.key).length / list.length * 100);
