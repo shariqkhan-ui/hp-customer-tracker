@@ -287,6 +287,51 @@ async function computeProRataAmounts(apiKey) {
   log(`Pro-rata: set refund_amount on ${set} case(s) (${nonZero} non-zero).`);
 }
 
+// ── Push refunded HP cases into the Device Pickup Portal ─────────────────────
+// Once a flag-era case's refund is done (Cx Action or Finance sheet), it
+// enters the pickup portal as a fresh case (upload_batch=HP-TRACKER — same
+// pipeline/calling flow, separately viewable). /pickup_pushed remembers what
+// was already sent so each case goes exactly once.
+const PICKUP_PORTAL_INTAKE = 'https://device-pickup-portal-production.up.railway.app/api/pickups/hp-tracker-intake';
+
+async function pushRefundedToPickupPortal() {
+  const key = process.env.PICKUP_PORTAL_KEY;
+  if (!key) { log('Pickup portal: PICKUP_PORTAL_KEY not set — skipping.'); return; }
+  const [all, sheet, pushed] = await Promise.all([
+    fbGet('/cases'), fbGet('/refund_sheet'), fbGet('/pickup_pushed'),
+  ]);
+  const sheetMap = sheet || {}, pushedMap = pushed || {};
+  const digits = v => String(v || '').replace(/\D/g, '');
+  const targets = Object.entries(all || {}).filter(([k, c]) => {
+    if (!c || !c.ticket_no) return false;
+    const ts = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+    if (ts < TAT_LAUNCH_MS) return false;               // flag-era cases only
+    if (pushedMap[k]) return false;                     // already handed over
+    return c.cx_action === 'Refund Done' || !!sheetMap[digits(c.ticket_no)];
+  }).slice(0, 200);
+  if (!targets.length) { log('Pickup portal: no new refunded cases to push.'); return; }
+
+  const rows = targets.map(([, c]) => ({
+    ticket_no: String(c.ticket_no).trim(),
+    customer_name: c.cust_name || '',
+    customer_phone: c.mobile || '',
+    csp_name: c.partner || '',
+    refund_amount: Number(c.refund_amount) ||
+      (sheetMap[digits(c.ticket_no)] ? Number(sheetMap[digits(c.ticket_no)].a) || 0 : 0),
+  }));
+  const res = await fetch(PICKUP_PORTAL_INTAKE, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ key, rows }),
+  });
+  const j = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error('portal HTTP ' + res.status + (j.error ? ' — ' + j.error : ''));
+  const marks = {};
+  targets.forEach(([k]) => { marks[k] = Date.now(); });
+  await fbPatch('/pickup_pushed', marks);
+  log(`Pickup portal: pushed ${rows.length} refunded case(s) — inserted ${j.inserted}, skipped ${j.skipped} (already had a pickup).`);
+}
+
 // ── Add a batch of tickets to Firebase (skip any already tracked) ────────────
 async function addTicketsToFirebase(tickets, sourceLabel) {
   // Dedup within this batch — the mobile join can yield duplicate rows per ticket.
@@ -564,6 +609,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
 
   // ── Step 2.6: Auto-compute pro-rata refund amounts for new flag-era cases ──
   try { await computeProRataAmounts(apiKey); } catch (e) { log('WARN: pro-rata compute failed — ' + e.message); }
+
+  // ── Step 2.7: Hand refunded cases to the Device Pickup Portal ──
+  try { await pushRefundedToPickupPortal(); } catch (e) { log('WARN: pickup portal push failed — ' + e.message); }
 
   // ── Step 3: Notify Slack (suppressed entirely during a silent backfill) ──
   const slackToken = process.env.SLACK_BOT_TOKEN;
