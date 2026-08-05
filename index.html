@@ -2374,12 +2374,14 @@ function renderReports() {
     .map(m => ({ label: m, key: m }));
   sheetTable('sheetRemarks', 'Remark', remSpecs.concat([{ label: 'Grand Total', gtot: true }]), (spec, list) =>
     ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => remOf(r) === spec.key).length, list.length || 1) }));
-  // Engineer remarks — counts by period (new dropdown values appear as rows
-  // automatically the moment they're used)
+  // Engineer remarks — counts by period. Every dropdown option (including the
+  // five added 5 Aug) is always a row, even at zero, so the full taxonomy is
+  // visible; other observed values appear automatically too.
   const engRemOf = r => effectiveVal(r, 22) || 'No update available';
   const engRemCounts = {};
   grandList.forEach(r => { const m = engRemOf(r); engRemCounts[m] = (engRemCounts[m] || 0) + 1; });
-  const engRemSpecs = Object.keys(engRemCounts).sort((a, b) => engRemCounts[b] - engRemCounts[a]).slice(0, 15)
+  ENGINEER_REMARKS_OPTIONS.forEach(o => { if (!(o in engRemCounts)) engRemCounts[o] = 0; });
+  const engRemSpecs = Object.keys(engRemCounts).sort((a, b) => engRemCounts[b] - engRemCounts[a]).slice(0, 20)
     .map(m => ({ label: m, key: m }));
   sheetTable('sheetEngRemarks', 'Engineer Remark', engRemSpecs.concat([{ label: 'Grand Total', gtot: true }]), (spec, list) =>
     ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => engRemOf(r) === spec.key).length, list.length || 1) }));
