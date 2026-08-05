@@ -2389,10 +2389,12 @@ function renderReports() {
     .map(m => ({ label: m, key: m }));
   sheetTable('sheetRemarks', 'Remark', remSpecs.concat([{ label: 'Grand Total', gtot: true }]), (spec, list) =>
     ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => remOf(r) === spec.key).length, list.length || 1) }));
-  // Engineer remarks — counts by period. Every dropdown option (including the
-  // five added 5 Aug) is always a row, even at zero, so the full taxonomy is
-  // visible; other observed values appear automatically too.
-  const engRemOf = r => (effectiveVal(r, 22) || 'No update available').replace(/partner/gi, 'CSP');
+  // Engineer remarks — counts by period. The engineer's update lives in EITHER
+  // the Engineer Remarks dropdown or the Ground Remarks field (same thing in
+  // practice), so a case shows its engineer remark when set, else its ground
+  // remark; 'No update available' = neither filled. Every dropdown option is
+  // always a row, even at zero.
+  const engRemOf = r => (effectiveVal(r, 22) || effectiveVal(r, 8) || 'No update available').replace(/partner/gi, 'CSP');
   const engRemCounts = {};
   grandList.forEach(r => { const m = engRemOf(r); engRemCounts[m] = (engRemCounts[m] || 0) + 1; });
   ENGINEER_REMARKS_OPTIONS.forEach(o => { if (!(o in engRemCounts)) engRemCounts[o] = 0; });
