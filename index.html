@@ -1957,7 +1957,12 @@ function renderAll() {
   setText('sTotalCount', total);
   setText('sMigCount',   mig);
   setText('sPingCount',  ping);
-  setText('sUnresCount', unres);
+  // While the >48h drill-down is active every visible row is breached, which
+  // made this card mirror the breached count. Show ALL flag-era (post-29 Jul)
+  // unresolved cases instead so the two cards stay meaningful side by side.
+  setText('sUnresCount', exp48Only
+    ? allRows.filter(r => getStatus(r) === 'Unresolved' && caseStartTs(r) > 0).length
+    : unres);
   setText('sExp48Count', exp48);
   setText('sExp48Pct',   flagged ? '(' + Math.round(exp48 / flagged * 100) + '% of ' + flagged + ' since 29 Jul)' : '');
   setText('sReopenCount', rows.filter(r => Number(r[26]) > 0).length);
