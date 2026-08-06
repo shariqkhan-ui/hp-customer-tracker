@@ -368,8 +368,49 @@ async function syncDevicePickup(apiKey) {
   log(`Device pickup: marked ${set} case(s) picked up via DEVICE_RECOVERY_MODEL.`);
 }
 
+// ── WIOM NET / exited-CSP exclusion ──────────────────────────────────────────
+// Tickets from WIOM NET (house accounts) or CSPs on the Finance sheet's
+// "Exit CSP list" tab never enter the tracker — the team can't act on them.
+// Matched by CSP account ID (exact) and by name; the list is fetched once per
+// run and a fetch failure fails OPEN (only the WIOM NET name rule applies).
+const EXIT_CSP_CSV = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vREJtTEloJoNZdZe8EVsnmWrigVJJXT-ciwH7uNCUz34Q10Nj0h8KH3G74rHAh4d5zwerfk0uer7fZz/pub?gid=1769175802&single=true&output=csv';
+let _exitCsps; // undefined = not loaded yet; null = load failed
+
+async function fetchExitCsps() {
+  const res = await fetch(EXIT_CSP_CSV, { redirect: 'follow' });
+  if (!res.ok) throw new Error('exit CSP sheet HTTP ' + res.status);
+  const rows = parseCSVText(await res.text());
+  const H = rows[0].map(h => h.trim().toLowerCase());
+  const iN = H.findIndex(h => h.startsWith('csp name'));
+  const iI = H.findIndex(h => h.startsWith('csp id'));
+  const ids = new Set(), names = new Set();
+  rows.slice(1).forEach(r => {
+    const id = String(r[iI] || '').replace(/\D/g, '');
+    const nm = String(r[iN] || '').trim().toLowerCase().replace(/\s+/g, ' ');
+    if (id) ids.add(id);
+    if (nm) names.add(nm);
+  });
+  return { ids, names };
+}
+
+function isExcludedPartner(t) {
+  const nl = String(t.PARTNER || '').trim().toLowerCase().replace(/\s+/g, ' ');
+  if (/wiom\s*net/.test(nl)) return true;
+  if (!_exitCsps) return false;
+  const acct = String(t.PARTNER_ACCT || '').replace(/\D/g, '');
+  return (acct && _exitCsps.ids.has(acct)) || (nl && _exitCsps.names.has(nl));
+}
+
 // ── Add a batch of tickets to Firebase (skip any already tracked) ────────────
 async function addTicketsToFirebase(tickets, sourceLabel) {
+  if (_exitCsps === undefined) {
+    try { _exitCsps = await fetchExitCsps(); log(`Exit CSP list loaded: ${_exitCsps.ids.size} CSPs.`); }
+    catch (e) { _exitCsps = null; log('WARN: exit CSP list unavailable (' + e.message + ') — only the WIOM NET rule applies this run.'); }
+  }
+  const beforeCount = tickets.length;
+  tickets = tickets.filter(t => !isExcludedPartner(t));
+  if (beforeCount - tickets.length)
+    log(`Excluded ${beforeCount - tickets.length} ticket(s) from WIOM NET / exited CSPs (${sourceLabel}).`);
   // Dedup within this batch — the mobile join can yield duplicate rows per ticket.
   // When duplicates exist, keep the most-complete row (has a name/partner) rather
   // than whichever happened to arrive last, so a blank row can't win.
@@ -497,6 +538,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       stm.CUSTOMER_MOBILE,
       COALESCE(nmob.CNAME, n_inst.CNAME, n_actv.CNAME)  AS CUSTOMER_NAME,
       stm.CURRENT_PARTNER_NAME                          AS PARTNER,
+      stm.CURRENT_PARTNER_ACCOUNT_ID                    AS PARTNER_ACCT,
       -- Prefer the internet-y title: tickets opened under the generic
       -- "Primary|Existing Customer" folder get re-dispositioned later, and the
       -- internet category then lives in LAST_TITLE, not FIRST_TITLE.
@@ -604,6 +646,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       t.MOBILE                                          AS CUSTOMER_MOBILE,
       COALESCE(nmob.CNAME, n_inst.CNAME, n_actv.CNAME)  AS CUSTOMER_NAME,
       COALESCE(pmob.PNAME, pacct.PNAME)                 AS PARTNER,
+      t.ASSIGNED_ACCOUNT_ID                             AS PARTNER_ACCT,
       t.TITLE                                           AS SUB_CATEGORY,
       FLOOR(DATEDIFF(MINUTE, t.CREATED_TIME, CURRENT_TIMESTAMP()) / 60) AS TAT_HOURS,
       t.STATUS                                          AS CURRENT_TICKET_STATUS,
