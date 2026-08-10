@@ -291,21 +291,34 @@ async function computeProRataAmounts(apiKey) {
 // Stamps each flag-era case with the PFT completion from SERVICE_TICKET_MODEL
 // (FINAL_RESOLVED_TIME + FINAL_RESOLVED_NAME) — feeds the "Cx closure TAT"
 // report. Kapture timestamps are IST wall-clock without a zone marker.
+// Kapture status codes → readable labels (correlated with IS_RESOLVED):
+// 7860 = Completed (disposed), 6000 = Closed (system), 5000 = Pending (open).
+function kaptureStatusLabel(code, isResolved) {
+  const c = String(code || '').trim();
+  if (c === '7860') return 'Completed';
+  if (c === '6000') return 'Closed';
+  if (c === '5000') return 'Pending';
+  return Number(isResolved) === 1 ? 'Completed' : (c ? 'Pending' : '');
+}
+
 async function syncKaptureResolution(apiKey) {
   const all = await fbGet('/cases') || {};
   // Rolling window matching the report columns: 1st of LAST month → today
   const now = new Date();
   const windowStart = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+  const isFinal = s => s === 'Completed' || s === 'Closed';
   const targets = Object.entries(all).filter(([, c]) => {
     if (!c || !c.ticket_no) return false;
     const ts = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
-    return ts >= windowStart && !c.kapture_resolved_at;
+    if (ts < windowStart) return false;
+    // keep re-checking until the Kapture status goes final (or resolution stamped)
+    return !c.kapture_resolved_at || !isFinal(String(c.kapture_status || ''));
   }).slice(0, 400);
   if (!targets.length) { log('Kapture resolution: nothing to sync.'); return; }
   const ids = targets.map(([, c]) => "'" + String(c.ticket_no).trim() + "'").join(',');
   const rows = await queryMetabase(
-    'SELECT KAPTURE_TICKET_ID, FINAL_RESOLVED_TIME, FINAL_RESOLVED_NAME FROM PUBLIC.SERVICE_TICKET_MODEL ' +
-    'WHERE IS_RESOLVED = 1 AND FINAL_RESOLVED_TIME IS NOT NULL AND KAPTURE_TICKET_ID IN (' + ids + ')', apiKey);
+    'SELECT KAPTURE_TICKET_ID, FINAL_RESOLVED_TIME, FINAL_RESOLVED_NAME, CURRENT_TICKET_STATUS, IS_RESOLVED ' +
+    'FROM PUBLIC.SERVICE_TICKET_MODEL WHERE KAPTURE_TICKET_ID IN (' + ids + ')', apiKey);
   const istMs = v => {
     const s = String(v || '').trim().replace(' ', 'T');
     if (!s) return 0;
@@ -313,16 +326,22 @@ async function syncKaptureResolution(apiKey) {
   };
   const byT = {};
   rows.forEach(r => { byT[String(r.KAPTURE_TICKET_ID).trim()] = r; });
-  let set = 0;
+  let setRes = 0, setStatus = 0;
   for (const [k, c] of targets) {
     const m = byT[String(c.ticket_no).trim()];
     if (!m) continue;
+    const patch = {};
+    const status = kaptureStatusLabel(m.CURRENT_TICKET_STATUS, m.IS_RESOLVED);
+    if (status && status !== String(c.kapture_status || '')) { patch.kapture_status = status; setStatus++; }
     const ts = istMs(m.FINAL_RESOLVED_TIME);
-    if (!ts) continue;
-    await fbPatch('/cases/' + k, { kapture_resolved_at: ts, kapture_resolved_by: String(m.FINAL_RESOLVED_NAME || '') });
-    set++;
+    if (ts && !c.kapture_resolved_at) {
+      patch.kapture_resolved_at = ts;
+      patch.kapture_resolved_by = String(m.FINAL_RESOLVED_NAME || '');
+      setRes++;
+    }
+    if (Object.keys(patch).length) await fbPatch('/cases/' + k, patch);
   }
-  log(`Kapture resolution: stamped ${set} case(s) with PFT completion time.`);
+  log(`Kapture resolution: ${setRes} completion time(s) stamped, ${setStatus} status label(s) refreshed.`);
 }
 
 // ── Device pickup from DBT.DEVICE_RECOVERY_MODEL ─────────────────────────────

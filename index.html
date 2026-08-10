@@ -671,6 +671,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Case Added On</th>
             <th>Migration Date</th>
             <th>Status</th>
+            <th>Kapture Status</th>
             <th>Ticket</th>
           </tr>
           <tr>
@@ -691,6 +692,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('caseAdded',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('migDate',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('status',this.value)"></th>
+            <th><input class="col-filter" placeholder="Completed / Pending" oninput="setColFilter('kaptureStatus',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('ticket',this.value)"></th>
           </tr>
         </thead>
@@ -933,7 +935,8 @@ function dbRowToArray(r) {
     r.reopened_at        || 0,   // 26 — Unix ms when a resolved remark was reverted within 24h
     r.device_picked_up   || '',  // 27 — 'Yes' once the device is collected from a refund case
     r.kapture_resolved_at || 0,  // 28 — Kapture FINAL_RESOLVED_TIME (PFT completed), synced by cron
-    r.kapture_resolved_by || ''  // 29 — Kapture FINAL_RESOLVED_NAME (who disposed it)
+    r.kapture_resolved_by || '', // 29 — Kapture FINAL_RESOLVED_NAME (who disposed it)
+    r.kapture_status      || ''  // 30 — Kapture ticket status (Completed / Pending / Closed), synced by cron
   ];
 }
 
@@ -1931,6 +1934,7 @@ function applyColFilters() {
     if (!chk(r[0],              'caseAdded'))return false;
     if (!chk(effectiveVal(r,14),'migDate'))  return false;
     if (!chk(getStatus(r),      'status'))   return false;
+    if (!chk((r[30]||''),       'kaptureStatus')) return false;
     if (!chk(ticket,            'ticket'))   return false;
     return true;
   });
@@ -2621,7 +2625,7 @@ function renderTable(allTableRows) {
   document.getElementById('rowCount').textContent = allTableRows.length + ' records';
   const tbody = document.getElementById('tBody');
   if (!allTableRows.length) {
-    tbody.innerHTML = '<tr><td colspan="18" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="19" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
     return;
   }
   const rows = allTableRows.slice(0, renderLimit);
@@ -2668,10 +2672,16 @@ function renderTable(allTableRows) {
       makeEditCell(ticket, 'migration_date', (r[14]||'').trim()) +
       '<td>' + statusBadge(st) + (dup ? ' <span class="badge badge-yellow">Dupe</span>' : '') +
         (Number(r[26]) > 0 ? ' <span class="badge" style="background:rgba(255,140,0,.18);color:#ff8c00" title="Marked resolved, reverted to unresolved within 24 hrs — ' + fmtTsDate(r[26]) + '">&#x1F501; Reopened</span>' : '') + '</td>' +
+      (function() {
+        const ks = (r[30]||'').trim();
+        if (!ks) return '<td style="color:var(--muted)">—</td>';
+        const cls = ks === 'Completed' ? 'badge-green' : ks === 'Closed' ? 'badge-blue' : 'badge-yellow';
+        return '<td><span class="badge ' + cls + '">' + esc(ks) + '</span></td>';
+      })() +
       '<td>' + link + '</td>' +
       '</tr>';
   }).join('') + (remaining > 0
-    ? '<tr><td colspan="18" style="text-align:center;padding:14px"><button class="btn btn-primary" onclick="showMoreRows()" style="font-size:13px;padding:8px 22px">&#x2B07; Show ' + Math.min(RENDER_STEP, remaining) + ' more (' + remaining + ' remaining)</button></td></tr>'
+    ? '<tr><td colspan="19" style="text-align:center;padding:14px"><button class="btn btn-primary" onclick="showMoreRows()" style="font-size:13px;padding:8px 22px">&#x2B07; Show ' + Math.min(RENDER_STEP, remaining) + ' more (' + remaining + ' remaining)</button></td></tr>'
     : '');
 }
 
@@ -2680,7 +2690,7 @@ function downloadCSV() {
   const headers = [
     '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Customer Name','CSP',
     'Sub-category','TAT','48h TAT','Cx Action','Ground Remarks','Remarks Updated At','Engineer','Engineer Assigned At',
-    'Engineer Remarks','Owner','Pending Since','Migration Date','Status','Ticket URL',
+    'Engineer Remarks','Owner','Pending Since','Migration Date','Status','Kapture Status','Ticket URL',
     'Col12','Col13'
   ];
   const esc2 = v => '"' + String(v).replace(/"/g, '""') + '"';
@@ -2710,6 +2720,7 @@ function downloadCSV() {
       getPendingSince(r),
       (r[14]||'').trim(),
       getStatus(r),
+      (r[30]||'').trim(),
       (r[11]||'').trim(),
       (r[12]||'').trim(),
       (r[13]||'').trim()
