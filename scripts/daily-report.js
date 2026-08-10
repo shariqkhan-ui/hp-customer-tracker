@@ -144,6 +144,23 @@ function row(label, count, total, indent, bold) {
   const resolved   = migrated + pingUp;
   const unresolved = total - resolved;
 
+  // ── 48h flag metric (cases added since the 29 Jul launch) ─────────────────
+  // Resolved within 48 hrs of entering the tracker, % of MATURED cases
+  // (those that have completed their full 48-hour window).
+  const LAUNCH = Date.parse('2026-07-29T00:00:00+05:30');
+  const LIM48  = 48 * 3600000;
+  const NOW    = Date.now();
+  let matured48 = 0, within48 = 0;
+  for (const c of cases) {
+    const start = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+    if (start < LAUNCH || (NOW - start) < LIM48) continue;
+    matured48++;
+    if (getStatus(c) === 'Unresolved') continue;
+    const rt = Number(c.remarks_updated_at) || 0;
+    if (rt > 0 && (rt - start) <= LIM48) within48++;
+    else if (!rt && (c.migration_date || '').trim()) within48++;
+  }
+
   // ── Build Slack message ───────────────────────────────────────────────────
   const LINE   = '━'.repeat(49);
   const HEADER = '  Metric'.padEnd(38) + 'Value'.padStart(5) + '%'.padStart(6);
@@ -158,6 +175,9 @@ function row(label, count, total, indent, bold) {
     row('Customer Denied',            custDenied,     total, true,  false),
     row('Host CSP Not Aligned',       hostNotAligned, total, true,  false),
     LINE,
+    row('Resolved within 48 hrs*',    within48,       matured48, false, true),
+    LINE,
+    '* 48h flag (live 29 Jul): % of ' + matured48 + ' matured cases',
   ];
 
   const cc         = '<@U077923R68H> <@U08E4KETML1>';
