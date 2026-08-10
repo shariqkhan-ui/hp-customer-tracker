@@ -105,7 +105,7 @@ function row(label, count, total, indent, bold) {
   // ── Idempotency check: skip if already ran successfully today ─────────────
   const today = todayStr();
   const lastRun = await httpRequest('GET', FIREBASE_DB + '/run_flags/daily_report.json', null, {});
-  if (lastRun === today) {
+  if (lastRun === today && process.env.FORCE_RUN !== 'true') {
     console.log(`Already ran today (${today}) — skipping.`);
     return;
   }

@@ -9,8 +9,13 @@ on:
     - cron: '30 15 * * *'
     - cron: '0 16 * * *'
 
-  # Allow manual trigger for testing
+  # Allow manual trigger for testing; force=true bypasses the once-a-day flag
   workflow_dispatch:
+    inputs:
+      force:
+        description: 'Run even if the report already went out today'
+        required: false
+        default: 'false'
 
 jobs:
   report:
@@ -32,4 +37,5 @@ jobs:
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FORCE_RUN: ${{ github.event.inputs.force || 'false' }}
         run: node daily-report.js
