@@ -1,0 +1,197 @@
+/**
+ * Weekly 48h-flag metrics recap.
+ * Runs every Monday (GitHub Actions): recomputes metrics from Firebase,
+ * regenerates recap.html in the repo root (served via GitHub Pages), and
+ * DMs the summary + doc link to Shariq on Slack.
+ *
+ * Weeks are Monday-anchored in IST: "last week" = the just-completed Mon–Sun,
+ * compared against the week before; "till date" = 29 Jul launch → now.
+ * All percentages use matured cases (completed their full 48h window).
+ */
+
+const fs = require('fs');
+const path = require('path');
+
+const FIREBASE_DB = 'https://high-pain-cx-management-default-rtdb.asia-southeast1.firebasedatabase.app';
+const LAUNCH = Date.parse('2026-07-29T00:00:00+05:30');
+const LIM = 48 * 3600000;
+const IST = 5.5 * 3600000;
+const SLACK_USER = 'U04TL31PC1Y'; // Shariq
+const DOC_URL = 'https://shariqkhan-ui.github.io/hp-customer-tracker/recap.html';
+const TARGET_PCT = 80; // within-48h resolution target by end of August
+
+const MON = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
+function parseDate(s) {
+  if (!s) return null;
+  s = String(s).trim();
+  let m = s.match(/^(\d{1,2})[\/\-]([A-Za-z]{3})[\/\-](\d{4})$/);
+  if (m) { const mo = MON[m[2].toLowerCase()]; if (mo !== undefined) return new Date(+m[3], mo, +m[1]); }
+  m = s.match(/^(\d{1,2})[\/\-\.](\d{1,2})[\/\-\.](\d{4})$/);
+  if (m) return new Date(+m[3], +m[2] - 1, +m[1]);
+  return null;
+}
+const trim = v => (v == null ? '' : String(v)).trim();
+const PING = ['ping up', 'internet working', 'internet up', 'speed up', 'link up'];
+function getStatus(c) {
+  if (trim(c.migration_date) !== '') return 'Migrated';
+  const g = trim(c.remarks).toLowerCase();
+  if (g === 'resolved by old partner' || g === 'resolved by old csp') return 'Ping Up';
+  const sc = trim(c.subcat).toLowerCase();
+  if (['internet supply down', 'recharge done but no internet'].some(s => sc.includes(s)) && PING.some(k => g.includes(k))) return 'Ping Up';
+  return 'Unresolved';
+}
+function startTs(c) {
+  let t = Number(c.added_at) || 0;
+  if (!t) { const d = parseDate(c.case_added_on); t = d ? d.getTime() : 0; }
+  if (!t) t = Number(c.owner_assigned_at) || 0;
+  return t;
+}
+function resolvedWithin48(c) {
+  if (getStatus(c) === 'Unresolved') return false;
+  const s = startTs(c), rt = Number(c.remarks_updated_at) || 0;
+  if (rt > 0) return (rt - s) <= LIM;
+  const md = parseDate(c.migration_date);
+  if (md) return (md.getTime() + 86399000 - s) <= LIM;
+  return null;
+}
+
+function fmtD(ts) {
+  const d = new Date(ts + IST);
+  return d.getUTCDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()];
+}
+const inr = v => '₹' + Math.round(v).toLocaleString('en-IN');
+const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
+
+(async () => {
+  const NOW = Date.now();
+  const [casesRaw, sheet] = await Promise.all([
+    fetch(FIREBASE_DB + '/cases.json').then(r => r.json()),
+    fetch(FIREBASE_DB + '/refund_sheet.json').then(r => r.json()).catch(() => ({})),
+  ]);
+  const dig = v => String(v || '').replace(/\D/g, '');
+  const era = Object.entries(casesRaw)
+    .filter(([k]) => !k.startsWith('__'))
+    .map(([, c]) => c)
+    .filter(c => c && c.ticket_no && startTs(c) >= LAUNCH);
+
+  // Monday-anchored IST weeks
+  const istNow = new Date(NOW + IST);
+  const d0 = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()) - IST; // IST midnight today
+  const dow = (istNow.getUTCDay() + 6) % 7; // Mon=0
+  const thisMon = d0 - dow * 86400000;
+  const lastWeek = { from: thisMon - 7 * 86400000, to: thisMon };
+  const weekBefore = { from: Math.max(LAUNCH, thisMon - 14 * 86400000), to: thisMon - 7 * 86400000 };
+
+  const stats = list => {
+    const matured = list.filter(c => (NOW - startTs(c)) >= LIM);
+    const m = matured.length;
+    const w48 = matured.filter(c => resolvedWithin48(c) === true).length;
+    const unresM = matured.filter(c => getStatus(c) === 'Unresolved').length;
+    const late = matured.filter(c => getStatus(c) !== 'Unresolved' && resolvedWithin48(c) !== true).length;
+    const resolvedAll = list.filter(c => getStatus(c) !== 'Unresolved').length;
+    const pend = matured.filter(c => getStatus(c) === 'Unresolved' && !sheet[dig(c.ticket_no)] && trim(c.cx_action) !== 'Refund Done');
+    const pendAmt = pend.reduce((a, c) => a + (Number(c.refund_amount) || 0), 0);
+    return { n: list.length, m, w48, unresM, late, resolvedAll, pendN: pend.length, pendAmt };
+  };
+  const inRange = (r) => era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to; });
+
+  const sWB = stats(inRange(weekBefore));
+  const sLW = stats(inRange(lastWeek));
+  const sTD = stats(era);
+
+  const wowRes = (sLW.m && sWB.m) ? (sLW.w48 / sLW.m - sWB.w48 / sWB.m) * 100 : 0;
+  const wbLabel = fmtD(weekBefore.from) + ' – ' + fmtD(weekBefore.to - 1);
+  const lwLabel = fmtD(lastWeek.from) + ' – ' + fmtD(lastWeek.to - 1);
+  const tdLabel = '29 Jul – ' + fmtD(NOW);
+
+  // ── HTML doc ──
+  const row = (label, f, cls) =>
+    `<tr><td>${label}</td><td${cls ? ` class="${cls}"` : ''}>${f(sWB)}</td><td${cls ? ` class="${cls}"` : ''}>${f(sLW)}</td><td class="tot${cls ? ' ' + cls : ''}">${f(sTD)}</td></tr>`;
+  const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>48-Hour TAT — Weekly Metrics Recap</title>
+<style>
+:root{--bg:#faf7f9;--surface:#fff;--surface2:#f4eef2;--ink:#241a21;--ink2:#5d4f58;--muted:#8a7a83;--border:#e6dce2;--accent-ink:#a30f66;--good:#1a7f37;--good-soft:#e6f4ea;--bad:#c2410c;--bad-soft:#ffe9dd;--head:#D9008D;--head2:#A3006A}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--ink);font:16px/1.6 "Segoe UI",system-ui,sans-serif;margin:0;padding:0 20px 64px}
+.wrap{max-width:900px;margin:0 auto}header{padding:44px 0 6px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink);margin:0 0 10px}
+h1{font-size:clamp(24px,5vw,34px);margin:0 0 10px;letter-spacing:-.02em}
+.meta{font-size:13px;color:var(--muted);margin-bottom:6px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:20px}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:15px 17px 12px}
+.tile .label{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tile .value{font-size:31px;font-weight:750;margin-top:6px;font-variant-numeric:tabular-nums}
+.tile .note{font-size:12.5px;color:var(--ink2);margin-top:3px}
+section{margin-top:34px}h2{font-size:18px;margin:0 0 4px}.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.tablewrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:620px}
+th{background:var(--head);color:#fff;font-weight:700;padding:9px 14px;text-align:right;font-size:12px;white-space:nowrap}
+th:first-child{text-align:left}th.tot{background:var(--head2)}
+td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td:first-child{text-align:left;color:var(--ink);font-weight:600;white-space:normal}
+tr:last-child td{border-bottom:none}td.g{color:var(--good);font-weight:750}td.b{color:var(--bad);font-weight:750}td.tot{background:var(--surface2);font-weight:700}
+.notes{border-top:1px solid var(--border);margin-top:40px;padding-top:14px;font-size:12.5px;color:var(--muted)}
+</style></head><body><div class="wrap">
+<header>
+<p class="eyebrow">HP Customer Tracker · 48-Hour TAT Flag</p>
+<h1>Weekly metrics recap</h1>
+<p class="meta">Generated ${fmtD(NOW)} ${new Date(NOW + IST).getUTCFullYear()} · matured cases only (completed their full 48-hour window) · auto-refreshed every Monday</p>
+<div style="background:var(--good-soft);border:1px solid var(--good);border-radius:10px;padding:12px 16px;margin-top:14px;font-size:14.5px">
+🎯 <b>Target: ${TARGET_PCT}% resolution within 48 hrs by end of August.</b>
+Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m * 100) > 0 ? `<b style="color:var(--bad)">${(TARGET_PCT - sTD.w48 / sTD.m * 100).toFixed(1)} pp to go</b>` : '<b style="color:var(--good)">target met</b>'}.
+</div>
+<div class="tiles">
+<div class="tile"><div class="label">Resolution within 48 hrs</div><div class="value" style="color:var(--good)">${pct(sTD.w48, sTD.m)}</div><div class="note">${sTD.w48} of ${sTD.m} matured · till date · target ${TARGET_PCT}% by end of Aug</div></div>
+<div class="tile"><div class="label">Unresolved matured tickets</div><div class="value" style="color:var(--bad)">${pct(sTD.unresM, sTD.m)}</div><div class="note">${sTD.unresM} of ${sTD.m} matured still unresolved past 48 hrs</div></div>
+<div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending (&gt;48 hrs unresolved)</div><div class="value" style="color:var(--bad)">${inr(sTD.pendAmt)}</div><div class="note">${sTD.pendN} breached open cases owe a pro-rata refund</div></div>
+<div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Resolved within 48 hrs: <b>${pct(sWB.w48, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.w48, sLW.m)}</b> (${lwLabel})</div></div>
+</div>
+</header>
+<section>
+<h2>Week before vs last week vs till date</h2>
+<p class="sub">Cohorts by the date the case entered the tracker. Recent cases still inside their 48-hour window are excluded from matured metrics.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Metric</th><th>Week before<br>(${wbLabel})</th><th>Last week<br>(${lwLabel})</th><th class="tot">Till date<br>(${tdLabel})</th></tr></thead>
+<tbody>
+${row('Cases added', s => s.n.toLocaleString('en-IN'))}
+${row('Matured (completed 48-hr window)', s => s.m.toLocaleString('en-IN'))}
+${row('Resolved ≤ 48 hrs', s => s.w48.toLocaleString('en-IN'))}
+${row('<b>Resolution within 48 hrs %</b>', s => pct(s.w48, s.m), 'g')}
+${row('Resolved late (after breaching)', s => s.late)}
+${row('Unresolved matured (breached, still open)', s => s.unresM)}
+${row('<b>Unresolved matured %</b>', s => pct(s.unresM, s.m), 'b')}
+${row('Overall resolved (any time, % of added)', s => s.resolvedAll + ' (' + pct(s.resolvedAll, s.n) + ')')}
+${row('Refund pending — cases', s => s.pendN)}
+${row('<b>Refund pending — pro-rata amount</b>', s => inr(s.pendAmt), 'b')}
+</tbody></table></div>
+</section>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (IST).</div>
+</div></body></html>`;
+
+  const outPath = path.join(__dirname, '..', 'recap.html');
+  fs.writeFileSync(outPath, html);
+  console.log('recap.html written:', html.length, 'bytes');
+
+  // ── Slack DM ──
+  const token = process.env.SLACK_BOT_TOKEN;
+  if (!token) { console.log('SLACK_BOT_TOKEN not set — skipping DM.'); return; }
+  const text =
+    `📊 *48h TAT — Weekly Recap* (${lwLabel})\n` +
+    `• Resolution within 48 hrs: *${pct(sLW.w48, sLW.m)}* last week vs ${pct(sWB.w48, sWB.m)} week before (${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp)\n` +
+    `• Unresolved matured: *${pct(sLW.unresM, sLW.m)}* (${sLW.unresM} of ${sLW.m})\n` +
+    `• Refund pending on >48h unresolved: *${inr(sTD.pendAmt)}* across ${sTD.pendN} cases\n` +
+    `• Till date since 29 Jul: ${sTD.n.toLocaleString('en-IN')} added · ${pct(sTD.w48, sTD.m)} resolved ≤48h · ${pct(sTD.unresM, sTD.m)} unresolved matured\n` +
+    `🎯 Target: ${TARGET_PCT}% within-48h resolution by end of Aug — ${(TARGET_PCT - sTD.w48 / sTD.m * 100) > 0 ? (TARGET_PCT - sTD.w48 / sTD.m * 100).toFixed(1) + ' pp to go' : 'met ✅'}\n` +
+    `📄 Full doc: ${DOC_URL}`;
+  const res = await fetch('https://slack.com/api/chat.postMessage', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json; charset=utf-8', authorization: 'Bearer ' + token },
+    body: JSON.stringify({
+      channel: SLACK_USER,
+      username: "Shariq's Slack Agent",
+      icon_url: 'https://raw.githubusercontent.com/shariqkhan-ui/hp-customer-tracker/master/shariq-agent.jpg',
+      text,
+    }),
+  }).then(r => r.json());
+  if (res.ok) console.log('Slack DM sent to', SLACK_USER);
+  else console.error('Slack DM FAILED:', res.error, res.needed || '');
+})().catch(e => { console.error('FAIL:', e.message); process.exit(1); });
