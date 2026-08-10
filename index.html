@@ -65,6 +65,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .status-card.reopen:hover { background: rgba(163,113,247,.12); }
 .status-card.reopen.active { background: rgba(163,113,247,.18); box-shadow: 0 0 0 2px #a371f7 inset; }
 
+/* >48h drill-down: hide Engineer Remarks (10), Migration Status (12) and
+   Migration Date (16) — not relevant to the breached raw-data view */
+.main-tbl.exp48-mode th:nth-child(10), .main-tbl.exp48-mode td:nth-child(10),
+.main-tbl.exp48-mode th:nth-child(12), .main-tbl.exp48-mode td:nth-child(12),
+.main-tbl.exp48-mode th:nth-child(16), .main-tbl.exp48-mode td:nth-child(16) { display: none; }
+
 /* ── Main tabs ── */
 .main-tabs { display:flex; gap:8px; margin:14px 0 4px; flex-wrap:wrap; }
 .main-tab { padding:9px 20px; border-radius:8px 8px 0 0; border:1px solid var(--border); border-bottom:none;
@@ -1873,6 +1879,8 @@ function applyFilters() {
   } else {
     visRows.sort(function(a, b) { return rowTs(b) - rowTs(a); });
   }
+  const mt = document.querySelector('.main-tbl');
+  if (mt) mt.classList.toggle('exp48-mode', exp48Only);
   renderAll();
   renderFilterSummary();
 }
