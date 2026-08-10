@@ -733,6 +733,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   <!-- ═══ Reports tab ═══ -->
   <div id="tabReports" style="display:none">
     <div class="sheet-panel"><div class="sheet-title"><span>Total complaints sent for resolution</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetComplaints','complaints-for-resolution')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetComplaints"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>Resolved within 48 hrs (flag live 29 Jul — matured cases only)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheet48','resolved-within-48hrs')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheet48"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Engineer assignment TAT % (Case added &#x2192; Engineer assigned)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAssignTat','engineer-assignment-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAssignTat"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>NQT team revert TAT % (Engineer assigned &#x2192; Remarks updated)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRevertTat','nqt-revert-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRevertTat"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Cx closure TAT % (Engineer closed &#x2192; Cx action)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetCxTat','cx-closure-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetCxTat"></div>
@@ -2360,6 +2361,33 @@ function renderReports() {
   };
   sheetTable('sheetComplaints', 'Category', catSpecs, (spec, list) =>
     ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => catOf(r) === spec.key).length, list.length || 1) }));
+
+  // 1.5 Resolved within 48 hrs — the flag metric (live 29 Jul), matured only
+  const m48 = list => {
+    const nowTs = Date.now();
+    const matured = list.filter(r => caseStartTs(r) > 0 && (nowTs - caseStartTs(r)) >= TAT_LIMIT_MS);
+    const w = matured.filter(r => {
+      if (getStatus(r) === 'Unresolved') return false;
+      const s = caseStartTs(r), rt = Number(r[20]) || 0;
+      if (rt > 0) return (rt - s) <= TAT_LIMIT_MS;
+      return !!effectiveVal(r, 14);
+    }).length;
+    const u = matured.filter(r => getStatus(r) === 'Unresolved').length;
+    return { m: matured.length, w, u };
+  };
+  sheetTable('sheet48', 'Metric', [
+    { label: 'Matured cases (completed 48-hr window)' },
+    { label: 'Resolved ≤ 48 hrs' },
+    { label: 'Resolution within 48 hrs %', good: true },
+    { label: 'Unresolved matured %', bad: true }
+  ], (spec, list) => {
+    const s = m48(list);
+    if (!s.m) return { text: '-' };
+    if (spec.label.startsWith('Matured')) return { text: numFmt(s.m) };
+    if (spec.label.startsWith('Resolved ≤')) return { text: numFmt(s.w) };
+    if (spec.good) { const v = s.w / s.m * 100; return { text: v.toFixed(1) + '%', bg: v >= 80 ? GOOD : v >= 70 ? YEL : ORG }; }
+    const v = s.u / s.m * 100; return { text: v.toFixed(1) + '%', bg: v >= 30 ? PNK : v >= 20 ? ORG : null };
+  });
 
   // 2+3. TAT % tables
   const BUCKETS = [
