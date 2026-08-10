@@ -1,0 +1,59 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>48-Hour TAT — Weekly Metrics Recap</title>
+<style>
+:root{--bg:#faf7f9;--surface:#fff;--surface2:#f4eef2;--ink:#241a21;--ink2:#5d4f58;--muted:#8a7a83;--border:#e6dce2;--accent-ink:#a30f66;--good:#1a7f37;--good-soft:#e6f4ea;--bad:#c2410c;--bad-soft:#ffe9dd;--head:#D9008D;--head2:#A3006A}
+*{box-sizing:border-box}body{background:var(--bg);color:var(--ink);font:16px/1.6 "Segoe UI",system-ui,sans-serif;margin:0;padding:0 20px 64px}
+.wrap{max-width:900px;margin:0 auto}header{padding:44px 0 6px}
+.eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink);margin:0 0 10px}
+h1{font-size:clamp(24px,5vw,34px);margin:0 0 10px;letter-spacing:-.02em}
+.meta{font-size:13px;color:var(--muted);margin-bottom:6px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:20px}
+.tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:15px 17px 12px}
+.tile .label{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tile .value{font-size:31px;font-weight:750;margin-top:6px;font-variant-numeric:tabular-nums}
+.tile .note{font-size:12.5px;color:var(--ink2);margin-top:3px}
+section{margin-top:34px}h2{font-size:18px;margin:0 0 4px}.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
+.tablewrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border);background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px;min-width:620px}
+th{background:var(--head);color:#fff;font-weight:700;padding:9px 14px;text-align:right;font-size:12px;white-space:nowrap}
+th:first-child{text-align:left}th.tot{background:var(--head2)}
+td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td:first-child{text-align:left;color:var(--ink);font-weight:600;white-space:normal}
+tr:last-child td{border-bottom:none}td.g{color:var(--good);font-weight:750}td.b{color:var(--bad);font-weight:750}td.tot{background:var(--surface2);font-weight:700}
+.notes{border-top:1px solid var(--border);margin-top:40px;padding-top:14px;font-size:12.5px;color:var(--muted)}
+</style></head><body><div class="wrap">
+<header>
+<p class="eyebrow">HP Customer Tracker · 48-Hour TAT Flag</p>
+<h1>Weekly metrics recap</h1>
+<p class="meta">Generated 10 Aug 2026 · matured cases only (completed their full 48-hour window) · auto-refreshed every Monday</p>
+<div style="background:var(--good-soft);border:1px solid var(--good);border-radius:10px;padding:12px 16px;margin-top:14px;font-size:14.5px">
+🎯 <b>Target: 80% resolution within 48 hrs by end of August.</b>
+Currently at <b>71.8%</b> — <b style="color:var(--bad)">8.2 pp to go</b>.
+</div>
+<div class="tiles">
+<div class="tile"><div class="label">Resolution within 48 hrs</div><div class="value" style="color:var(--good)">71.8%</div><div class="note">704 of 980 matured · till date · target 80% by end of Aug</div></div>
+<div class="tile"><div class="label">Unresolved matured tickets</div><div class="value" style="color:var(--bad)">26.4%</div><div class="note">259 of 980 matured still unresolved past 48 hrs</div></div>
+<div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending (&gt;48 hrs unresolved)</div><div class="value" style="color:var(--bad)">₹44,119</div><div class="note">253 breached open cases owe a pro-rata refund</div></div>
+<div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:var(--good)">+5.0 pp</div><div class="note">Resolved within 48 hrs: <b>69.3%</b> (29 Jul – 2 Aug) → <b>74.3%</b> (3 Aug – 9 Aug)</div></div>
+</div>
+</header>
+<section>
+<h2>Week before vs last week vs till date</h2>
+<p class="sub">Cohorts by the date the case entered the tracker. Recent cases still inside their 48-hour window are excluded from matured metrics.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Metric</th><th>Week before<br>(29 Jul – 2 Aug)</th><th>Last week<br>(3 Aug – 9 Aug)</th><th class="tot">Till date<br>(29 Jul – 10 Aug)</th></tr></thead>
+<tbody>
+<tr><td>Cases added</td><td>482</td><td>651</td><td class="tot">1,188</td></tr>
+<tr><td>Matured (completed 48-hr window)</td><td>482</td><td>498</td><td class="tot">980</td></tr>
+<tr><td>Resolved ≤ 48 hrs</td><td>334</td><td>370</td><td class="tot">704</td></tr>
+<tr><td><b>Resolution within 48 hrs %</b></td><td class="g">69.3%</td><td class="g">74.3%</td><td class="tot g">71.8%</td></tr>
+<tr><td>Resolved late (after breaching)</td><td>11</td><td>6</td><td class="tot">17</td></tr>
+<tr><td>Unresolved matured (breached, still open)</td><td>137</td><td>122</td><td class="tot">259</td></tr>
+<tr><td><b>Unresolved matured %</b></td><td class="b">28.4%</td><td class="b">24.5%</td><td class="tot b">26.4%</td></tr>
+<tr><td>Overall resolved (any time, % of added)</td><td>345 (71.6%)</td><td>468 (71.9%)</td><td class="tot">843 (71.0%)</td></tr>
+<tr><td>Refund pending — cases</td><td>134</td><td>119</td><td class="tot">253</td></tr>
+<tr><td><b>Refund pending — pro-rata amount</b></td><td class="b">₹20,152</td><td class="b">₹23,967</td><td class="tot b">₹44,119</td></tr>
+</tbody></table></div>
+</section>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (IST).</div>
+</div></body></html>
