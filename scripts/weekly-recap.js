@@ -91,7 +91,9 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     const resolvedAll = list.filter(c => getStatus(c) !== 'Unresolved').length;
     const pend = matured.filter(c => getStatus(c) === 'Unresolved' && !sheet[dig(c.ticket_no)] && trim(c.cx_action) !== 'Refund Done');
     const pendAmt = pend.reduce((a, c) => a + (Number(c.refund_amount) || 0), 0);
-    return { n: list.length, m, w48, unresM, late, resolvedAll, pendN: pend.length, pendAmt };
+    const done = list.filter(c => sheet[dig(c.ticket_no)] || trim(c.cx_action) === 'Refund Done');
+    const doneAmt = done.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheet[dig(c.ticket_no)] ? Number(sheet[dig(c.ticket_no)].a) || 0 : 0)), 0);
+    return { n: list.length, m, w48, unresM, late, resolvedAll, pendN: pend.length, pendAmt, doneN: done.length, doneAmt };
   };
   const inRange = (r) => era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to; });
 
@@ -145,6 +147,7 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 <div class="tile"><div class="label">Unresolved matured tickets</div><div class="value" style="color:var(--bad)">${pct(sTD.unresM, sTD.m)}</div><div class="note">${sTD.unresM} of ${sTD.m} matured still unresolved past 48 hrs</div></div>
 <div class="tile"><div class="label">Cases added since 29 Jul</div><div class="value">${sTD.n.toLocaleString('en-IN')}</div><div class="note">avg <b>~${avgPerDay} tickets/day</b> · ${sTD.m.toLocaleString('en-IN')} matured · ${(sTD.n - sTD.m).toLocaleString('en-IN')} in window</div></div>
 <div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending (&gt;48 hrs unresolved)</div><div class="value" style="color:var(--bad)">${inr(sTD.pendAmt)}</div><div class="note">${sTD.pendN} breached open cases owe a pro-rata refund</div></div>
+<div class="tile" style="border-color:var(--good)"><div class="label">Refund done</div><div class="value" style="color:var(--good)">${inr(sTD.doneAmt)}</div><div class="note">${sTD.doneN} cases refunded till date (Finance sheet / Cx Action)</div></div>
 <div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Resolved within 48 hrs: <b>${pct(sWB.w48, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.w48, sLW.m)}</b> (${lwLabel})</div></div>
 </div>
 </header>
@@ -164,6 +167,8 @@ ${row('<b>Unresolved matured %</b>', s => pct(s.unresM, s.m), 'b')}
 ${row('Overall resolved (any time, % of added)', s => s.resolvedAll + ' (' + pct(s.resolvedAll, s.n) + ')')}
 ${row('Refund pending — cases', s => s.pendN)}
 ${row('<b>Refund pending — pro-rata amount</b>', s => inr(s.pendAmt), 'b')}
+${row('Refund done — cases', s => s.doneN)}
+${row('<b>Refund done — amount</b>', s => inr(s.doneAmt), 'g')}
 </tbody></table></div>
 </section>
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (IST).</div>
@@ -180,7 +185,7 @@ ${row('<b>Refund pending — pro-rata amount</b>', s => inr(s.pendAmt), 'b')}
     `📊 *48h TAT — Weekly Recap* (${lwLabel})\n` +
     `• Resolution within 48 hrs: *${pct(sLW.w48, sLW.m)}* last week vs ${pct(sWB.w48, sWB.m)} week before (${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp)\n` +
     `• Unresolved matured: *${pct(sLW.unresM, sLW.m)}* (${sLW.unresM} of ${sLW.m})\n` +
-    `• Refund pending on >48h unresolved: *${inr(sTD.pendAmt)}* across ${sTD.pendN} cases\n` +
+    `• Refund pending on >48h unresolved: *${inr(sTD.pendAmt)}* across ${sTD.pendN} cases · refund done: ${inr(sTD.doneAmt)} (${sTD.doneN} cases)\n` +
     `• Till date since 29 Jul: ${sTD.n.toLocaleString('en-IN')} added · ${pct(sTD.w48, sTD.m)} resolved ≤48h · ${pct(sTD.unresM, sTD.m)} unresolved matured\n` +
     `🎯 Target: ${TARGET_PCT}% within-48h resolution by end of Aug — ${(TARGET_PCT - sTD.w48 / sTD.m * 100) > 0 ? (TARGET_PCT - sTD.w48 / sTD.m * 100).toFixed(1) + ' pp to go' : 'met ✅'}\n` +
     `📄 Full doc: ${DOC_URL}`;
