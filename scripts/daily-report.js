@@ -74,7 +74,9 @@ function getStatus(c) {
   if ((c.migration_date || '').trim()) return 'Migrated';
   const g      = (c.remarks || '').toLowerCase().trim();
   const subcat = (c.subcat  || '').toLowerCase();
-  if (g === 'resolved by old partner') return 'Ping Up';
+  // Accept both the legacy 'Resolved by Old Partner' and the renamed
+  // 'Resolved by Old CSP' (dropdown wording changed 5 Aug 2026)
+  if (g === 'resolved by old partner' || g === 'resolved by old csp') return 'Ping Up';
   const pingKw      = ['ping up','internet working','internet up','speed up','link up'];
   const pingSubcats = ['internet supply down','recharge done but no internet'];
   if (pingSubcats.some(s => subcat.includes(s)) && pingKw.some(kw => g.includes(kw))) return 'Ping Up';
@@ -136,7 +138,7 @@ function row(label, count, total, indent, bold) {
 
     // Subparts of Unresolved/Refund
     if (remarks === 'Customer not interested in Migration' || remarks === 'Cx not contactable/Reachable') custDenied++;
-    if (remarks === 'No Overlapping Partner/Refund' || remarks === 'Migration not possible/Refund') hostNotAligned++;
+    if (remarks === 'No Overlapping Partner/Refund' || remarks === 'No Overlapping CSP/Refund' || remarks === 'Migration not possible/Refund') hostNotAligned++;
   }
 
   const resolved   = migrated + pingUp;
@@ -151,10 +153,10 @@ function row(label, count, total, indent, bold) {
     row('Tickets Received (72 hrs)',  total,          total, false, true),
     row('Resolved',                   resolved,       total, false, true),
     row('Migrated',                   migrated,       total, true,  false),
-    row('Resolved by Same Partner',   pingUp,         total, true,  false),
+    row('Resolved by Same CSP',       pingUp,         total, true,  false),
     row('Refund (Unresolved)',         unresolved,     total, false, true),
     row('Customer Denied',            custDenied,     total, true,  false),
-    row('Host Partner Not Aligned',   hostNotAligned, total, true,  false),
+    row('Host CSP Not Aligned',       hostNotAligned, total, true,  false),
     LINE,
   ];
 
