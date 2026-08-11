@@ -65,11 +65,11 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .status-card.reopen:hover { background: rgba(163,113,247,.12); }
 .status-card.reopen.active { background: rgba(163,113,247,.18); box-shadow: 0 0 0 2px #a371f7 inset; }
 
-/* >48h drill-down: hide Engineer Remarks (10), Migration Status (12) and
-   Migration Date (16) — not relevant to the breached raw-data view */
-.main-tbl.exp48-mode th:nth-child(10), .main-tbl.exp48-mode td:nth-child(10),
-.main-tbl.exp48-mode th:nth-child(12), .main-tbl.exp48-mode td:nth-child(12),
-.main-tbl.exp48-mode th:nth-child(16), .main-tbl.exp48-mode td:nth-child(16) { display: none; }
+/* >48h drill-down: hide Migration Status (11) and Migration Date (15) —
+   not relevant to the breached raw-data view. (Engineer Remarks column was
+   removed from the table entirely on 11 Aug; data kept in Firebase/CSV.) */
+.main-tbl.exp48-mode th:nth-child(11), .main-tbl.exp48-mode td:nth-child(11),
+.main-tbl.exp48-mode th:nth-child(15), .main-tbl.exp48-mode td:nth-child(15) { display: none; }
 
 /* ── Main tabs ── */
 .main-tabs { display:flex; gap:8px; margin:14px 0 4px; flex-wrap:wrap; }
@@ -669,7 +669,6 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>48h TAT &#x23F3;</th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
-            <th>Engineer Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Cx Action &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Migration Status &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Owner &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
@@ -690,7 +689,6 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
-            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engRemarks',this.value)"></th>
             <th><input class="col-filter" placeholder="Pending / Done" oninput="setColFilter('cxAction',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('migStatus',this.value)"></th>
             <th><input class="col-filter" placeholder="Cx / NQT" oninput="setColFilter('owner',this.value)"></th>
@@ -1938,7 +1936,6 @@ function applyColFilters() {
     if (!chk(effectiveVal(r,8), 'remarks'))    return false;
     if (!chk((r[17]||''),       'migStatus'))  return false;
     if (!chk(effectiveVal(r,10),'engineer'))   return false;
-    if (!chk(effectiveVal(r,22),'engRemarks')) return false;
     if (!chk(effectiveVal(r,23),'cxAction'))   return false;
     if (!chk(r[0],              'caseAdded'))return false;
     if (!chk(effectiveVal(r,14),'migDate'))  return false;
@@ -2661,7 +2658,7 @@ function renderTable(allTableRows) {
   document.getElementById('rowCount').textContent = allTableRows.length + ' records';
   const tbody = document.getElementById('tBody');
   if (!allTableRows.length) {
-    tbody.innerHTML = '<tr><td colspan="19" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="18" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
     return;
   }
   const rows = allTableRows.slice(0, renderLimit);
@@ -2691,7 +2688,6 @@ function renderTable(allTableRows) {
       makeTatClockCell(r) +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim(), r[20] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[20]) + '</div>' : '') +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
-      makeEditCell(ticket, 'engineer_remarks', (r[22]||'').trim()) +
       makeCxActionCell(ticket, (r[23]||'').trim()) +
       makeMigStatusCell(ticket, (r[17]||'').trim()) +
       makeOwnerCell(ticket, owner) +
@@ -2717,7 +2713,7 @@ function renderTable(allTableRows) {
       '<td>' + link + '</td>' +
       '</tr>';
   }).join('') + (remaining > 0
-    ? '<tr><td colspan="19" style="text-align:center;padding:14px"><button class="btn btn-primary" onclick="showMoreRows()" style="font-size:13px;padding:8px 22px">&#x2B07; Show ' + Math.min(RENDER_STEP, remaining) + ' more (' + remaining + ' remaining)</button></td></tr>'
+    ? '<tr><td colspan="18" style="text-align:center;padding:14px"><button class="btn btn-primary" onclick="showMoreRows()" style="font-size:13px;padding:8px 22px">&#x2B07; Show ' + Math.min(RENDER_STEP, remaining) + ' more (' + remaining + ' remaining)</button></td></tr>'
     : '');
 }
 
