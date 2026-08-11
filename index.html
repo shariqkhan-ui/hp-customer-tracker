@@ -2190,30 +2190,35 @@ const fmtTsDate = ts => ts ? new Date(Number(ts)).toLocaleString('en-IN', { time
 // Refund-done status comes from TWO sources, merged per ticket:
 //  a) Cx Action set to "Refund Done" in this tracker
 //  b) the Finance team's sheet (mirrored to /refund_sheet by the cron)
-let refundSheet = {}, refundSheetAt = 0;
+let refundSheet = {}, refundSheetMob = {}, refundSheetAt = 0;
 function loadRefundSheet() {
   if (Date.now() - refundSheetAt < 5 * 60000) return Promise.resolve();
-  return fbGet('/refund_sheet').then(function(d) {
-    if (d) { refundSheet = d; refundSheetAt = Date.now(); }
+  return Promise.all([fbGet('/refund_sheet'), fbGet('/refund_sheet_mob')]).then(function(res) {
+    if (res[0]) refundSheet = res[0];
+    if (res[1]) refundSheetMob = res[1];
+    if (res[0] || res[1]) refundSheetAt = Date.now();
   }).catch(function() {});
 }
 loadRefundSheet();
+// Match a case to the Finance sheet by Kapture ticket id OR the customer's
+// registered contact number — many sheet rows carry only the number.
 const sheetOf = t => refundSheet[String(t || '').replace(/\D/g, '')] || null;
+const sheetEntryFor = r => sheetOf(r[1]) || refundSheetMob[String(r[3] || '').replace(/\D/g, '').slice(-10)] || null;
 
 function renderRefundTab() {
   const filtered = visRows.length || Object.keys(msState).some(k => msState[k].size) ? visRows : allRows;
   // Only flag-era cases (added on/after the 29 Jul 48h launch) — legacy
   // refunds from before the flag are out of scope for this tab.
   const base = filtered.filter(r => rowStartTsAny(r) >= TAT_LAUNCH_TS);
-  const done = base.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetOf(r[1]));
+  const done = base.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetEntryFor(r));
   // Pending = owes a refund but not yet refunded: breached the 48h TAT
   // ("Need to Refund to Customer") or explicitly marked Refund Pending —
   // and absent from the Finance sheet / not marked Done.
   const pend = base.filter(r => {
-    if (sheetOf(r[1]) || effectiveVal(r, 23) === 'Refund Done') return false;
+    if (sheetEntryFor(r) || effectiveVal(r, 23) === 'Refund Done') return false;
     return effectiveVal(r, 23) === 'Refund Pending' || (getStatus(r) === 'Unresolved' && isTatExpired(r));
   });
-  const amtOf = r => (r[24] !== '' && r[24] != null) ? Number(r[24]) : (sheetOf(r[1]) ? Number(sheetOf(r[1]).a) || 0 : 0);
+  const amtOf = r => (r[24] !== '' && r[24] != null) ? Number(r[24]) : (sheetEntryFor(r) ? Number(sheetEntryFor(r).a) || 0 : 0);
   const sum = list => list.reduce((a, r) => a + amtOf(r), 0);
   setText('rfDoneCount', done.length);
   setText('rfDoneTotal', inr(sum(done)));
@@ -2225,14 +2230,14 @@ function renderRefundTab() {
   setText('rfPickPct', done.length ? '(' + Math.round(picked / done.length * 100) + '%)' : '');
   // One-time baseline: the pre-29 Jul world, shown separately (not counted above)
   const preBase = filtered.filter(r => { const t = rowStartTsAny(r); return t > 0 && t < TAT_LAUNCH_TS; });
-  const preDone = preBase.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetOf(r[1]));
+  const preDone = preBase.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetEntryFor(r));
   const preAmt  = preDone.reduce((a, r) => a + amtOf(r), 0);
   const prePicked = preDone.filter(r => effectiveVal(r, 27) === 'Yes').length;
   document.getElementById('rfBaseline').innerHTML = preDone.length
     ? '<b>Baseline (pre-29 Jul world, for reference only):</b> ' + preDone.length + ' refunds done totalling <b>' + inr(preAmt) + '</b> across ' + preBase.length.toLocaleString('en-IN') + ' legacy CSP cases &nbsp;·&nbsp; &#x1F4E6; device picked up: <b>' + prePicked + ' / ' + preDone.length + '</b> (' + Math.round(prePicked / preDone.length * 100) + '%) — excluded from the numbers above.'
     : '';
 
-  const doneTs = r => Number(r[25]) || (sheetOf(r[1]) ? Number(sheetOf(r[1]).t) || 0 : 0);
+  const doneTs = r => Number(r[25]) || (sheetEntryFor(r) ? Number(sheetEntryFor(r).t) || 0 : 0);
   done.sort((a, b) => doneTs(b) - doneTs(a));
   const pickCell = (t, val) => '<td style="cursor:pointer" title="Click to toggle picked up / not picked up" onclick="toggleDevicePickup(\'' + esc(t).replace(/'/g,"\\'") + '\')">' +
     (val === 'Yes' ? '<span class="badge badge-green">&#x1F4E6; Picked Up</span>' : '<span class="badge badge-yellow">Not Picked</span>') + ' <span class="edit-hint">&#x270F;</span></td>';

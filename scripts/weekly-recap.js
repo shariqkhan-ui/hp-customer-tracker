@@ -64,11 +64,15 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
 
 (async () => {
   const NOW = Date.now();
-  const [casesRaw, sheet] = await Promise.all([
+  const [casesRaw, sheet, sheetMob] = await Promise.all([
     fetch(FIREBASE_DB + '/cases.json').then(r => r.json()),
     fetch(FIREBASE_DB + '/refund_sheet.json').then(r => r.json()).catch(() => ({})),
+    fetch(FIREBASE_DB + '/refund_sheet_mob.json').then(r => r.json()).catch(() => ({})),
   ]);
   const dig = v => String(v || '').replace(/\D/g, '');
+  // Finance-sheet match by Kapture ticket OR the customer's registered number
+  const sheetEntry = c => (sheet && sheet[dig(c.ticket_no)]) ||
+    (sheetMob && sheetMob[dig(c.mobile).slice(-10)]) || null;
   const era = Object.entries(casesRaw)
     .filter(([k]) => !k.startsWith('__'))
     .map(([, c]) => c)
@@ -89,10 +93,10 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     const unresM = matured.filter(c => getStatus(c) === 'Unresolved').length;
     const late = matured.filter(c => getStatus(c) !== 'Unresolved' && resolvedWithin48(c) !== true).length;
     const resolvedAll = list.filter(c => getStatus(c) !== 'Unresolved').length;
-    const pend = matured.filter(c => getStatus(c) === 'Unresolved' && !sheet[dig(c.ticket_no)] && trim(c.cx_action) !== 'Refund Done');
+    const pend = matured.filter(c => getStatus(c) === 'Unresolved' && !sheetEntry(c) && trim(c.cx_action) !== 'Refund Done');
     const pendAmt = pend.reduce((a, c) => a + (Number(c.refund_amount) || 0), 0);
-    const done = list.filter(c => sheet[dig(c.ticket_no)] || trim(c.cx_action) === 'Refund Done');
-    const doneAmt = done.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheet[dig(c.ticket_no)] ? Number(sheet[dig(c.ticket_no)].a) || 0 : 0)), 0);
+    const done = list.filter(c => sheetEntry(c) || trim(c.cx_action) === 'Refund Done');
+    const doneAmt = done.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
     return { n: list.length, m, w48, unresM, late, resolvedAll, pendN: pend.length, pendAmt, doneN: done.length, doneAmt };
   };
   const inRange = (r) => era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to; });
