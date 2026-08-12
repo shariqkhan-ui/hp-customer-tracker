@@ -698,6 +698,19 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       AND t.KAPTURE_TICKET_ID IS NOT NULL
   `;
 
+  // ── Step 2b SQL: LIVE-open internet tickets (any source) ──────────────────
+  // T_TICKETS_NEW is the live Kapture mirror. SERVICE_TICKET_MODEL keeps
+  // IS_RESOLVED=1 after a first disposal even when the ticket was reopened —
+  // or, for some tickets, shows resolved while the live ticket is still OPEN.
+  // This path catches every internet-titled ticket that is open RIGHT NOW and
+  // >72h old, regardless of what the model claims. Dedup by ticket id means
+  // anything the model path already added is skipped.
+  const liveOpenSql = chatSql.replace(
+    "AND t.EXTRA_DATA:ticket_source::string = 'CUSTOMER_CHAT'",
+    "AND COALESCE(t.EXTRA_DATA:ticket_source::string, '') != 'CUSTOMER_CHAT'\n" +
+    "      AND (t.TITLE ILIKE '%internet%' OR t.TITLE ILIKE '%slow speed%' OR t.TITLE ILIKE '%frequent disconnection%' OR t.TITLE ILIKE '%recharge done%')"
+  ).replace("'Chat'                                            AS CHANNEL", "'Service'                                         AS CHANNEL");
+
   log(`Running chat-ticket query (CUSTOMER_CHAT)${BACKFILL_CHAT ? ' [no age cap]' : ' [72h-14d]'}…`);
   let chatTickets = [];
   try {
@@ -710,10 +723,24 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   const { added: chatAdded, skipped: chatSkipped, enriched: chatEnriched } =
     await addTicketsToFirebase(chatTickets, BACKFILL_CHAT ? 'chat-backfill' : 'chat-cron');
 
-  const added    = internetAdded + chatAdded;
-  const skipped  = internetSkipped + chatSkipped;
-  const enriched = internetEnriched + chatEnriched;
-  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded})  Enriched: ${enriched}  Skipped: ${skipped}`);
+  // ── Step 2b: LIVE-open tickets the model path can't see ──
+  let liveAdded = 0, liveSkipped = 0, liveEnriched = 0;
+  if (!BACKFILL_CHAT) {
+    log('Running live-open ticket query (T_TICKETS_NEW, any source)…');
+    try {
+      const liveTickets = await queryMetabase(liveOpenSql, apiKey);
+      log(`Qualifying live-open tickets: ${liveTickets.length}`);
+      ({ added: liveAdded, skipped: liveSkipped, enriched: liveEnriched } =
+        await addTicketsToFirebase(liveTickets, 'live-open-cron'));
+    } catch (e) {
+      console.error('ERROR querying Metabase (live-open):', e.message);
+    }
+  }
+
+  const added    = internetAdded + chatAdded + liveAdded;
+  const skipped  = internetSkipped + chatSkipped + liveSkipped;
+  const enriched = internetEnriched + chatEnriched + liveEnriched;
+  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded}, live-open ${liveAdded})  Enriched: ${enriched}  Skipped: ${skipped}`);
 
   // ── Step 2.5: Mirror the Finance refund sheet into /refund_sheet ──
   // Failure here must never break the ticket sync.
@@ -739,6 +766,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       const parts = [];
       if (internetAdded > 0) parts.push(`${internetAdded} internet`);
       if (chatAdded > 0)     parts.push(`${chatAdded} chat`);
+      if (liveAdded > 0)     parts.push(`${liveAdded} live-open`);
       const breakdown = parts.length ? ` (${parts.join(', ')})` : '';
       const slackRes = await httpRequest(
         'POST',
