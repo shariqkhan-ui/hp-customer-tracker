@@ -641,12 +641,12 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // them when reopened at least once and >72h old since creation.
   let reopenAdded = 0, reopenSkipped = 0, reopenEnriched = 0;
   if (!BACKFILL_CHAT) {
-    // Only RECENT reopens (last 3 days) — the first run of the broad rule
-    // flushed a 14-day backlog of 1,196 cases in one day (12 Aug, rolled back);
-    // this keeps the pipe flowing without ever swallowing history again.
+    // Only FRESH reopens (last 24h) — broader windows flushed backlogs into a
+    // single day (12 Aug: 14-day rule added 1,196, 3-day rule added 97; both
+    // rolled back). Each sync now picks up only newly-reopened tickets.
     const reopenedSql = sql.replace(
       'AND stm.IS_RESOLVED = 0',
-      'AND stm.IS_RESOLVED = 1\n      AND stm.TIMES_REOPENED > 0\n      AND stm.FIRST_REOPENED_TIME >= DATEADD(DAY, -3, CURRENT_TIMESTAMP())'
+      'AND stm.IS_RESOLVED = 1\n      AND stm.TIMES_REOPENED > 0\n      AND stm.FIRST_REOPENED_TIME >= DATEADD(DAY, -1, CURRENT_TIMESTAMP())'
     );
     log('Running reopened-ticket query (SERVICE_TICKET_MODEL, IS_RESOLVED=1 + reopened)…');
     try {
