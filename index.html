@@ -578,13 +578,13 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div class="status-count" id="sUnresCount">—</div>
       <div class="status-label">&#x1F534; Unresolved</div>
     </div>
-    <div class="status-card kstat" title="Kapture status of the tracker's unresolved tickets — Pending = still open in Kapture; Completed = disposed in Kapture but not fixed on ground. % of unresolved.">
-      <div class="status-count" id="sKSplit" style="font-size:20px">—</div>
-      <div class="status-label">&#x1F5C2; Kapture: Pending / Completed <span style="font-size:10px;opacity:.7">(of Unresolved)</span></div>
-    </div>
     <div class="status-card exp48" id="exp48Card" onclick="toggleExp48Filter()" style="cursor:pointer" title="Click to see these cases — oldest first. % is out of cases added since 29 Jul (48h flag launch).">
       <div class="status-count"><span id="sExp48Count">—</span> <span class="status-pct" id="sExp48Pct"></span></div>
       <div class="status-label">&#x23F0; Unresolved &gt; 48 Hrs <span id="exp48Hint" style="font-size:10px;opacity:.7">(click to view)</span></div>
+    </div>
+    <div class="status-card kstat" title="Kapture status of the Unresolved > 48 Hrs cases — Pending = still open in Kapture; Completed = disposed in Kapture but not fixed on ground. % of the >48h bucket.">
+      <div class="status-count" id="sKSplit" style="font-size:20px">—</div>
+      <div class="status-label">&#x1F5C2; Kapture: Pending / Completed <span style="font-size:10px;opacity:.7">(of Unresolved &gt; 48 Hrs)</span></div>
     </div>
     <div class="status-card reopen" id="reopenCard" onclick="toggleReopenFilter()" style="cursor:pointer" title="Tickets marked resolved that were reverted to unresolved within 24 hours. Click to view them.">
       <div class="status-count" id="sReopenCount">—</div>
@@ -1977,8 +1977,8 @@ function renderAll() {
   setText('sExp48Count', exp48);
   setText('sExp48Pct',   flagged ? '(' + Math.round(exp48 / flagged * 100) + '% of ' + flagged + ' since 29 Jul)' : '');
   setText('sReopenCount', rows.filter(r => Number(r[26]) > 0).length);
-  // Kapture-status split of the unresolved bucket — one card, denominator = unresolved
-  const unresRows = rows.filter(r => getStatus(r) === 'Unresolved');
+  // Kapture-status split — denominator = the Unresolved > 48 Hrs (breached) bucket
+  const unresRows = rows.filter(r => getStatus(r) === 'Unresolved' && isTatExpired(r));
   const kPend = unresRows.filter(r => (r[30]||'').trim() === 'Pending').length;
   const kComp = unresRows.filter(r => ['Completed','Closed'].indexOf((r[30]||'').trim()) !== -1).length;
   const upct = n => unresRows.length ? Math.round(n / unresRows.length * 100) + '%' : '—';
