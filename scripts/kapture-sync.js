@@ -632,6 +632,27 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       await addTicketsToFirebase(tickets, 'cron'));
   }
 
+  // ── Step 1b: REOPENED tickets ─────────────────────────────────────────────
+  // A first PFT disposal freezes IS_RESOLVED=1 in the model even when the
+  // ticket is later reopened — such tickets never qualify for Step 1. Add
+  // them when reopened at least once and >72h old since creation.
+  let reopenAdded = 0, reopenSkipped = 0, reopenEnriched = 0;
+  if (!BACKFILL_CHAT) {
+    const reopenedSql = sql.replace(
+      'AND stm.IS_RESOLVED = 0',
+      'AND stm.IS_RESOLVED = 1\n      AND stm.TIMES_REOPENED > 0'
+    );
+    log('Running reopened-ticket query (SERVICE_TICKET_MODEL, IS_RESOLVED=1 + reopened)…');
+    try {
+      const reopenTickets = await queryMetabase(reopenedSql, apiKey);
+      log(`Qualifying reopened tickets: ${reopenTickets.length}`);
+      ({ added: reopenAdded, skipped: reopenSkipped, enriched: reopenEnriched } =
+        await addTicketsToFirebase(reopenTickets, 'reopened-cron'));
+    } catch (e) {
+      console.error('ERROR querying Metabase (reopened):', e.message);
+    }
+  }
+
   // ── Step 2: Chat sync (T_TICKETS_NEW where ticket_source = CUSTOMER_CHAT) ──
   // Open chat tickets aged >72h. Normal runs cap at 14 days to stay live; the
   // one-time BACKFILL_CHAT run drops the cap to clear the full aged backlog.
@@ -737,10 +758,10 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     }
   }
 
-  const added    = internetAdded + chatAdded + liveAdded;
-  const skipped  = internetSkipped + chatSkipped + liveSkipped;
-  const enriched = internetEnriched + chatEnriched + liveEnriched;
-  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded}, live-open ${liveAdded})  Enriched: ${enriched}  Skipped: ${skipped}`);
+  const added    = internetAdded + chatAdded + liveAdded + reopenAdded;
+  const skipped  = internetSkipped + chatSkipped + liveSkipped + reopenSkipped;
+  const enriched = internetEnriched + chatEnriched + liveEnriched + reopenEnriched;
+  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded}, live-open ${liveAdded}, reopened ${reopenAdded})  Enriched: ${enriched}  Skipped: ${skipped}`);
 
   // ── Step 2.5: Mirror the Finance refund sheet into /refund_sheet ──
   // Failure here must never break the ticket sync.
@@ -767,6 +788,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       if (internetAdded > 0) parts.push(`${internetAdded} internet`);
       if (chatAdded > 0)     parts.push(`${chatAdded} chat`);
       if (liveAdded > 0)     parts.push(`${liveAdded} live-open`);
+      if (reopenAdded > 0)   parts.push(`${reopenAdded} reopened`);
       const breakdown = parts.length ? ` (${parts.join(', ')})` : '';
       const slackRes = await httpRequest(
         'POST',
