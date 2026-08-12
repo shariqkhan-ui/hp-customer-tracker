@@ -599,13 +599,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
         OR stm.LAST_TITLE ILIKE '%internet%'
         OR stm.LAST_TITLE ILIKE '%slow speed%'
         OR stm.LAST_TITLE ILIKE '%frequent disconnection%'
-        -- Service-issue family (12 Aug): the field team's >72h bucket includes
-        -- these dispositions, which carry no 'internet' wording in either title
-        OR stm.FIRST_TITLE ILIKE '%recharge expired%' OR stm.LAST_TITLE ILIKE '%recharge expired%'
-        OR stm.FIRST_TITLE ILIKE '%camera issue%'     OR stm.LAST_TITLE ILIKE '%camera issue%'
-        OR stm.FIRST_TITLE ILIKE '%router issue%'     OR stm.LAST_TITLE ILIKE '%router issue%'
-        OR stm.FIRST_TITLE ILIKE '%adapter%'          OR stm.LAST_TITLE ILIKE '%adapter%'
-        OR stm.FIRST_TITLE ILIKE '%improper installation%' OR stm.LAST_TITLE ILIKE '%improper installation%'
+        -- Service-issue family (recharge expired / camera / router issue /
+        -- adapter / improper installation) was included briefly on 12 Aug and
+        -- PAUSED same day per user — re-add the patterns here when wanted.
       )
       -- Not resolved
       AND stm.IS_RESOLVED = 0
@@ -739,8 +735,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   const liveOpenSql = chatSql.replace(
     "AND t.EXTRA_DATA:ticket_source::string = 'CUSTOMER_CHAT'",
     "AND COALESCE(t.EXTRA_DATA:ticket_source::string, '') != 'CUSTOMER_CHAT'\n" +
-    "      AND (t.TITLE ILIKE '%internet%' OR t.TITLE ILIKE '%slow speed%' OR t.TITLE ILIKE '%frequent disconnection%' OR t.TITLE ILIKE '%recharge done%'" +
-    " OR t.TITLE ILIKE '%recharge expired%' OR t.TITLE ILIKE '%camera issue%' OR t.TITLE ILIKE '%router issue%' OR t.TITLE ILIKE '%adapter%' OR t.TITLE ILIKE '%improper installation%')"
+    "      AND (t.TITLE ILIKE '%internet%' OR t.TITLE ILIKE '%slow speed%' OR t.TITLE ILIKE '%frequent disconnection%' OR t.TITLE ILIKE '%recharge done%')"
   ).replace("'Chat'                                            AS CHANNEL", "'Service'                                         AS CHANNEL");
 
   log(`Running chat-ticket query (CUSTOMER_CHAT)${BACKFILL_CHAT ? ' [no age cap]' : ' [72h-14d]'}…`);
