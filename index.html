@@ -60,6 +60,12 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .status-card.exp48     .status-pct   { font-size: 15px; font-weight: 800; color: #ff8c00; opacity: .8; }
 .status-card.exp48:hover { background: rgba(255,140,0,.12); }
 .status-card.exp48.active { background: rgba(255,140,0,.18); box-shadow: 0 0 0 2px #ff8c00 inset; }
+.status-card.kpend { border-color: #d29922; }
+.status-card.kpend .status-count { color: #d29922; }
+.status-card.kpend .status-pct { font-size: 15px; font-weight: 800; color: #d29922; opacity: .8; }
+.status-card.kcomp { border-color: #58a6ff; }
+.status-card.kcomp .status-count { color: #58a6ff; }
+.status-card.kcomp .status-pct { font-size: 15px; font-weight: 800; color: #58a6ff; opacity: .8; }
 .status-card.reopen { border-color: #a371f7; }
 .status-card.reopen .status-count { color: #a371f7; }
 .status-card.reopen:hover { background: rgba(163,113,247,.12); }
@@ -576,6 +582,14 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="status-card unresolved">
       <div class="status-count" id="sUnresCount">—</div>
       <div class="status-label">&#x1F534; Unresolved</div>
+    </div>
+    <div class="status-card kpend" title="Unresolved in the tracker AND still pending in Kapture">
+      <div class="status-count"><span id="sKPendCount">—</span> <span class="status-pct" id="sKPendPct"></span></div>
+      <div class="status-label">&#x1F5C2; Kapture Pending <span style="font-size:10px;opacity:.7">(of Unresolved)</span></div>
+    </div>
+    <div class="status-card kcomp" title="Unresolved in the tracker but Kapture shows the ticket Completed/Closed — disposed on paper, not fixed on ground">
+      <div class="status-count"><span id="sKCompCount">—</span> <span class="status-pct" id="sKCompPct"></span></div>
+      <div class="status-label">&#x1F5C4; Kapture Completed <span style="font-size:10px;opacity:.7">(of Unresolved)</span></div>
     </div>
     <div class="status-card exp48" id="exp48Card" onclick="toggleExp48Filter()" style="cursor:pointer" title="Click to see these cases — oldest first. % is out of cases added since 29 Jul (48h flag launch).">
       <div class="status-count"><span id="sExp48Count">—</span> <span class="status-pct" id="sExp48Pct"></span></div>
@@ -1972,6 +1986,15 @@ function renderAll() {
   setText('sExp48Count', exp48);
   setText('sExp48Pct',   flagged ? '(' + Math.round(exp48 / flagged * 100) + '% of ' + flagged + ' since 29 Jul)' : '');
   setText('sReopenCount', rows.filter(r => Number(r[26]) > 0).length);
+  // Kapture-status split of the unresolved bucket
+  const unresRows = rows.filter(r => getStatus(r) === 'Unresolved');
+  const kPend = unresRows.filter(r => (r[30]||'').trim() === 'Pending').length;
+  const kComp = unresRows.filter(r => ['Completed','Closed'].indexOf((r[30]||'').trim()) !== -1).length;
+  const upct = n => unresRows.length ? '(' + Math.round(n / unresRows.length * 100) + '%)' : '';
+  setText('sKPendCount', kPend);
+  setText('sKPendPct', upct(kPend));
+  setText('sKCompCount', kComp);
+  setText('sKCompPct', upct(kComp));
   setText('kTotal',   total);
   setText('kMigPct',  pct(mig));
   setText('kPingPct', pct(ping));
