@@ -2619,7 +2619,7 @@ function makeOwnerCell(ticket, owner) {
 
 // ── Cx Action (refund) cell helpers ──
 const CX_ACTION_OPTS = ['Refund Pending', 'Refund Done', 'DNP1', 'DNP2', 'DNP3'];
-function cxActionBadgeCell(val) {
+function cxActionBadgeCell(val, defaultPending) {
   const v = (val || '').trim();
   const badge = v === 'Refund Done'
     ? '<span class="badge badge-green">&#x2714; Refund Done</span>'
@@ -2627,11 +2627,13 @@ function cxActionBadgeCell(val) {
       ? '<span class="badge badge-yellow">&#x23F3; Refund Pending</span>'
       : v // any other value (DNP1/2/3, future options) must be visible too
         ? '<span class="badge badge-blue">&#x1F4DE; ' + esc(v) + '</span>'
-        : '<span style="color:var(--muted)">—</span>';
+        : defaultPending // unresolved case, Cx yet to act → default reads Refund Pending
+          ? '<span class="badge badge-yellow" style="opacity:.75">&#x23F3; Refund Pending</span>'
+          : '<span style="color:var(--muted)">—</span>';
   return badge + '<span class="edit-hint">&#x270F;</span>';
 }
-function makeCxActionCell(ticket, val) {
-  return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="cx_action" data-orig="' + esc(val) + '" onclick="startEdit(this)" style="min-width:120px;white-space:nowrap">' + cxActionBadgeCell(val) + '</td>';
+function makeCxActionCell(ticket, val, defaultPending) {
+  return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="cx_action" data-orig="' + esc(val) + '" onclick="startEdit(this)" style="min-width:120px;white-space:nowrap">' + cxActionBadgeCell(val, defaultPending) + '</td>';
 }
 
 // ── Migration Status cell helpers ──
@@ -2692,7 +2694,7 @@ function renderTable(allTableRows) {
       makeTatClockCell(r) +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim(), r[20] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[20]) + '</div>' : '') +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
-      makeCxActionCell(ticket, (r[23]||'').trim()) +
+      makeCxActionCell(ticket, (r[23]||'').trim(), st === 'Unresolved') +
       makeOwnerCell(ticket, owner) +
       '<td style="font-size:12px;font-weight:700;color:' + pendingSinceColor(r) + ';white-space:nowrap">' + getPendingSince(r) + '</td>' +
       (function() {
