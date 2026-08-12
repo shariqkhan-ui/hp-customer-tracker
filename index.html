@@ -2620,11 +2620,14 @@ function makeOwnerCell(ticket, owner) {
 // ── Cx Action (refund) cell helpers ──
 const CX_ACTION_OPTS = ['Refund Pending', 'Refund Done', 'DNP1', 'DNP2', 'DNP3'];
 function cxActionBadgeCell(val) {
-  const badge = val === 'Refund Done'
+  const v = (val || '').trim();
+  const badge = v === 'Refund Done'
     ? '<span class="badge badge-green">&#x2714; Refund Done</span>'
-    : val === 'Refund Pending'
+    : v === 'Refund Pending'
       ? '<span class="badge badge-yellow">&#x23F3; Refund Pending</span>'
-      : '<span style="color:var(--muted)">—</span>';
+      : v // any other value (DNP1/2/3, future options) must be visible too
+        ? '<span class="badge badge-blue">&#x1F4DE; ' + esc(v) + '</span>'
+        : '<span style="color:var(--muted)">—</span>';
   return badge + '<span class="edit-hint">&#x270F;</span>';
 }
 function makeCxActionCell(ticket, val) {
