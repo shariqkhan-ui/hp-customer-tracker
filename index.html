@@ -1102,7 +1102,14 @@ function cellInner(val) {
 const REMARKS_OPTIONS = [
   'No Overlapping CSP/Refund','Resolved by Old CSP',
   'OLD CSP is working to resolve complaint',
-  'Cx not contactable/Reachable'
+  'Cx not contactable/Reachable',
+  // Added 13 Aug 2026 per field team (non-resolution reasons — cases stay Unresolved)
+  'Customer not happy with Wiom service/refund — chose another operator',
+  'CSP denied to resolve this ticket',
+  'CSP has no router to replace / inventory not available',
+  'Device not associated / disconnected',
+  'CSP installed his own device',
+  'CSP Not Responding'
 ];
 // True for both the legacy 'Resolved by Old Partner' and new 'Resolved by Old CSP'
 function isOldCspResolved(v) {
