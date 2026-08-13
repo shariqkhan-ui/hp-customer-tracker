@@ -61,6 +61,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 .status-card.exp48:hover { background: rgba(255,140,0,.12); }
 .status-card.exp48.active { background: rgba(255,140,0,.18); box-shadow: 0 0 0 2px #ff8c00 inset; }
 .status-card.kstat { border-color: #d29922; }
+.status-card.rstat { border-color: #3fb950; }
 .status-card.reopen { border-color: #a371f7; }
 .status-card.reopen .status-count { color: #a371f7; }
 .status-card.reopen:hover { background: rgba(163,113,247,.12); }
@@ -585,6 +586,10 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="status-card kstat" title="Kapture status of the Unresolved > 48 Hrs cases — Pending = still open in Kapture; Completed = disposed in Kapture but not fixed on ground. % of the >48h bucket.">
       <div class="status-count" id="sKSplit" style="font-size:20px">—</div>
       <div class="status-label">&#x1F5C2; Kapture: Pending / Completed <span style="font-size:10px;opacity:.7">(of Unresolved &gt; 48 Hrs)</span></div>
+    </div>
+    <div class="status-card rstat" title="Refund funnel of flag-era cases: Eligible = breached (Need to Refund) + already refunded; Pending = eligible but not yet refunded; Done = refunded per Finance sheet or Cx Action. % of eligible.">
+      <div class="status-count" id="sRSplit" style="font-size:20px">—</div>
+      <div class="status-label">&#x1F4B8; Refund: Eligible / Pending / Done</div>
     </div>
     <div class="status-card reopen" id="reopenCard" onclick="toggleReopenFilter()" style="cursor:pointer" title="Tickets marked resolved that were reverted to unresolved within 24 hours. Click to view them.">
       <div class="status-count" id="sReopenCount">—</div>
@@ -1986,6 +1991,20 @@ function renderAll() {
     '<span style="color:#d29922">Pending ' + kPend + ' (' + upct(kPend) + ')</span>' +
     '<span style="color:var(--muted)"> · </span>' +
     '<span style="color:#58a6ff">Completed ' + kComp + ' (' + upct(kComp) + ')</span>';
+  // Refund funnel — same compact format; base = flag-era rows in current view
+  const flagRows = rows.filter(r => caseStartTs(r) > 0);
+  const isRefunded = r => effectiveVal(r, 23) === 'Refund Done' || !!sheetEntryFor(r);
+  const doneR = flagRows.filter(isRefunded).length;
+  const pendR = flagRows.filter(r => !isRefunded(r) &&
+    (effectiveVal(r, 23) === 'Refund Pending' || (getStatus(r) === 'Unresolved' && isTatExpired(r)))).length;
+  const eligR = doneR + pendR;
+  const rpct = n => eligR ? Math.round(n / eligR * 100) + '%' : '—';
+  document.getElementById('sRSplit').innerHTML =
+    '<span style="color:var(--text)">Eligible ' + eligR + '</span>' +
+    '<span style="color:var(--muted)"> · </span>' +
+    '<span style="color:#d29922">Pending ' + pendR + ' (' + rpct(pendR) + ')</span>' +
+    '<span style="color:var(--muted)"> · </span>' +
+    '<span style="color:#3fb950">Done ' + doneR + ' (' + rpct(doneR) + ')</span>';
   setText('kTotal',   total);
   setText('kMigPct',  pct(mig));
   setText('kPingPct', pct(ping));
