@@ -587,9 +587,9 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div class="status-count" id="sKSplit" style="font-size:20px">—</div>
       <div class="status-label">&#x1F5C2; Kapture: Pending / Completed <span style="font-size:10px;opacity:.7">(of Unresolved &gt; 48 Hrs)</span></div>
     </div>
-    <div class="status-card rstat" title="Refund funnel of flag-era cases: Eligible = breached (Need to Refund) + already refunded; Pending = eligible but not yet refunded; Done = refunded per Finance sheet or Cx Action. % of eligible.">
+    <div class="status-card rstat" title="Refund funnel: Eligible = exactly the Unresolved > 48 Hrs cases; Done = of those, refunded per Finance sheet or Cx Action; Pending = the rest. % of eligible.">
       <div class="status-count" id="sRSplit" style="font-size:20px">—</div>
-      <div class="status-label">&#x1F4B8; Refund: Eligible / Pending / Done</div>
+      <div class="status-label">&#x1F4B8; Refund: Eligible / Pending / Done <span style="font-size:10px;opacity:.7">(= Unresolved &gt; 48 Hrs)</span></div>
     </div>
     <div class="status-card reopen" id="reopenCard" onclick="toggleReopenFilter()" style="cursor:pointer" title="Tickets marked resolved that were reverted to unresolved within 24 hours. Click to view them.">
       <div class="status-count" id="sReopenCount">—</div>
@@ -1998,13 +1998,13 @@ function renderAll() {
     '<span style="color:#d29922">Pending ' + kPend + ' (' + upct(kPend) + ')</span>' +
     '<span style="color:var(--muted)"> · </span>' +
     '<span style="color:#58a6ff">Completed ' + kComp + ' (' + upct(kComp) + ')</span>';
-  // Refund funnel — same compact format; base = flag-era rows in current view
-  const flagRows = rows.filter(r => caseStartTs(r) > 0);
+  // Refund funnel — per user: eligible = EXACTLY the Unresolved > 48 Hrs
+  // bucket (same set as the Kapture split card). Refunded-then-resolved cases
+  // drop out of all three figures.
   const isRefunded = r => effectiveVal(r, 23) === 'Refund Done' || !!sheetEntryFor(r);
-  const doneR = flagRows.filter(isRefunded).length;
-  const pendR = flagRows.filter(r => !isRefunded(r) &&
-    (effectiveVal(r, 23) === 'Refund Pending' || (getStatus(r) === 'Unresolved' && isTatExpired(r)))).length;
-  const eligR = doneR + pendR;
+  const eligR = unresRows.length;
+  const doneR = unresRows.filter(isRefunded).length;
+  const pendR = eligR - doneR;
   const rpct = n => eligR ? Math.round(n / eligR * 100) + '%' : '—';
   document.getElementById('sRSplit').innerHTML =
     '<span style="color:var(--text)">Eligible ' + eligR + '</span>' +
