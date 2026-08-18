@@ -86,12 +86,13 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const lastWeek = { from: thisMon - 7 * 86400000, to: thisMon };
   const weekBefore = { from: Math.max(LAUNCH, thisMon - 14 * 86400000), to: thisMon - 7 * 86400000 };
 
+  const isReop = c => Number(c.reopened_at) > 0 || String(c.source) === 'reopened-cron';
   const stats = list => {
     const matured = list.filter(c => (NOW - startTs(c)) >= LIM);
     const m = matured.length;
     // NET of reopened: resolutions later reopened don't count
-    const isReop = c => Number(c.reopened_at) > 0 || String(c.source) === 'reopened-cron';
     const w48 = matured.filter(c => resolvedWithin48(c) === true && !isReop(c)).length;
+    const w48g = matured.filter(c => resolvedWithin48(c) === true).length; // gross
     const unresM = matured.filter(c => getStatus(c) === 'Unresolved').length;
     const late = matured.filter(c => getStatus(c) !== 'Unresolved' && resolvedWithin48(c) !== true).length;
     const resolvedAll = list.filter(c => getStatus(c) !== 'Unresolved').length;
@@ -99,8 +100,35 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     const pendAmt = pend.reduce((a, c) => a + (Number(c.refund_amount) || 0), 0);
     const done = list.filter(c => sheetEntry(c) || trim(c.cx_action) === 'Refund Done');
     const doneAmt = done.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
-    return { n: list.length, m, w48, unresM, late, resolvedAll, pendN: pend.length, pendAmt, doneN: done.length, doneAmt };
+    return { n: list.length, m, w48, w48g, unresM, late, resolvedAll, pendN: pend.length, pendAmt, doneN: done.length, doneAmt };
   };
+  // ── Funnel extras (till date) ─────────────────────────────────────────────
+  const countBy = (list, keyFn) => {
+    const map = {};
+    list.forEach(c => { const k = keyFn(c) || '(no remark yet)'; map[k] = (map[k] || 0) + 1; });
+    return Object.entries(map).sort((a, b) => b[1] - a[1]);
+  };
+  const maturedTD = era.filter(c => (NOW - startTs(c)) >= LIM);
+  const breached = maturedTD.filter(c => getStatus(c) === 'Unresolved');
+  const unresReasons = countBy(breached, c => trim(c.remarks));
+  const breachedDone = breached.filter(c => sheetEntry(c) || trim(c.cx_action) === 'Refund Done');
+  const breachedDoneAmt = breachedDone.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
+  const breachedPend = breached.filter(c => !sheetEntry(c) && trim(c.cx_action) !== 'Refund Done');
+  const breachedPendAmt = breachedPend.reduce((a, c) => a + (Number(c.refund_amount) || 0), 0);
+  const closure = countBy(breached, c => trim(c.kapture_status) || 'Not yet synced');
+  // Ageing of the unresolved bucket — time slots since the case was added
+  const AGE_SLOTS = [
+    ['2 – 4 days', 2, 4], ['4 – 7 days', 4, 7], ['7 – 14 days', 7, 14], ['14 – 21 days', 14, 21], ['21+ days', 21, Infinity],
+  ];
+  const ageing = AGE_SLOTS.map(([label, lo, hi]) => [label, breached.filter(c => {
+    const d = (NOW - startTs(c)) / 86400000; return d >= lo && d < hi;
+  }).length]).filter(([, n]) => n > 0);
+  // Reopened funnel: all era reopens, reasons, and re-resolution confirmed by PFT
+  const reopens = era.filter(isReop);
+  const reopReasons = countBy(reopens, c => trim(c.remarks));
+  const reopPftDone = reopens.filter(c => trim(c.kapture_status) === 'Completed').length;
+  const reopStillOpen = reopens.filter(c => trim(c.kapture_status) !== 'Completed' && trim(c.kapture_status) !== 'Closed').length;
+  const resolvedAllTD = era.filter(c => getStatus(c) !== 'Unresolved').length;
   const inRange = (r) => era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to; });
 
   const sWB = stats(inRange(weekBefore));
@@ -154,9 +182,42 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 <div class="tile"><div class="label">Cases added since 29 Jul</div><div class="value">${sTD.n.toLocaleString('en-IN')}</div><div class="note">avg <b>~${avgPerDay} tickets/day</b> · ${sTD.m.toLocaleString('en-IN')} matured · ${(sTD.n - sTD.m).toLocaleString('en-IN')} in window</div></div>
 <div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending (&gt;48 hrs unresolved)</div><div class="value" style="color:var(--bad)">${inr(sTD.pendAmt)}</div><div class="note">${sTD.pendN} breached open cases owe a pro-rata refund</div></div>
 <div class="tile" style="border-color:var(--good)"><div class="label">Refund done</div><div class="value" style="color:var(--good)">${inr(sTD.doneAmt)}</div><div class="note">${sTD.doneN} cases refunded till date (Finance sheet / Cx Action)</div></div>
+<div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened % of resolved</div><div class="value" style="color:var(--accent-ink)">${pct(reopens.length, resolvedAllTD)}</div><div class="note"><b>${reopens.length} reopens</b> of ${resolvedAllTD.toLocaleString('en-IN')} cases resolved since 29 Jul</div></div>
 <div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Resolved within 48 hrs: <b>${pct(sWB.w48, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.w48, sLW.m)}</b> (${lwLabel})</div></div>
 </div>
 </header>
+<section>
+<h2>The complete funnel — till date (${tdLabel})</h2>
+<p class="sub">Every case received since 29 Jul, followed to its outcome. Each drop shows what happened to those cases.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead>
+<tbody>
+<tr><td><b>Total received</b></td><td>${sTD.n.toLocaleString('en-IN')}</td><td>100%</td><td style="text-align:left">All cases entering the tracker since 29 Jul (~${avgPerDay}/day)</td></tr>
+<tr><td>↳ Still inside 48-hr window</td><td>${(sTD.n - sTD.m).toLocaleString('en-IN')}</td><td>${pct(sTD.n - sTD.m, sTD.n)}</td><td style="text-align:left">Too fresh to judge — mature within 2 days</td></tr>
+<tr><td>↳ Matured</td><td>${sTD.m.toLocaleString('en-IN')}</td><td>${pct(sTD.m, sTD.n)}</td><td style="text-align:left">Completed their full 48-hour window — the funnel base below</td></tr>
+<tr><td class="g"><b>Resolved ≤ 48 hrs (net)</b></td><td class="g">${sTD.w48.toLocaleString('en-IN')}</td><td class="g">${pct(sTD.w48, sTD.m)}</td><td style="text-align:left">Gross ${sTD.w48g.toLocaleString('en-IN')} − ${(sTD.w48g - sTD.w48)} later reopened</td></tr>
+<tr><td>Resolved late (after breaching)</td><td>${sTD.late}</td><td>${pct(sTD.late, sTD.m)}</td><td style="text-align:left">Fixed, but only after the 48-hr promise was broken</td></tr>
+<tr><td class="b"><b>Unresolved (breached) = refund eligible</b></td><td class="b">${breached.length}</td><td class="b">${pct(breached.length, sTD.m)}</td><td style="text-align:left">Past 48 hrs and still open — owe the customer a pro-rata refund</td></tr>
+${unresReasons.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left"></td></tr>`).join('\n')}
+<tr><td><i>Pending since (age from case added)</i></td><td></td><td></td><td style="text-align:left"></td></tr>
+${ageing.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left"></td></tr>`).join('\n')}
+<tr><td class="g">↳ Refund done</td><td class="g">${breachedDone.length}</td><td class="g">${pct(breachedDone.length, breached.length)}</td><td style="text-align:left">${inr(breachedDoneAmt)} paid (Finance sheet / Cx Action)</td></tr>
+<tr><td class="b">↳ Refund pending</td><td class="b">${breachedPend.length}</td><td class="b">${pct(breachedPend.length, breached.length)}</td><td style="text-align:left">${inr(breachedPendAmt)} owed pro-rata</td></tr>
+${closure.map(([s, n]) => `<tr><td style="padding-left:34px">↳ Kapture: ${s}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left">${s === 'Completed' ? 'Disposed by PFT but tracker still shows unresolved — verify' : s === 'Pending' ? 'Still open in Kapture too' : ''}</td></tr>`).join('\n')}
+</tbody></table></div>
+</section>
+<section>
+<h2>Reopened cases funnel — since 29 Jul</h2>
+<p class="sub">Cases resolved, then reopened (tracker revert flag or Kapture reopen &lt; 24 hrs), followed to their second closure.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead>
+<tbody>
+<tr><td><b>Total reopened</b></td><td>${reopens.length}</td><td>${pct(reopens.length, resolvedAllTD)} of resolved</td><td style="text-align:left">Out of ${resolvedAllTD.toLocaleString('en-IN')} cases resolved since 29 Jul</td></tr>
+${reopReasons.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><td>${n}</td><td>${pct(n, reopens.length)}</td><td style="text-align:left">${r === 'Resolved by Old CSP' ? 'Repeat fix by the same CSP — first fix did not hold' : ''}</td></tr>`).join('\n')}
+<tr><td class="g"><b>Re-resolved &amp; confirmed by PFT</b></td><td class="g">${reopPftDone}</td><td class="g">${pct(reopPftDone, reopens.length)}</td><td style="text-align:left">Kapture status Completed (disposed by PFT after the reopen)</td></tr>
+<tr><td class="b">Still open after reopen</td><td class="b">${reopStillOpen}</td><td class="b">${pct(reopStillOpen, reopens.length)}</td><td style="text-align:left">Pending in Kapture / not yet synced — active pain</td></tr>
+</tbody></table></div>
+</section>
 <section>
 <h2>Week before vs last week vs till date</h2>
 <p class="sub">Cohorts by the date the case entered the tracker. Recent cases still inside their 48-hour window are excluded from matured metrics.</p>
@@ -165,8 +226,11 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 <tbody>
 ${row('Cases added', s => s.n.toLocaleString('en-IN'))}
 ${row('Matured (completed 48-hr window)', s => s.m.toLocaleString('en-IN'))}
-${row('Resolved ≤ 48 hrs', s => s.w48.toLocaleString('en-IN'))}
-${row('<b>Resolution within 48 hrs %</b>', s => pct(s.w48, s.m), 'g')}
+${row('Resolved ≤ 48 hrs (gross)', s => s.w48g.toLocaleString('en-IN'))}
+${row('Reopened among those resolutions', s => s.w48g - s.w48, 'b')}
+${row('<b>Reopen % of resolved</b>', s => pct(s.w48g - s.w48, s.w48g), 'b')}
+${row('Resolved ≤ 48 hrs — <b>net of reopened</b>', s => s.w48.toLocaleString('en-IN'))}
+${row('<b>Resolution within 48 hrs % (net)</b>', s => pct(s.w48, s.m), 'g')}
 ${row('Resolved late (after breaching)', s => s.late)}
 ${row('Unresolved matured (breached, still open)', s => s.unresM)}
 ${row('<b>Unresolved matured %</b>', s => pct(s.unresM, s.m), 'b')}
@@ -188,13 +252,13 @@ ${row('<b>Refund done — amount</b>', s => inr(s.doneAmt), 'g')}
   const token = process.env.SLACK_BOT_TOKEN;
   if (!token) { console.log('SLACK_BOT_TOKEN not set — skipping DM.'); return; }
   const text =
-    `📊 *48h TAT — Weekly Recap* (${lwLabel})\n` +
-    `• Resolution within 48 hrs: *${pct(sLW.w48, sLW.m)}* last week vs ${pct(sWB.w48, sWB.m)} week before (${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp)\n` +
-    `• Unresolved matured: *${pct(sLW.unresM, sLW.m)}* (${sLW.unresM} of ${sLW.m})\n` +
-    `• Refund pending on >48h unresolved: *${inr(sTD.pendAmt)}* across ${sTD.pendN} cases · refund done: ${inr(sTD.doneAmt)} (${sTD.doneN} cases)\n` +
-    `• Till date since 29 Jul: ${sTD.n.toLocaleString('en-IN')} added · ${pct(sTD.w48, sTD.m)} resolved ≤48h · ${pct(sTD.unresM, sTD.m)} unresolved matured\n` +
+    `📊 *48h TAT — Weekly Recap* (${lwLabel}) — full funnel\n` +
+    `• Received since 29 Jul: *${sTD.n.toLocaleString('en-IN')}* → matured ${sTD.m.toLocaleString('en-IN')} → resolved ≤48h (net) *${sTD.w48.toLocaleString('en-IN')}* (${pct(sTD.w48, sTD.m)}) → breached ${breached.length} (${pct(breached.length, sTD.m)})\n` +
+    `• Last week: *${pct(sLW.w48, sLW.m)}* net resolution vs ${pct(sWB.w48, sWB.m)} week before (${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp)\n` +
+    `• Refund on breached: done ${breachedDone.length} (${inr(breachedDoneAmt)}) · pending *${breachedPend.length}* (*${inr(breachedPendAmt)}*)\n` +
+    `• Reopened: *${reopens.length}* (${pct(reopens.length, resolvedAllTD)} of resolved) · top reason: ${reopReasons[0] ? reopReasons[0][0] + ' (' + reopReasons[0][1] + ')' : '—'} · re-resolved & PFT-confirmed ${reopPftDone}, still open ${reopStillOpen}\n` +
     `🎯 Target: ${TARGET_PCT}% within-48h resolution by end of Aug — ${(TARGET_PCT - sTD.w48 / sTD.m * 100) > 0 ? (TARGET_PCT - sTD.w48 / sTD.m * 100).toFixed(1) + ' pp to go' : 'met ✅'}\n` +
-    `📄 Full doc: ${DOC_URL}`;
+    `📄 Full funnel doc: ${DOC_URL}`;
   const res = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
     headers: { 'content-type': 'application/json; charset=utf-8', authorization: 'Bearer ' + token },
