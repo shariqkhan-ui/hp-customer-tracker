@@ -17,6 +17,7 @@ on:
 jobs:
   sync:
     name: Sync Kapture → High Pain Tracker
+    if: github.repository == 'shariqkhan-ui/hp-customer-tracker'
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
