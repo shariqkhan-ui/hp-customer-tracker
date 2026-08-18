@@ -2406,6 +2406,8 @@ function renderReports() {
     const matured = list.filter(r => caseStartTs(r) > 0 && (nowTs - caseStartTs(r)) >= TAT_LIMIT_MS);
     const w = matured.filter(r => {
       if (getStatus(r) === 'Unresolved') return false;
+      // NET of reopened: a resolution later reopened doesn't count
+      if (Number(r[26]) > 0 || effectiveVal(r, 18) === 'reopened-cron') return false;
       const s = caseStartTs(r), rt = Number(r[20]) || 0;
       if (rt > 0) return (rt - s) <= TAT_LIMIT_MS;
       return !!effectiveVal(r, 14);

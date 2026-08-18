@@ -89,7 +89,9 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const stats = list => {
     const matured = list.filter(c => (NOW - startTs(c)) >= LIM);
     const m = matured.length;
-    const w48 = matured.filter(c => resolvedWithin48(c) === true).length;
+    // NET of reopened: resolutions later reopened don't count
+    const isReop = c => Number(c.reopened_at) > 0 || String(c.source) === 'reopened-cron';
+    const w48 = matured.filter(c => resolvedWithin48(c) === true && !isReop(c)).length;
     const unresM = matured.filter(c => getStatus(c) === 'Unresolved').length;
     const late = matured.filter(c => getStatus(c) !== 'Unresolved' && resolvedWithin48(c) !== true).length;
     const resolvedAll = list.filter(c => getStatus(c) !== 'Unresolved').length;

@@ -156,6 +156,8 @@ function row(label, count, total, indent, bold) {
     if (start < LAUNCH || (NOW - start) < LIM48) continue;
     matured48++;
     if (getStatus(c) === 'Unresolved') continue;
+    // NET of reopened: a resolution that was later reopened doesn't count
+    if (Number(c.reopened_at) > 0 || String(c.source) === 'reopened-cron') continue;
     const rt = Number(c.remarks_updated_at) || 0;
     if (rt > 0 && (rt - start) <= LIM48) within48++;
     else if (!rt && (c.migration_date || '').trim()) within48++;
