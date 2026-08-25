@@ -2436,6 +2436,8 @@ function renderReports() {
     });
     mainRows.push({ label: 'Refund done', n: brDone.length, pct: fPct(brDone.length, breached.length), note: inrF(sumAmt(brDone)) + ' paid (Finance sheet / Cx Action)', bg: GOOD, indent: true });
     mainRows.push({ label: 'Refund pending', n: brPend.length, pct: fPct(brPend.length, breached.length), note: inrF(sumAmt(brPend)) + ' owed pro-rata', bg: PNK, indent: true });
+    const eraDone = era.filter(refunded);
+    mainRows.push({ label: 'Refund done — all tracker cases since 29 Jul', n: eraDone.length, pct: fPct(eraDone.length, era.length), note: inrF(sumAmt(eraDone)) + ' — includes cases resolved after the refund; the Finance sheet also holds refunds for tickets that never entered this tracker', indent: true });
     countBy(breached, r => effectiveVal(r, 30) || 'Not yet synced').forEach(function(e) {
       mainRows.push({ label: 'Kapture: ' + e[0], n: e[1], pct: fPct(e[1], breached.length),
         note: e[0] === 'Completed' ? 'Disposed by PFT but tracker still unresolved — verify' : e[0] === 'Pending' ? 'Still open in Kapture too' : '', indent: true });
