@@ -18,6 +18,22 @@ const LIM = 48 * 3600000;
 const IST = 5.5 * 3600000;
 const SLACK_USER = 'U04TL31PC1Y'; // Shariq
 const DOC_URL = 'https://shariqkhan-ui.github.io/hp-customer-tracker/recap.html';
+// Field team's reopen-RCA sheet (CX/CSP remarks + last ping per reopened ticket)
+const RCA_SHEET_CSV = 'https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/export?format=csv&gid=0';
+
+function parseCSVText(text) {
+  const rows = []; let row = [], f = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(f); f = ''; }
+    else if (c === '\n') { row.push(f.replace(/\r$/, '')); rows.push(row); row = []; f = ''; }
+    else f += c;
+  }
+  if (f || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
 const TARGET_PCT = 80; // within-48h resolution target by end of August
 
 const MON = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
@@ -129,6 +145,42 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const reopPftDone = reopens.filter(c => trim(c.kapture_status) === 'Completed').length;
   const reopStillOpen = reopens.filter(c => trim(c.kapture_status) !== 'Completed' && trim(c.kapture_status) !== 'Closed').length;
   const resolvedAllTD = era.filter(c => getStatus(c) !== 'Unresolved').length;
+
+  // ── Reopen-RCA ledger: merge the field team's RCA sheet (by ticket) ───────
+  // Sheet failure must never kill the recap — the section just notes it.
+  const escH = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  let rcaLedger = '';
+  try {
+    const csv = await fetch(RCA_SHEET_CSV, { redirect: 'follow' }).then(r => r.text());
+    const sh = parseCSVText(csv);
+    const SH = sh[0].map(h => h.trim().toLowerCase());
+    const iT = SH.indexOf('ticket no'), iCx = SH.indexOf('cx remarks'), iCsp = SH.indexOf('csp remarks'), iPing = SH.indexOf('last ping time');
+    const byT = {};
+    sh.slice(1).forEach(r => {
+      const t = String(r[iT] || '').replace(/\D/g, '');
+      if (t) byT[t] = { cx: trim(r[iCx]), csp: trim(r[iCsp]), ping: trim(r[iPing]) };
+    });
+    const ledger = reopens.filter(c => trim(c.remarks) === 'Resolved by Old CSP')
+      .sort((a, b) => startTs(b) - startTs(a));
+    const ledgerRows = ledger.map(c => {
+      const t = byT[String(c.ticket_no || '').replace(/\D/g, '')] || {};
+      const st = trim(c.kapture_status) || '—';
+      const stCol = st === 'Completed' ? 'var(--good)' : (st === 'Pending' ? 'var(--bad)' : 'var(--ink2)');
+      return `<tr><td>${escH(c.ticket_no)}</td><td>${escH(c.mobile)}</td><td>${escH(c.partner)}</td><td>${escH(t.cx || c.cx_action || '—')}</td><td>${escH(t.csp || [c.remarks, c.engineer_remarks].filter(Boolean).join(' · ') || '—')}</td><td style="color:${stCol}">${escH(st)}</td><td>${escH(t.ping || '—')}</td></tr>`;
+    }).join('\n');
+    rcaLedger = `<section>
+<h2>Reopened repeat-fix cases — RCA ledger (${ledger.length} cases)</h2>
+<p class="sub">The &quot;Resolved by Old CSP&quot; reopens since 29 Jul, with CX / CSP remarks and Last Ping merged from the field team's <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit?gid=0" style="color:var(--accent-ink)">Reopen RCA sheet</a> (matched by ticket number).</p>
+<div class="tablewrap" style="max-height:480px;overflow:auto"><table>
+<thead><tr><th>Ticket No</th><th>Mobile</th><th>CSP</th><th>CX Remarks</th><th>CSP Remarks</th><th>Ticket Status</th><th>Last Ping Time</th></tr></thead>
+<tbody>
+${ledgerRows}
+</tbody></table></div>
+</section>`;
+  } catch (e) {
+    console.error('RCA sheet merge failed (non-fatal):', e.message);
+    rcaLedger = '';
+  }
   const inRange = (r) => era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to; });
 
   const sWB = stats(inRange(weekBefore));
@@ -218,6 +270,7 @@ ${reopReasons.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><t
 <tr><td class="b">Still open after reopen</td><td class="b">${reopStillOpen}</td><td class="b">${pct(reopStillOpen, reopens.length)}</td><td style="text-align:left">Pending in Kapture / not yet synced — active pain</td></tr>
 </tbody></table></div>
 </section>
+${rcaLedger}
 <section>
 <h2>Week before vs last week vs till date</h2>
 <p class="sub">Cohorts by the date the case entered the tracker. Recent cases still inside their 48-hour window are excluded from matured metrics.</p>
