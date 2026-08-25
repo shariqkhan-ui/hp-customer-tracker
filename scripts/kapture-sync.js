@@ -188,11 +188,12 @@ async function syncRefundSheet() {
   const iA = H.findIndex(h => h === 'refund amount');
   const iA2 = H.findIndex(h => h.startsWith('refund amount (plan'));
   const iR = H.indexOf('router recovered');
-  // Customer contact columns — refunds are matched by registered number too,
-  // since many sheet rows carry no (valid) Kapture ticket id.
+  // Per Shariq (25 Aug): column X "Register number" is THE unique identifier
+  // for refund matching — Customer Number / Registered mobile columns carry
+  // form-entry junk and caused false matches, so they are no longer used.
   const mobCols = [];
   H.forEach((h, i) => {
-    if (h.startsWith('customer number') || h.startsWith('registered mobile') || h.startsWith('register number')) mobCols.push(i);
+    if (h.startsWith('register number')) mobCols.push(i);
   });
   if (iT < 0 || iS < 0) throw new Error('expected columns not found in sheet');
   const out = {}, outMob = {};
