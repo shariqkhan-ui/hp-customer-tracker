@@ -162,9 +162,27 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     const ledgerRows = rows.map(r =>
       `<tr><td>${escH(trim(r[iT]))}</td><td>${escH(trim(r[iM]))}</td><td>${escH(trim(r[iC]))}</td><td style="white-space:normal">${escH(trim(r[iCx]) || '—')}</td><td style="white-space:normal">${escH(trim(r[iCsp]) || '—')}</td><td style="white-space:normal">${escH(trim(r[iG]) || '—')}</td><td>${escH(trim(r[iPing]) || '—')}</td></tr>`
     ).join('\n');
+    // Bucketize the RCA: counts + % by CX-remark bucket, CSP-side sub-buckets
+    const bucketOf = (list, idx, blankLabel) => {
+      const m = {};
+      list.forEach(r => { const k = trim(r[idx]) || blankLabel; m[k] = (m[k] || 0) + 1; });
+      return Object.entries(m).sort((a, b) => b[1] - a[1]);
+    };
+    const cxBuckets = bucketOf(rows, iCx, '(CX remark not filled)');
+    const cspBuckets = bucketOf(rows.filter(r => trim(r[iCsp])), iCsp, '');
+    const bucketRows =
+      cxBuckets.map(([k, n]) => `<tr><td style="white-space:normal">${escH(k)}</td><td>${n}</td><td>${pct(n, rows.length)}</td><td style="text-align:left">Customer-side read</td></tr>`).join('\n') +
+      (cspBuckets.length ? '\n<tr><td><i>CSP-side reasons (where filled)</i></td><td></td><td></td><td style="text-align:left"></td></tr>\n' +
+        cspBuckets.map(([k, n]) => `<tr><td style="padding-left:34px;white-space:normal">↳ ${escH(k)}</td><td>${n}</td><td>${pct(n, rows.length)}</td><td style="text-align:left"></td></tr>`).join('\n') : '');
     rcaLedger = `<section>
 <h2>Reopened cases — RCA (${rows.length} cases)</h2>
 <p class="sub">The field team's reopen RCA, straight from the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit?gid=0" style="color:var(--accent-ink)">Reopen RCA sheet</a> — refreshed automatically every Monday.</p>
+<div class="tablewrap" style="margin-bottom:14px"><table>
+<thead><tr><th>RCA bucket</th><th>Cases</th><th>%</th><th style="text-align:left">Side</th></tr></thead>
+<tbody>
+<tr><td><b>Total reopened cases in RCA</b></td><td><b>${rows.length}</b></td><td><b>100%</b></td><td style="text-align:left"></td></tr>
+${bucketRows}
+</tbody></table></div>
 <div class="tablewrap" style="max-height:480px;overflow:auto"><table style="min-width:900px">
 <thead><tr><th>Ticket No</th><th>Mobile</th><th>CSP</th><th style="text-align:left">CX Remarks</th><th style="text-align:left">CSP Remarks</th><th style="text-align:left">Ground Remarks</th><th>Last Ping Time</th></tr></thead>
 <tbody>
@@ -314,18 +332,6 @@ ${ageing.map(([r, n]) => `<tr><td style="padding-left:34px">↳ Pending since ${
 <tr><td class="b" style="padding-left:34px">↳ Refund pending</td><td class="b">${breachedPend.length}</td><td class="b">${pct(breachedPend.length, breached.length)}</td><td style="text-align:left">${inr(breachedPendAmt)} owed pro-rata</td></tr>
 <tr><td><b>5. Closed — Kapture final status</b></td><td><b>${breached.length}</b></td><td><b>100%</b></td><td style="text-align:left">Where the breached tickets stand in Kapture</td></tr>
 ${closure.map(([s, n]) => `<tr><td style="padding-left:34px">↳ ${s}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left">${s === 'Completed' ? 'Disposed by PFT but tracker still shows unresolved — verify' : s === 'Pending' ? 'Still open in Kapture too' : ''}</td></tr>`).join('\n')}
-</tbody></table></div>
-</section>
-<section>
-<h2>Reopened cases funnel — since 29 Jul</h2>
-<p class="sub">Cases resolved, then reopened (tracker revert flag or Kapture reopen &lt; 24 hrs), followed to their second closure.</p>
-<div class="tablewrap"><table>
-<thead><tr><th>Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead>
-<tbody>
-<tr><td><b>Total reopened</b></td><td>${reopens.length}</td><td>${pct(reopens.length, resolvedAllTD)} of resolved</td><td style="text-align:left">Out of ${resolvedAllTD.toLocaleString('en-IN')} cases resolved since 29 Jul</td></tr>
-${reopReasons.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><td>${n}</td><td>${pct(n, reopens.length)}</td><td style="text-align:left">${r === 'Resolved by Old CSP' ? 'Repeat fix by the same CSP — first fix did not hold' : ''}</td></tr>`).join('\n')}
-<tr><td class="g"><b>Re-resolved &amp; confirmed by PFT</b></td><td class="g">${reopPftDone}</td><td class="g">${pct(reopPftDone, reopens.length)}</td><td style="text-align:left">Kapture status Completed (disposed by PFT after the reopen)</td></tr>
-<tr><td class="b">Still open after reopen</td><td class="b">${reopStillOpen}</td><td class="b">${pct(reopStillOpen, reopens.length)}</td><td style="text-align:left">Pending in Kapture / not yet synced — active pain</td></tr>
 </tbody></table></div>
 </section>
 ${cspRca}
