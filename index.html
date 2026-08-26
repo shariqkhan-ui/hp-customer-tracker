@@ -2418,28 +2418,27 @@ function renderReports() {
     }
 
     const AGE_SLOTS = [['2 - 4 days', 2, 4], ['4 - 7 days', 4, 7], ['7 - 14 days', 7, 14], ['14 - 21 days', 14, 21], ['21+ days', 21, Infinity]];
+    // End-to-end journey: case added → resolved ≤48h → unresolved >48h → refund → closed
     const mainRows = [
-      { label: 'Total received', n: era.length, pct: '100%', note: 'All cases entering the tracker since 29 Jul', bold: true },
+      { label: '1. Case added', n: era.length, pct: '100%', note: 'All cases entering the tracker since 29 Jul', bold: true },
       { label: 'Still inside 48-hr window', n: era.length - matured.length, pct: fPct(era.length - matured.length, era.length), note: 'Too fresh to judge — mature within 2 days', indent: true },
-      { label: 'Matured', n: matured.length, pct: fPct(matured.length, era.length), note: 'Completed the full 48-hour window — funnel base below', indent: true },
-      { label: 'Resolved ≤ 48 hrs (net)', n: w48, pct: fPct(w48, matured.length), note: 'Gross ' + numFmt(w48g) + ' − ' + (w48g - w48) + ' later reopened', bg: GOOD, bold: true },
-      { label: 'Resolved late (after breaching)', n: late, pct: fPct(late, matured.length), note: 'Fixed only after the 48-hr promise was broken' },
-      { label: 'Unresolved (breached) = refund eligible', n: breached.length, pct: fPct(breached.length, matured.length), note: 'Past 48 hrs and still open — owe a pro-rata refund', bg: PNK, bold: true }
+      { label: 'Matured', n: matured.length, pct: fPct(matured.length, era.length), note: 'Completed the full 48-hour window — base for the stages below', indent: true },
+      { label: '2. Resolved within 48 hrs', n: w48, pct: fPct(w48, matured.length), note: 'Net of reopens: gross ' + numFmt(w48g) + ' (' + fPct(w48g, matured.length) + ') − ' + (w48g - w48) + ' later reopened', bg: GOOD, bold: true },
+      { label: 'Resolved late (after breaching)', n: late, pct: fPct(late, matured.length), note: 'Fixed only after the 48-hr promise was broken', indent: true },
+      { label: '3. Unresolved after 48 hrs', n: breached.length, pct: fPct(breached.length, matured.length), note: 'Breached and still open — every one owes a pro-rata refund', bg: PNK, bold: true }
     ];
-    countBy(breached, r => effectiveVal(r, 8)).forEach(function(e) {
-      mainRows.push({ label: e[0], n: e[1], pct: fPct(e[1], breached.length), indent: true });
-    });
-    mainRows.push({ label: 'Pending since (age from case added)', n: '', pct: '', bold: true });
     AGE_SLOTS.forEach(function(sl) {
       const n = breached.filter(r => { const d = (nowTs - caseStartTs(r)) / 86400000; return d >= sl[1] && d < sl[2]; }).length;
-      if (n) mainRows.push({ label: sl[0], n: n, pct: fPct(n, breached.length), indent: true });
+      if (n) mainRows.push({ label: 'Pending since ' + sl[0], n: n, pct: fPct(n, breached.length), indent: true });
     });
+    mainRows.push({ label: '4. Refund', n: breached.length, pct: '100% eligible', note: 'Every breached case owes the customer a pro-rata refund', bold: true });
     mainRows.push({ label: 'Refund done', n: brDone.length, pct: fPct(brDone.length, breached.length), note: inrF(sumAmt(brDone)) + ' paid (Finance sheet / Cx Action)', bg: GOOD, indent: true });
     mainRows.push({ label: 'Refund pending', n: brPend.length, pct: fPct(brPend.length, breached.length), note: inrF(sumAmt(brPend)) + ' owed pro-rata', bg: PNK, indent: true });
     const eraDone = era.filter(refunded);
     mainRows.push({ label: 'Refund done — all tracker cases since 29 Jul', n: eraDone.length, pct: fPct(eraDone.length, era.length), note: inrF(sumAmt(eraDone)) + ' — includes cases resolved after the refund; the Finance sheet also holds refunds for tickets that never entered this tracker', indent: true });
+    mainRows.push({ label: '5. Closed — Kapture final status', n: breached.length, pct: '100%', note: 'Where the breached tickets stand in Kapture', bold: true });
     countBy(breached, r => effectiveVal(r, 30) || 'Not yet synced').forEach(function(e) {
-      mainRows.push({ label: 'Kapture: ' + e[0], n: e[1], pct: fPct(e[1], breached.length),
+      mainRows.push({ label: e[0], n: e[1], pct: fPct(e[1], breached.length),
         note: e[0] === 'Completed' ? 'Disposed by PFT but tracker still unresolved — verify' : e[0] === 'Pending' ? 'Still open in Kapture too' : '', indent: true });
     });
     funnelTable('funnelMain', mainRows);

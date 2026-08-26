@@ -289,39 +289,37 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 <thead><tr><th>Metric</th><th>Week before<br>(${wbLabel})</th><th>Last week<br>(${lwLabel})</th><th class="tot">Till date<br>(${tdLabel})</th></tr></thead>
 <tbody>
 ${row('Cases added', s => s.n.toLocaleString('en-IN'))}
-${row('Matured (completed 48-hr window)', s => s.m.toLocaleString('en-IN'))}
-${row('Resolved ≤ 48 hrs (gross)', s => s.w48g.toLocaleString('en-IN'))}
-${row('Reopened among those resolutions', s => s.w48g - s.w48, 'b')}
-${row('<b>Reopen % of resolved</b>', s => pct(s.w48g - s.w48, s.w48g), 'b')}
-${row('Resolved ≤ 48 hrs — <b>net of reopened</b>', s => s.w48.toLocaleString('en-IN'))}
-${row('<b>Resolution within 48 hrs % (net)</b>', s => pct(s.w48, s.m), 'g')}
-${row('Resolved late (after breaching)', s => s.late)}
-${row('Unresolved matured (breached, still open)', s => s.unresM)}
-${row('<b>Unresolved matured %</b>', s => pct(s.unresM, s.m), 'b')}
-${row('Overall resolved (any time, % of added)', s => s.resolvedAll + ' (' + pct(s.resolvedAll, s.n) + ')')}
-${row('Refund pending — cases', s => s.pendN)}
+${row('Matured (completed 48-hr window)', s => s.m.toLocaleString('en-IN') + ' (' + pct(s.m, s.n) + ')')}
+${row('Resolved ≤ 48 hrs (gross)', s => s.w48g.toLocaleString('en-IN') + ' (' + pct(s.w48g, s.m) + ')')}
+${row('Reopened among those resolutions', s => (s.w48g - s.w48) + ' (' + pct(s.w48g - s.w48, s.w48g) + ')', 'b')}
+${row('Resolved ≤ 48 hrs — <b>net of reopened</b>', s => s.w48.toLocaleString('en-IN') + ' (' + pct(s.w48, s.m) + ')', 'g')}
+${row('Resolved late (after breaching)', s => s.late + ' (' + pct(s.late, s.m) + ')')}
+${row('Unresolved matured (breached, still open)', s => s.unresM + ' (' + pct(s.unresM, s.m) + ')', 'b')}
+${row('Overall resolved (any time)', s => s.resolvedAll + ' (' + pct(s.resolvedAll, s.n) + ' of added)')}
+${row('Refund pending — cases', s => s.pendN + ' (' + pct(s.pendN, s.unresM) + ' of breached)')}
 ${row('<b>Refund pending — pro-rata amount</b>', s => inr(s.pendAmt), 'b')}
-${row('Refund done — cases', s => s.doneN)}
+${row('Refund done — cases', s => s.doneN + ' (' + pct(s.doneN, s.n) + ' of added)')}
 ${row('<b>Refund done — amount</b>', s => inr(s.doneAmt), 'g')}
 </tbody></table></div>
 </section>
 <section>
-<h2>The complete funnel — till date (${tdLabel})</h2>
-<p class="sub">Every case received since 29 Jul, followed to its outcome. Each drop shows what happened to those cases.</p>
+<h2>The complete funnel — case added → resolved ≤48h → unresolved &gt;48h → refund → closed (${tdLabel})</h2>
+<p class="sub">The end-to-end journey of every case received since 29 Jul. Each stage shows absolute + %, and each drop shows what happened.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead>
 <tbody>
-<tr><td><b>Total received</b></td><td>${sTD.n.toLocaleString('en-IN')}</td><td>100%</td><td style="text-align:left">All cases entering the tracker since 29 Jul (~${avgPerDay}/day)</td></tr>
-<tr><td>↳ Still inside 48-hr window</td><td>${(sTD.n - sTD.m).toLocaleString('en-IN')}</td><td>${pct(sTD.n - sTD.m, sTD.n)}</td><td style="text-align:left">Too fresh to judge — mature within 2 days</td></tr>
-<tr><td>↳ Matured</td><td>${sTD.m.toLocaleString('en-IN')}</td><td>${pct(sTD.m, sTD.n)}</td><td style="text-align:left">Completed their full 48-hour window — the funnel base below</td></tr>
-<tr><td class="g"><b>Resolved ≤ 48 hrs (net)</b></td><td class="g">${sTD.w48.toLocaleString('en-IN')}</td><td class="g">${pct(sTD.w48, sTD.m)}</td><td style="text-align:left">Gross ${sTD.w48g.toLocaleString('en-IN')} − ${(sTD.w48g - sTD.w48)} later reopened</td></tr>
-<tr><td>Resolved late (after breaching)</td><td>${sTD.late}</td><td>${pct(sTD.late, sTD.m)}</td><td style="text-align:left">Fixed, but only after the 48-hr promise was broken</td></tr>
-<tr><td class="b"><b>Unresolved (breached) = refund eligible</b></td><td class="b">${breached.length}</td><td class="b">${pct(breached.length, sTD.m)}</td><td style="text-align:left">Past 48 hrs and still open — owe the customer a pro-rata refund</td></tr>
-<tr><td><i>Pending since (age from case added)</i></td><td></td><td></td><td style="text-align:left"></td></tr>
-${ageing.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left"></td></tr>`).join('\n')}
-<tr><td class="g">↳ Refund done</td><td class="g">${breachedDone.length}</td><td class="g">${pct(breachedDone.length, breached.length)}</td><td style="text-align:left">${inr(breachedDoneAmt)} paid (Finance sheet / Cx Action)</td></tr>
-<tr><td class="b">↳ Refund pending</td><td class="b">${breachedPend.length}</td><td class="b">${pct(breachedPend.length, breached.length)}</td><td style="text-align:left">${inr(breachedPendAmt)} owed pro-rata</td></tr>
-${closure.map(([s, n]) => `<tr><td style="padding-left:34px">↳ Kapture: ${s}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left">${s === 'Completed' ? 'Disposed by PFT but tracker still shows unresolved — verify' : s === 'Pending' ? 'Still open in Kapture too' : ''}</td></tr>`).join('\n')}
+<tr><td><b>1. Case added</b></td><td><b>${sTD.n.toLocaleString('en-IN')}</b></td><td><b>100%</b></td><td style="text-align:left">All cases entering the tracker since 29 Jul (~${avgPerDay}/day)</td></tr>
+<tr><td style="padding-left:34px">↳ Still inside 48-hr window</td><td>${(sTD.n - sTD.m).toLocaleString('en-IN')}</td><td>${pct(sTD.n - sTD.m, sTD.n)}</td><td style="text-align:left">Too fresh to judge — mature within 2 days</td></tr>
+<tr><td style="padding-left:34px">↳ Matured</td><td>${sTD.m.toLocaleString('en-IN')}</td><td>${pct(sTD.m, sTD.n)}</td><td style="text-align:left">Completed their full 48-hour window — base for the stages below</td></tr>
+<tr><td class="g"><b>2. Resolved within 48 hrs</b></td><td class="g"><b>${sTD.w48.toLocaleString('en-IN')}</b></td><td class="g"><b>${pct(sTD.w48, sTD.m)}</b></td><td style="text-align:left">Net of reopens: gross ${sTD.w48g.toLocaleString('en-IN')} (${pct(sTD.w48g, sTD.m)}) − ${(sTD.w48g - sTD.w48)} later reopened</td></tr>
+<tr><td style="padding-left:34px">↳ Resolved late (after breaching)</td><td>${sTD.late}</td><td>${pct(sTD.late, sTD.m)}</td><td style="text-align:left">Fixed, but only after the 48-hr promise was broken</td></tr>
+<tr><td class="b"><b>3. Unresolved after 48 hrs</b></td><td class="b"><b>${breached.length}</b></td><td class="b"><b>${pct(breached.length, sTD.m)}</b></td><td style="text-align:left">Breached and still open — every one owes a pro-rata refund</td></tr>
+${ageing.map(([r, n]) => `<tr><td style="padding-left:34px">↳ Pending since ${r}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left"></td></tr>`).join('\n')}
+<tr><td><b>4. Refund</b></td><td><b>${breached.length}</b></td><td><b>100% eligible</b></td><td style="text-align:left">Every breached case owes the customer a pro-rata refund</td></tr>
+<tr><td class="g" style="padding-left:34px">↳ Refund done</td><td class="g">${breachedDone.length}</td><td class="g">${pct(breachedDone.length, breached.length)}</td><td style="text-align:left">${inr(breachedDoneAmt)} paid (Finance sheet / Cx Action)</td></tr>
+<tr><td class="b" style="padding-left:34px">↳ Refund pending</td><td class="b">${breachedPend.length}</td><td class="b">${pct(breachedPend.length, breached.length)}</td><td style="text-align:left">${inr(breachedPendAmt)} owed pro-rata</td></tr>
+<tr><td><b>5. Closed — Kapture final status</b></td><td><b>${breached.length}</b></td><td><b>100%</b></td><td style="text-align:left">Where the breached tickets stand in Kapture</td></tr>
+${closure.map(([s, n]) => `<tr><td style="padding-left:34px">↳ ${s}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left">${s === 'Completed' ? 'Disposed by PFT but tracker still shows unresolved — verify' : s === 'Pending' ? 'Still open in Kapture too' : ''}</td></tr>`).join('\n')}
 </tbody></table></div>
 </section>
 <section>
@@ -337,7 +335,6 @@ ${reopReasons.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><t
 </tbody></table></div>
 </section>
 ${cspRca}
-${rcaLedger}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (IST).</div>
 </div></body></html>`;
 
