@@ -181,6 +181,50 @@ ${ledgerRows}
     console.error('RCA sheet merge failed (non-fatal):', e.message);
     rcaLedger = '';
   }
+
+  // ── CSP breach & resolution status: top 10 by breached, worst rate first,
+  // with the ground team's RCA from the "CSP RCA" tab of the same sheet
+  // (columns: CSP | Pending Reason | Current Status). Tab missing → columns
+  // render empty with a hint, the section itself always builds from Firebase.
+  let cspRca = '';
+  try {
+    const normName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const rcaByCsp = {};
+    try {
+      const csv2 = await fetch('https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/gviz/tq?tqx=out:csv&sheet=CSP%20RCA', { redirect: 'follow' }).then(r => r.text());
+      const sh2 = parseCSVText(csv2);
+      const S2 = sh2[0].map(h => h.trim().toLowerCase());
+      const iC = S2.findIndex(h => h === 'csp'), iR = S2.findIndex(h => h.startsWith('pending reason')), iSt = S2.findIndex(h => h.startsWith('current status'));
+      if (iC >= 0 && iR >= 0) sh2.slice(1).forEach(r => {
+        const k = normName(r[iC]);
+        if (k) rcaByCsp[k] = { reason: trim(r[iR]), status: iSt >= 0 ? trim(r[iSt]) : '' };
+      });
+    } catch (e2) { console.error('CSP RCA tab not readable (non-fatal):', e2.message); }
+    const brByCsp = {}, totByCsp = {};
+    era.forEach(c => { const p = trim(c.partner) || '(unknown)'; totByCsp[p] = (totByCsp[p] || 0) + 1; });
+    breached.forEach(c => { const p = trim(c.partner) || '(unknown)'; brByCsp[p] = (brByCsp[p] || 0) + 1; });
+    const top = Object.entries(brByCsp).sort((a, b) => b[1] - a[1]).slice(0, 10)
+      .map(([p, n]) => ({ p, n, t: totByCsp[p] || n }))
+      .sort((a, b) => b.n / b.t - a.n / a.t);
+    const anyRca = Object.keys(rcaByCsp).length > 0;
+    cspRca = `<section>
+<h2>CSP ticket breach &amp; resolution status — top 10</h2>
+<p class="sub">Top 10 CSPs by breached (unresolved past 48 hrs) cases, worst breach rate first. Pending reason &amp; current status maintained by the ground team in the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit" style="color:var(--accent-ink)">CSP RCA tab</a>.${anyRca ? '' : ' <b>Tab has no entries yet — team to fill CSP | Pending Reason | Current Status.</b>'}</p>
+<div class="tablewrap"><table style="min-width:900px">
+<thead><tr><th>CSP</th><th>Breached</th><th>Total cases</th><th>Breach rate</th><th style="text-align:left">Pending reason</th><th style="text-align:left">Current status</th></tr></thead>
+<tbody>
+${top.map(c => {
+  const e = rcaByCsp[normName(c.p)] || {};
+  const rate = Math.round(c.n / c.t * 100);
+  return `<tr><td>${c.p.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td><td>${c.n}</td><td>${c.t}</td><td${rate >= 50 ? ' class="b"' : ''}>${rate}%</td><td style="text-align:left;white-space:normal">${(e.reason || '—').replace(/</g, '&lt;')}</td><td style="text-align:left;white-space:normal">${(e.status || '—').replace(/</g, '&lt;')}</td></tr>`;
+}).join('\n')}
+<tr><td class="tot"><b>Top 10 together</b></td><td class="tot b"><b>${top.reduce((a, c) => a + c.n, 0)}</b></td><td class="tot">${top.reduce((a, c) => a + c.t, 0)}</td><td class="tot"><b>${pct(top.reduce((a, c) => a + c.n, 0), breached.length)} of breached</b></td><td class="tot" colspan="2"></td></tr>
+</tbody></table></div>
+</section>`;
+  } catch (e) {
+    console.error('CSP RCA section failed (non-fatal):', e.message);
+    cspRca = '';
+  }
   const inRange = (r) => era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to; });
 
   const sWB = stats(inRange(weekBefore));
@@ -292,6 +336,7 @@ ${reopReasons.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><t
 <tr><td class="b">Still open after reopen</td><td class="b">${reopStillOpen}</td><td class="b">${pct(reopStillOpen, reopens.length)}</td><td style="text-align:left">Pending in Kapture / not yet synced — active pain</td></tr>
 </tbody></table></div>
 </section>
+${cspRca}
 ${rcaLedger}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (IST).</div>
 </div></body></html>`;
