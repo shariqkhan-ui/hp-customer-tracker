@@ -116,7 +116,11 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     const pendAmt = pend.reduce((a, c) => a + (Number(c.refund_amount) || 0), 0);
     const done = list.filter(c => sheetEntry(c) || trim(c.cx_action) === 'Refund Done');
     const doneAmt = done.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
-    return { n: list.length, m, w48, w48g, unresM, late, resolvedAll, pendN: pend.length, pendAmt, doneN: done.length, doneAmt };
+    // Breached-scoped refund done — THE refund-done metric everywhere (matches
+    // the funnel's Refund stage); doneN/doneAmt keep the all-in count for notes.
+    const doneBrL = matured.filter(c => getStatus(c) === 'Unresolved' && (sheetEntry(c) || trim(c.cx_action) === 'Refund Done'));
+    const doneBrAmt = doneBrL.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
+    return { n: list.length, m, w48, w48g, unresM, late, resolvedAll, pendN: pend.length, pendAmt, doneN: done.length, doneAmt, doneBr: doneBrL.length, doneBrAmt };
   };
   // ── Funnel extras (till date) ─────────────────────────────────────────────
   const countBy = (list, keyFn) => {
@@ -289,7 +293,7 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 <div class="tile"><div class="label">Unresolved matured tickets</div><div class="value" style="color:var(--bad)">${pct(sTD.unresM, sTD.m)}</div><div class="note">${sTD.unresM} of ${sTD.m} matured still unresolved past 48 hrs · <b>last week: ${pct(sLW.unresM, sLW.m)}</b></div></div>
 <div class="tile"><div class="label">Cases added since 29 Jul</div><div class="value">${sTD.n.toLocaleString('en-IN')}</div><div class="note">avg <b>~${avgPerDay} tickets/day</b> · ${sTD.m.toLocaleString('en-IN')} matured · ${(sTD.n - sTD.m).toLocaleString('en-IN')} in window · <b>last week: ${sLW.n} added</b></div></div>
 <div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending (&gt;48 hrs unresolved)</div><div class="value" style="color:var(--bad)">${inr(sTD.pendAmt)}</div><div class="note">${sTD.pendN} breached open cases owe a pro-rata refund · <b>last week cohort: ${sLW.pendN} (${inr(sLW.pendAmt)})</b></div></div>
-<div class="tile" style="border-color:var(--good)"><div class="label">Refund done</div><div class="value" style="color:var(--good)">${inr(sTD.doneAmt)}</div><div class="note">${sTD.doneN} cases refunded till date · <b>last week cohort: ${sLW.doneN} (${inr(sLW.doneAmt)})</b></div></div>
+<div class="tile" style="border-color:var(--good)"><div class="label">Refund done</div><div class="value" style="color:var(--good)">${inr(sTD.doneBrAmt)}</div><div class="note">${sTD.doneBr} of ${sTD.unresM} breached refunded (${pct(sTD.doneBr, sTD.unresM)}) · <b>last week cohort: ${sLW.doneBr} (${inr(sLW.doneBrAmt)})</b> · all-in incl. later-resolved: ${sTD.doneN} (${inr(sTD.doneAmt)})</div></div>
 <div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened % of resolved</div><div class="value" style="color:var(--accent-ink)">${pct(reopens.length, resolvedAllTD)}</div><div class="note"><b>${reopens.length} reopens</b> of ${resolvedAllTD.toLocaleString('en-IN')} cases resolved since 29 Jul · <b>last week: ${sLW.w48g - sLW.w48} reopens (${pct(sLW.w48g - sLW.w48, sLW.w48g)})</b></div></div>
 <div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Resolved within 48 hrs: <b>${pct(sWB.w48, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.w48, sLW.m)}</b> (${lwLabel})</div></div>
 </div>
@@ -310,8 +314,8 @@ ${row('Unresolved matured (breached, still open)', s => s.unresM + ' (' + pct(s.
 ${row('Overall resolved (any time)', s => s.resolvedAll + ' (' + pct(s.resolvedAll, s.n) + ' of added)')}
 ${row('Refund pending — cases', s => s.pendN + ' (' + pct(s.pendN, s.unresM) + ' of breached)')}
 ${row('<b>Refund pending — pro-rata amount</b>', s => inr(s.pendAmt), 'b')}
-${row('Refund done — cases', s => s.doneN + ' (' + pct(s.doneN, s.n) + ' of added)')}
-${row('<b>Refund done — amount</b>', s => inr(s.doneAmt), 'g')}
+${row('Refund done — cases (of breached)', s => s.doneBr + ' (' + pct(s.doneBr, s.unresM) + ' of breached)')}
+${row('<b>Refund done — amount</b>', s => inr(s.doneBrAmt), 'g')}
 </tbody></table></div>
 </section>
 <section>
