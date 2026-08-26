@@ -42,6 +42,29 @@ Currently at <b>68.4%</b> — <b style="color:var(--bad)">11.6 pp to go</b>.
 </div>
 </header>
 <section>
+<h2>Week before vs last week vs till date</h2>
+<p class="sub">Cohorts by the date the case entered the tracker. Recent cases still inside their 48-hour window are excluded from matured metrics.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Metric</th><th>Week before<br>(10 Aug – 16 Aug)</th><th>Last week<br>(17 Aug – 23 Aug)</th><th class="tot">Till date<br>(29 Jul – 25 Aug)</th></tr></thead>
+<tbody>
+<tr><td>Cases added</td><td>727</td><td>560</td><td class="tot">2,625</td></tr>
+<tr><td>Matured (completed 48-hr window)</td><td>727</td><td>475</td><td class="tot">2,335</td></tr>
+<tr><td>Resolved ≤ 48 hrs (gross)</td><td>534</td><td>314</td><td class="tot">1,651</td></tr>
+<tr><td>Reopened among those resolutions</td><td class="b">29</td><td class="b">23</td><td class="tot b">54</td></tr>
+<tr><td><b>Reopen % of resolved</b></td><td class="b">5.4%</td><td class="b">7.3%</td><td class="tot b">3.3%</td></tr>
+<tr><td>Resolved ≤ 48 hrs — <b>net of reopened</b></td><td>505</td><td>291</td><td class="tot">1,597</td></tr>
+<tr><td><b>Resolution within 48 hrs % (net)</b></td><td class="g">69.5%</td><td class="g">61.3%</td><td class="tot g">68.4%</td></tr>
+<tr><td>Resolved late (after breaching)</td><td>17</td><td>16</td><td class="tot">58</td></tr>
+<tr><td>Unresolved matured (breached, still open)</td><td>176</td><td>145</td><td class="tot">626</td></tr>
+<tr><td><b>Unresolved matured %</b></td><td class="b">24.2%</td><td class="b">30.5%</td><td class="tot b">26.8%</td></tr>
+<tr><td>Overall resolved (any time, % of added)</td><td>551 (75.8%)</td><td>407 (72.7%)</td><td class="tot">1897 (72.3%)</td></tr>
+<tr><td>Refund pending — cases</td><td>114</td><td>107</td><td class="tot">464</td></tr>
+<tr><td><b>Refund pending — pro-rata amount</b></td><td class="b">₹14,608</td><td class="b">₹14,112</td><td class="tot b">₹68,293</td></tr>
+<tr><td>Refund done — cases</td><td>80</td><td>51</td><td class="tot">222</td></tr>
+<tr><td><b>Refund done — amount</b></td><td class="g">₹20,887</td><td class="g">₹13,979</td><td class="tot g">₹54,136</td></tr>
+</tbody></table></div>
+</section>
+<section>
 <h2>The complete funnel — till date (29 Jul – 25 Aug)</h2>
 <p class="sub">Every case received since 29 Jul, followed to its outcome. Each drop shows what happened to those cases.</p>
 <div class="tablewrap"><table>
@@ -53,17 +76,6 @@ Currently at <b>68.4%</b> — <b style="color:var(--bad)">11.6 pp to go</b>.
 <tr><td class="g"><b>Resolved ≤ 48 hrs (net)</b></td><td class="g">1,597</td><td class="g">68.4%</td><td style="text-align:left">Gross 1,651 − 54 later reopened</td></tr>
 <tr><td>Resolved late (after breaching)</td><td>58</td><td>2.5%</td><td style="text-align:left">Fixed, but only after the 48-hr promise was broken</td></tr>
 <tr><td class="b"><b>Unresolved (breached) = refund eligible</b></td><td class="b">626</td><td class="b">26.8%</td><td style="text-align:left">Past 48 hrs and still open — owe the customer a pro-rata refund</td></tr>
-<tr><td style="padding-left:34px">↳ No Overlapping CSP/Refund</td><td>261</td><td>41.7%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Migration not possible/Refund</td><td>135</td><td>21.6%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ CSP Not Responding</td><td>76</td><td>12.1%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Cx not contactable/Reachable</td><td>52</td><td>8.3%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ CSP denied to resolve this ticket</td><td>41</td><td>6.5%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Device not associated / disconnected</td><td>22</td><td>3.5%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Customer not interested in Migration</td><td>15</td><td>2.4%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Customer not happy with Wiom service/refund — chose another operator</td><td>10</td><td>1.6%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ CSP has no router to replace / inventory not available</td><td>7</td><td>1.1%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ OLD CSP is working to resolve complaint</td><td>6</td><td>1.0%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ CSP installed his own device</td><td>1</td><td>0.2%</td><td style="text-align:left"></td></tr>
 <tr><td><i>Pending since (age from case added)</i></td><td></td><td></td><td style="text-align:left"></td></tr>
 <tr><td style="padding-left:34px">↳ 2 – 4 days</td><td>41</td><td>6.5%</td><td style="text-align:left"></td></tr>
 <tr><td style="padding-left:34px">↳ 4 – 7 days</td><td>73</td><td>11.7%</td><td style="text-align:left"></td></tr>
@@ -80,24 +92,15 @@ Currently at <b>68.4%</b> — <b style="color:var(--bad)">11.6 pp to go</b>.
 </tbody></table></div>
 </section>
 <section>
-<h2>Top 10 CSPs — unresolved &gt; 48 hrs</h2>
-<p class="sub">Top 10 CSPs by breached (unresolved past 48 hrs) cases since 29 Jul, ordered by breach rate — worst offenders first. &quot;Breach rate&quot; = their breached cases as a share of all their cases in the tracker.</p>
-<div class="tablewrap"><table>
-<thead><tr><th>CSP</th><th>Unresolved &gt;48h</th><th>Total cases</th><th>% of breached bucket</th><th>Breach rate (own)</th></tr></thead>
+<h2>CSP ticket breach &amp; resolution status — top 10</h2>
+<p class="sub">Top 10 CSPs by breached (unresolved past 48 hrs) cases since 29 Jul, worst breach rate first, with the ground team's RCA — pending reason and current resolution status (updated 26 Aug).</p>
+<div class="tablewrap"><table style="min-width:900px">
+<thead><tr><th>CSP</th><th>Breached</th><th>Total cases</th><th>Breach rate</th><th style="text-align:left">Pending reason</th><th style="text-align:left">Current status</th></tr></thead>
 <tbody>
-<tr><td>Mauli I Net Pvt Ltd</td><td>9</td><td>9</td><td>1.4%</td><td class="b">100%</td></tr>
-<tr><td>Xpress Net Solution — Tilak Nagar</td><td>15</td><td>20</td><td>2.4%</td><td class="b">75%</td></tr>
-<tr><td>7R Network Solutions</td><td>7</td><td>12</td><td>1.1%</td><td class="b">58%</td></tr>
-<tr><td>TECHFIBER</td><td>13</td><td>23</td><td>2.1%</td><td class="b">57%</td></tr>
-<tr><td>Bitfiber Private Limited</td><td>9</td><td>22</td><td>1.4%</td><td>41%</td></tr>
-<tr><td>Paramhans Broadband Services</td><td>7</td><td>17</td><td>1.1%</td><td>41%</td></tr>
-<tr><td>Xstream Boom Band</td><td>13</td><td>36</td><td>2.1%</td><td>36%</td></tr>
-<tr><td>Net World Infovision</td><td class="b">29</td><td>88</td><td>4.6%</td><td>33%</td></tr>
-<tr><td>SmartFiber Internet Pvt Ltd</td><td>15</td><td>57</td><td>2.4%</td><td>26%</td></tr>
-<tr><td>Elixir Fibernet</td><td>8</td><td>50</td><td>1.3%</td><td>16%</td></tr>
-<tr><td class="tot"><b>Top 10 together</b></td><td class="tot b"><b>125</b></td><td class="tot">334</td><td class="tot"><b>19.9%</b></td><td class="tot">—</td></tr>
+<tr><td>Mauli I Net Pvt Ltd</td><td>9</td><td>9</td><td class="b">100%</td><td style="text-align:left;white-space:normal">CSP denied to work with Wiom.</td><td style="text-align:left;white-space:normal">Account-related issues are still pending to resolve.</td></tr><tr><td>Xpress Net Solution — Tilak Nagar</td><td>15</td><td>20</td><td class="b">75%</td><td style="text-align:left;white-space:normal">Partnership broken; area divided.</td><td style="text-align:left;white-space:normal">Resolving only in his area.</td></tr><tr><td>7R Network Solutions</td><td>7</td><td>12</td><td class="b">58%</td><td style="text-align:left;white-space:normal">CSP &amp; its team not responding.</td><td style="text-align:left;white-space:normal">Resolving, but still not responding consistently.</td></tr><tr><td>TECHFIBER</td><td>13</td><td>23</td><td class="b">57%</td><td style="text-align:left;white-space:normal">CSP closed one area due to locality issues.</td><td style="text-align:left;white-space:normal">Resolving in limited area.</td></tr><tr><td>Bitfiber Private Limited</td><td>9</td><td>22</td><td>41%</td><td style="text-align:left;white-space:normal">Operational issues.</td><td style="text-align:left;white-space:normal">CSP not responding.</td></tr><tr><td>Paramhans Broadband Services</td><td>7</td><td>17</td><td>41%</td><td style="text-align:left;white-space:normal">Kawad Yatra (seasonal disruption).</td><td style="text-align:left;white-space:normal">Resolving infrequently.</td></tr><tr><td>Xstream Boom Band</td><td>13</td><td>36</td><td>36%</td><td style="text-align:left;white-space:normal">CSP sold window.</td><td style="text-align:left;white-space:normal">CSP not responding; resolving infrequently.</td></tr><tr><td>Net World Infovision</td><td>29</td><td>88</td><td>33%</td><td style="text-align:left;white-space:normal">CSP changed the server, so issues occurred but they are not responding on calls.</td><td style="text-align:left;white-space:normal">Resolving one by one through visits &amp; cases shared via WhatsApp.</td></tr><tr><td>SmartFiber Internet Pvt Ltd</td><td>15</td><td>57</td><td>26%</td><td style="text-align:left;white-space:normal">OLT changed &amp; fiber cut.</td><td style="text-align:left;white-space:normal">Resolving one by one, but not visiting customer end.</td></tr><tr><td>Elixir Fibernet</td><td>8</td><td>50</td><td>16%</td><td style="text-align:left;white-space:normal">Fiber wasn't installed in the particular area; cut by BSES.</td><td style="text-align:left;white-space:normal">Currently resolving.</td></tr>
+<tr><td class="tot"><b>Top 10 together</b></td><td class="tot b"><b>125</b></td><td class="tot">334</td><td class="tot"><b>19.9% of breached</b></td><td class="tot" colspan="2" style="text-align:left">Spread is thin — systemic issue, not a few bad CSPs</td></tr>
 </tbody></table></div>
-<p class="sub" style="margin-top:10px">Read: the breach pool is spread thin — top 10 CSPs hold only ~20% of it, so this is systemic, not a few bad CSPs. Watch the high breach-rate ones though: <b>Mauli I Net (9/9 breached)</b>, <b>Xpress Net Tilak Nagar (75%)</b>, <b>7R Network (58%)</b> and <b>TECHFIBER (57%)</b> — every second case they get goes past 48 hrs.</p>
+<p class="sub" style="margin-top:10px"><b>Operational issues</b> includes: new installation issue, carry-fee issue, inventory issue, commission issue, unable to understand app changes.</p>
 </section>
 <section>
 <h2>Reopened cases funnel — since 29 Jul</h2>
@@ -213,28 +216,5 @@ Currently at <b>68.4%</b> — <b style="color:var(--bad)">11.6 pp to go</b>.
 <p class="sub" style="margin-top:10px">Read: excluding churn/pre-install flows, the untracked service-pain pool beyond 72 hrs is <b>~101 tickets/week</b> (~26% of the internet pool we track). Biggest chunks: <b>undispositioned Existing-Customer tickets (30)</b> — never re-categorised so nobody owns them; <b>shifting to a new address (18)</b>; <b>router issue &amp; replacement (9)</b>. These are the natural next candidates if the 48-hr flag extends.</p>
 </section>
 
-<section>
-<h2>Week before vs last week vs till date</h2>
-<p class="sub">Cohorts by the date the case entered the tracker. Recent cases still inside their 48-hour window are excluded from matured metrics.</p>
-<div class="tablewrap"><table>
-<thead><tr><th>Metric</th><th>Week before<br>(10 Aug – 16 Aug)</th><th>Last week<br>(17 Aug – 23 Aug)</th><th class="tot">Till date<br>(29 Jul – 25 Aug)</th></tr></thead>
-<tbody>
-<tr><td>Cases added</td><td>727</td><td>560</td><td class="tot">2,625</td></tr>
-<tr><td>Matured (completed 48-hr window)</td><td>727</td><td>475</td><td class="tot">2,335</td></tr>
-<tr><td>Resolved ≤ 48 hrs (gross)</td><td>534</td><td>314</td><td class="tot">1,651</td></tr>
-<tr><td>Reopened among those resolutions</td><td class="b">29</td><td class="b">23</td><td class="tot b">54</td></tr>
-<tr><td><b>Reopen % of resolved</b></td><td class="b">5.4%</td><td class="b">7.3%</td><td class="tot b">3.3%</td></tr>
-<tr><td>Resolved ≤ 48 hrs — <b>net of reopened</b></td><td>505</td><td>291</td><td class="tot">1,597</td></tr>
-<tr><td><b>Resolution within 48 hrs % (net)</b></td><td class="g">69.5%</td><td class="g">61.3%</td><td class="tot g">68.4%</td></tr>
-<tr><td>Resolved late (after breaching)</td><td>17</td><td>16</td><td class="tot">58</td></tr>
-<tr><td>Unresolved matured (breached, still open)</td><td>176</td><td>145</td><td class="tot">626</td></tr>
-<tr><td><b>Unresolved matured %</b></td><td class="b">24.2%</td><td class="b">30.5%</td><td class="tot b">26.8%</td></tr>
-<tr><td>Overall resolved (any time, % of added)</td><td>551 (75.8%)</td><td>407 (72.7%)</td><td class="tot">1897 (72.3%)</td></tr>
-<tr><td>Refund pending — cases</td><td>114</td><td>107</td><td class="tot">464</td></tr>
-<tr><td><b>Refund pending — pro-rata amount</b></td><td class="b">₹14,608</td><td class="b">₹14,112</td><td class="tot b">₹68,293</td></tr>
-<tr><td>Refund done — cases</td><td>80</td><td>51</td><td class="tot">222</td></tr>
-<tr><td><b>Refund done — amount</b></td><td class="g">₹20,887</td><td class="g">₹13,979</td><td class="tot g">₹54,136</td></tr>
-</tbody></table></div>
-</section>
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded, amounts auto-computed pro-rata. Refund matching per Finance sheet: column X (Register number) as unique identifier + Kapture ticket ID, refund cases from column AB (Refund status) — updated 25 Aug. Weeks are Monday-anchored (IST).</div>
 </div></body></html>

@@ -239,39 +239,6 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 </div>
 </header>
 <section>
-<h2>The complete funnel — till date (${tdLabel})</h2>
-<p class="sub">Every case received since 29 Jul, followed to its outcome. Each drop shows what happened to those cases.</p>
-<div class="tablewrap"><table>
-<thead><tr><th>Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead>
-<tbody>
-<tr><td><b>Total received</b></td><td>${sTD.n.toLocaleString('en-IN')}</td><td>100%</td><td style="text-align:left">All cases entering the tracker since 29 Jul (~${avgPerDay}/day)</td></tr>
-<tr><td>↳ Still inside 48-hr window</td><td>${(sTD.n - sTD.m).toLocaleString('en-IN')}</td><td>${pct(sTD.n - sTD.m, sTD.n)}</td><td style="text-align:left">Too fresh to judge — mature within 2 days</td></tr>
-<tr><td>↳ Matured</td><td>${sTD.m.toLocaleString('en-IN')}</td><td>${pct(sTD.m, sTD.n)}</td><td style="text-align:left">Completed their full 48-hour window — the funnel base below</td></tr>
-<tr><td class="g"><b>Resolved ≤ 48 hrs (net)</b></td><td class="g">${sTD.w48.toLocaleString('en-IN')}</td><td class="g">${pct(sTD.w48, sTD.m)}</td><td style="text-align:left">Gross ${sTD.w48g.toLocaleString('en-IN')} − ${(sTD.w48g - sTD.w48)} later reopened</td></tr>
-<tr><td>Resolved late (after breaching)</td><td>${sTD.late}</td><td>${pct(sTD.late, sTD.m)}</td><td style="text-align:left">Fixed, but only after the 48-hr promise was broken</td></tr>
-<tr><td class="b"><b>Unresolved (breached) = refund eligible</b></td><td class="b">${breached.length}</td><td class="b">${pct(breached.length, sTD.m)}</td><td style="text-align:left">Past 48 hrs and still open — owe the customer a pro-rata refund</td></tr>
-${unresReasons.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left"></td></tr>`).join('\n')}
-<tr><td><i>Pending since (age from case added)</i></td><td></td><td></td><td style="text-align:left"></td></tr>
-${ageing.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left"></td></tr>`).join('\n')}
-<tr><td class="g">↳ Refund done</td><td class="g">${breachedDone.length}</td><td class="g">${pct(breachedDone.length, breached.length)}</td><td style="text-align:left">${inr(breachedDoneAmt)} paid (Finance sheet / Cx Action)</td></tr>
-<tr><td class="b">↳ Refund pending</td><td class="b">${breachedPend.length}</td><td class="b">${pct(breachedPend.length, breached.length)}</td><td style="text-align:left">${inr(breachedPendAmt)} owed pro-rata</td></tr>
-${closure.map(([s, n]) => `<tr><td style="padding-left:34px">↳ Kapture: ${s}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left">${s === 'Completed' ? 'Disposed by PFT but tracker still shows unresolved — verify' : s === 'Pending' ? 'Still open in Kapture too' : ''}</td></tr>`).join('\n')}
-</tbody></table></div>
-</section>
-<section>
-<h2>Reopened cases funnel — since 29 Jul</h2>
-<p class="sub">Cases resolved, then reopened (tracker revert flag or Kapture reopen &lt; 24 hrs), followed to their second closure.</p>
-<div class="tablewrap"><table>
-<thead><tr><th>Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead>
-<tbody>
-<tr><td><b>Total reopened</b></td><td>${reopens.length}</td><td>${pct(reopens.length, resolvedAllTD)} of resolved</td><td style="text-align:left">Out of ${resolvedAllTD.toLocaleString('en-IN')} cases resolved since 29 Jul</td></tr>
-${reopReasons.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><td>${n}</td><td>${pct(n, reopens.length)}</td><td style="text-align:left">${r === 'Resolved by Old CSP' ? 'Repeat fix by the same CSP — first fix did not hold' : ''}</td></tr>`).join('\n')}
-<tr><td class="g"><b>Re-resolved &amp; confirmed by PFT</b></td><td class="g">${reopPftDone}</td><td class="g">${pct(reopPftDone, reopens.length)}</td><td style="text-align:left">Kapture status Completed (disposed by PFT after the reopen)</td></tr>
-<tr><td class="b">Still open after reopen</td><td class="b">${reopStillOpen}</td><td class="b">${pct(reopStillOpen, reopens.length)}</td><td style="text-align:left">Pending in Kapture / not yet synced — active pain</td></tr>
-</tbody></table></div>
-</section>
-${rcaLedger}
-<section>
 <h2>Week before vs last week vs till date</h2>
 <p class="sub">Cohorts by the date the case entered the tracker. Recent cases still inside their 48-hour window are excluded from matured metrics.</p>
 <div class="tablewrap"><table>
@@ -294,6 +261,38 @@ ${row('Refund done — cases', s => s.doneN)}
 ${row('<b>Refund done — amount</b>', s => inr(s.doneAmt), 'g')}
 </tbody></table></div>
 </section>
+<section>
+<h2>The complete funnel — till date (${tdLabel})</h2>
+<p class="sub">Every case received since 29 Jul, followed to its outcome. Each drop shows what happened to those cases.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead>
+<tbody>
+<tr><td><b>Total received</b></td><td>${sTD.n.toLocaleString('en-IN')}</td><td>100%</td><td style="text-align:left">All cases entering the tracker since 29 Jul (~${avgPerDay}/day)</td></tr>
+<tr><td>↳ Still inside 48-hr window</td><td>${(sTD.n - sTD.m).toLocaleString('en-IN')}</td><td>${pct(sTD.n - sTD.m, sTD.n)}</td><td style="text-align:left">Too fresh to judge — mature within 2 days</td></tr>
+<tr><td>↳ Matured</td><td>${sTD.m.toLocaleString('en-IN')}</td><td>${pct(sTD.m, sTD.n)}</td><td style="text-align:left">Completed their full 48-hour window — the funnel base below</td></tr>
+<tr><td class="g"><b>Resolved ≤ 48 hrs (net)</b></td><td class="g">${sTD.w48.toLocaleString('en-IN')}</td><td class="g">${pct(sTD.w48, sTD.m)}</td><td style="text-align:left">Gross ${sTD.w48g.toLocaleString('en-IN')} − ${(sTD.w48g - sTD.w48)} later reopened</td></tr>
+<tr><td>Resolved late (after breaching)</td><td>${sTD.late}</td><td>${pct(sTD.late, sTD.m)}</td><td style="text-align:left">Fixed, but only after the 48-hr promise was broken</td></tr>
+<tr><td class="b"><b>Unresolved (breached) = refund eligible</b></td><td class="b">${breached.length}</td><td class="b">${pct(breached.length, sTD.m)}</td><td style="text-align:left">Past 48 hrs and still open — owe the customer a pro-rata refund</td></tr>
+<tr><td><i>Pending since (age from case added)</i></td><td></td><td></td><td style="text-align:left"></td></tr>
+${ageing.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left"></td></tr>`).join('\n')}
+<tr><td class="g">↳ Refund done</td><td class="g">${breachedDone.length}</td><td class="g">${pct(breachedDone.length, breached.length)}</td><td style="text-align:left">${inr(breachedDoneAmt)} paid (Finance sheet / Cx Action)</td></tr>
+<tr><td class="b">↳ Refund pending</td><td class="b">${breachedPend.length}</td><td class="b">${pct(breachedPend.length, breached.length)}</td><td style="text-align:left">${inr(breachedPendAmt)} owed pro-rata</td></tr>
+${closure.map(([s, n]) => `<tr><td style="padding-left:34px">↳ Kapture: ${s}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left">${s === 'Completed' ? 'Disposed by PFT but tracker still shows unresolved — verify' : s === 'Pending' ? 'Still open in Kapture too' : ''}</td></tr>`).join('\n')}
+</tbody></table></div>
+</section>
+<section>
+<h2>Reopened cases funnel — since 29 Jul</h2>
+<p class="sub">Cases resolved, then reopened (tracker revert flag or Kapture reopen &lt; 24 hrs), followed to their second closure.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead>
+<tbody>
+<tr><td><b>Total reopened</b></td><td>${reopens.length}</td><td>${pct(reopens.length, resolvedAllTD)} of resolved</td><td style="text-align:left">Out of ${resolvedAllTD.toLocaleString('en-IN')} cases resolved since 29 Jul</td></tr>
+${reopReasons.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><td>${n}</td><td>${pct(n, reopens.length)}</td><td style="text-align:left">${r === 'Resolved by Old CSP' ? 'Repeat fix by the same CSP — first fix did not hold' : ''}</td></tr>`).join('\n')}
+<tr><td class="g"><b>Re-resolved &amp; confirmed by PFT</b></td><td class="g">${reopPftDone}</td><td class="g">${pct(reopPftDone, reopens.length)}</td><td style="text-align:left">Kapture status Completed (disposed by PFT after the reopen)</td></tr>
+<tr><td class="b">Still open after reopen</td><td class="b">${reopStillOpen}</td><td class="b">${pct(reopStillOpen, reopens.length)}</td><td style="text-align:left">Pending in Kapture / not yet synced — active pain</td></tr>
+</tbody></table></div>
+</section>
+${rcaLedger}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (IST).</div>
 </div></body></html>`;
 
