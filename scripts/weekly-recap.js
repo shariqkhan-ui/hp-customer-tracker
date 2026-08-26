@@ -146,39 +146,33 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const reopStillOpen = reopens.filter(c => trim(c.kapture_status) !== 'Completed' && trim(c.kapture_status) !== 'Closed').length;
   const resolvedAllTD = era.filter(c => getStatus(c) !== 'Unresolved').length;
 
-  // ── Reopen-RCA ledger: merge the field team's RCA sheet (by ticket) ───────
-  // Sheet failure must never kill the recap — the section just notes it.
+  // ── Reopened cases — RCA: render the field team's RCA sheet AS-IS ─────────
+  // (per Shariq 26 Aug: the RCA table is exactly the sheet's cases, nothing
+  // tracker-derived). Sheet failure must never kill the recap.
   const escH = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
   let rcaLedger = '';
   try {
     const csv = await fetch(RCA_SHEET_CSV, { redirect: 'follow' }).then(r => r.text());
     const sh = parseCSVText(csv);
     const SH = sh[0].map(h => h.trim().toLowerCase());
-    const iT = SH.indexOf('ticket no'), iCx = SH.indexOf('cx remarks'), iCsp = SH.indexOf('csp remarks'), iPing = SH.indexOf('last ping time');
-    const byT = {};
-    sh.slice(1).forEach(r => {
-      const t = String(r[iT] || '').replace(/\D/g, '');
-      if (t) byT[t] = { cx: trim(r[iCx]), csp: trim(r[iCsp]), ping: trim(r[iPing]) };
-    });
-    const ledger = reopens.filter(c => trim(c.remarks) === 'Resolved by Old CSP')
-      .sort((a, b) => startTs(b) - startTs(a));
-    const ledgerRows = ledger.map(c => {
-      const t = byT[String(c.ticket_no || '').replace(/\D/g, '')] || {};
-      const st = trim(c.kapture_status) || '—';
-      const stCol = st === 'Completed' ? 'var(--good)' : (st === 'Pending' ? 'var(--bad)' : 'var(--ink2)');
-      return `<tr><td>${escH(c.ticket_no)}</td><td>${escH(c.mobile)}</td><td>${escH(c.partner)}</td><td>${escH(t.cx || c.cx_action || '—')}</td><td>${escH(t.csp || [c.remarks, c.engineer_remarks].filter(Boolean).join(' · ') || '—')}</td><td style="color:${stCol}">${escH(st)}</td><td>${escH(t.ping || '—')}</td></tr>`;
-    }).join('\n');
+    const col = name => SH.findIndex(h => h === name);
+    const iT = col('ticket no'), iM = col('mobile'), iC = col('csp'), iCx = col('cx remarks'),
+          iCsp = col('csp remarks'), iPing = col('last ping time'), iG = col('ground remarks');
+    const rows = sh.slice(1).filter(r => trim(r[iT]));
+    const ledgerRows = rows.map(r =>
+      `<tr><td>${escH(trim(r[iT]))}</td><td>${escH(trim(r[iM]))}</td><td>${escH(trim(r[iC]))}</td><td style="white-space:normal">${escH(trim(r[iCx]) || '—')}</td><td style="white-space:normal">${escH(trim(r[iCsp]) || '—')}</td><td style="white-space:normal">${escH(trim(r[iG]) || '—')}</td><td>${escH(trim(r[iPing]) || '—')}</td></tr>`
+    ).join('\n');
     rcaLedger = `<section>
-<h2>Reopened repeat-fix cases — RCA ledger (${ledger.length} cases)</h2>
-<p class="sub">The &quot;Resolved by Old CSP&quot; reopens since 29 Jul, with CX / CSP remarks and Last Ping merged from the field team's <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit?gid=0" style="color:var(--accent-ink)">Reopen RCA sheet</a> (matched by ticket number).</p>
-<div class="tablewrap" style="max-height:480px;overflow:auto"><table>
-<thead><tr><th>Ticket No</th><th>Mobile</th><th>CSP</th><th>CX Remarks</th><th>CSP Remarks</th><th>Ticket Status</th><th>Last Ping Time</th></tr></thead>
+<h2>Reopened cases — RCA (${rows.length} cases)</h2>
+<p class="sub">The field team's reopen RCA, straight from the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit?gid=0" style="color:var(--accent-ink)">Reopen RCA sheet</a> — refreshed automatically every Monday.</p>
+<div class="tablewrap" style="max-height:480px;overflow:auto"><table style="min-width:900px">
+<thead><tr><th>Ticket No</th><th>Mobile</th><th>CSP</th><th style="text-align:left">CX Remarks</th><th style="text-align:left">CSP Remarks</th><th style="text-align:left">Ground Remarks</th><th>Last Ping Time</th></tr></thead>
 <tbody>
 ${ledgerRows}
 </tbody></table></div>
 </section>`;
   } catch (e) {
-    console.error('RCA sheet merge failed (non-fatal):', e.message);
+    console.error('RCA sheet render failed (non-fatal):', e.message);
     rcaLedger = '';
   }
 
@@ -335,6 +329,7 @@ ${reopReasons.map(([r, n]) => `<tr><td style="padding-left:34px">↳ ${r}</td><t
 </tbody></table></div>
 </section>
 ${cspRca}
+${rcaLedger}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (IST).</div>
 </div></body></html>`;
 
