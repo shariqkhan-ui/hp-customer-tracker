@@ -617,6 +617,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       -- Must have a valid Kapture ticket ID
       AND stm.KAPTURE_TICKET_ID IS NOT NULL
       AND stm.KAPTURE_TICKET_ID != ''
+      -- Wiom Net house accounts (folder/disposition flag) — excluded per
+      -- Shariq 31 Aug; the queue is the only reliable marker of these.
+      AND COALESCE(stm.CURRENT_QUEUE, '') NOT ILIKE '%wiom net%'
   `;
 
   // ── Step 1: Internet sync (SERVICE_TICKET_MODEL) ─────────────────────────
@@ -724,6 +727,14 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       AND t.CREATED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
       ${chatAgeCap}
       AND t.KAPTURE_TICKET_ID IS NOT NULL
+      -- Wiom Net house accounts: the flag lives in the Kapture folder
+      -- (SERVICE_TICKET_MODEL.CURRENT_QUEUE), not in the title. Excluded
+      -- per Shariq 31 Aug — the field team can't action these.
+      AND NOT EXISTS (
+        SELECT 1 FROM SERVICE_TICKET_MODEL wq
+        WHERE wq.KAPTURE_TICKET_ID = t.KAPTURE_TICKET_ID
+          AND wq.CURRENT_QUEUE ILIKE '%wiom net%'
+      )
   `;
 
   // ── Step 2b SQL: LIVE-open internet tickets (any source) ──────────────────
