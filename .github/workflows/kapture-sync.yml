@@ -1,10 +1,10 @@
 name: Kapture Auto-Sync
 
 on:
-  # Runs every 30 min from 8:00 AM IST (02:30 UTC) to 7:00 PM IST (13:30 UTC).
-  schedule:
-    - cron: '30 2-13 * * *'
-    - cron: '0 3-13 * * *'
+  # Schedule DISABLED 1 Sep 2026 — the sync now runs on Railway (service
+  # kapture-sync-cron, cron '0,30 2-13 * * *' UTC, auto-deploys from master).
+  # GitHub's scheduler proved unreliable (27-31 Aug stall). This workflow is
+  # kept for manual dispatch as a fallback.
 
   # Allow manual trigger from GitHub Actions UI for testing
   workflow_dispatch:
