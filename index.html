@@ -776,7 +776,20 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <h3 style="display:flex;justify-content:space-between;align-items:center">&#x1F4B8; Refund Action — every case that crossed 48 hrs <button class="sheet-csv-btn" onclick="downloadSheetCSV('raBody','refund-action')">&#x2B07; CSV</button></h3>
       <p class="rc-sub">All flag-era cases that breached the 48-hour window — still unresolved OR later recovered. The <b>Refund Action</b> column carries the live status: cases that came back up are flagged <b>Ping up</b>, refunded ones show <b>Refund Done</b> (auto from the Finance sheet), and Deepakshi updates everything else here directly (click the cell).</p>
       <div id="raSummary" style="font-size:13.5px;margin:6px 0 12px"></div>
-      <table class="rpt-table"><thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>CSP</th><th style="text-align:left">Ground Remark</th><th>Amount (&#8377;)</th><th>Age (days)</th><th>Kapture</th><th>Refund Action &#x270F;</th><th style="text-align:left">Note &#x270F;</th></tr></thead><tbody id="raBody"></tbody></table>
+      <table class="rpt-table"><thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>CSP</th><th style="text-align:left">Ground Remark</th><th>Amount (&#8377;)</th><th>Age (days)</th><th>Kapture</th><th>Refund Action &#x270F;</th><th style="text-align:left">Note &#x270F;</th></tr>
+      <tr>
+        <th></th>
+        <th><input class="col-filter" placeholder="Search..." oninput="setRaFilter('ticket',this.value)"></th>
+        <th><input class="col-filter" placeholder="Search..." oninput="setRaFilter('mobile',this.value)"></th>
+        <th><input class="col-filter" placeholder="Search..." oninput="setRaFilter('customer',this.value)"></th>
+        <th><input class="col-filter" placeholder="Search..." oninput="setRaFilter('csp',this.value)"></th>
+        <th><input class="col-filter" placeholder="Search..." oninput="setRaFilter('remark',this.value)"></th>
+        <th><input class="col-filter" placeholder="0 / blank" oninput="setRaFilter('amount',this.value)"></th>
+        <th><input class="col-filter" placeholder="e.g. >14" oninput="setRaFilter('age',this.value)"></th>
+        <th><input class="col-filter" placeholder="Search..." oninput="setRaFilter('kapture',this.value)"></th>
+        <th><input class="col-filter" placeholder="pending / done / blank" oninput="setRaFilter('action',this.value)"></th>
+        <th><input class="col-filter" placeholder="blank = no note" oninput="setRaFilter('note',this.value)"></th>
+      </tr></thead><tbody id="raBody"></tbody></table>
     </div>
   </div>
 
@@ -2371,6 +2384,38 @@ function raBadge(v, auto) {
   const cls = v === 'Refund Done' ? 'badge-green' : v === 'Ping up' ? 'badge-blue' : v === 'Refund Pending' ? 'badge-red' : 'badge-yellow';
   return '<span class="badge ' + cls + '">' + esc(v) + '</span>' + (auto ? ' <span style="font-size:9px;color:var(--muted)">auto</span>' : '');
 }
+// Column filters. "blank" is a keyword in the Action / Note / Amount boxes:
+// Action → cases with NO manual status yet (auto only), Note → empty notes,
+// Amount → amount not computed. Age supports >N / <N (e.g. ">14").
+const raFilters = {};
+function setRaFilter(k, v) { raFilters[k] = v.trim().toLowerCase(); renderRefundAction(); }
+function raFilterPass(r, e, age) {
+  const has = (k, val) => !raFilters[k] || String(val || '').toLowerCase().includes(raFilters[k]);
+  if (!has('ticket', r[1]) || !has('mobile', r[3]) || !has('customer', r[5]) || !has('csp', r[6]) ||
+      !has('remark', r[8]) || !has('kapture', r[30])) return false;
+  if (raFilters.action) {
+    if (raFilters.action === 'blank') { if ((r[33] || '').trim()) return false; }
+    else if (!e.v.toLowerCase().includes(raFilters.action)) return false;
+  }
+  if (raFilters.note) {
+    const note = (r[34] || '').trim();
+    if (raFilters.note === 'blank') { if (note) return false; }
+    else if (!note.toLowerCase().includes(raFilters.note)) return false;
+  }
+  if (raFilters.amount) {
+    const amt = r[24];
+    if (raFilters.amount === 'blank') { if (amt !== '' && amt !== null) return false; }
+    else if (!String(amt === '' || amt === null ? '' : Math.round(Number(amt))).includes(raFilters.amount)) return false;
+  }
+  if (raFilters.age) {
+    const m = raFilters.age.match(/^([<>]?)\s*(\d+)$/);
+    if (m) {
+      const n = +m[2];
+      if (m[1] === '>' ? !(age > n) : m[1] === '<' ? !(age < n) : age !== n) return false;
+    }
+  }
+  return true;
+}
 function renderRefundAction() {
   const nowTs = Date.now();
   const rows = allRows.filter(r => {
@@ -2380,7 +2425,8 @@ function renderRefundAction() {
     const rt = Number(r[20]) || 0;                                        // recovered — but only if AFTER breaching
     if (rt > 0) return (rt - t) > TAT_LIMIT_MS;
     return (r[33] || '').trim() !== '';                                   // historical flag set → keep visible
-  }).sort((a, b) => caseStartTs(a) - caseStartTs(b));
+  }).filter(r => raFilterPass(r, raEffective(r), Math.floor((nowTs - caseStartTs(r)) / 86400000)))
+    .sort((a, b) => caseStartTs(a) - caseStartTs(b));
   const eff = rows.map(raEffective);
   const counts = {};
   eff.forEach(e => counts[e.v] = (counts[e.v] || 0) + 1);
