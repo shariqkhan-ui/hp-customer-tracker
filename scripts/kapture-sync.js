@@ -364,6 +364,43 @@ async function syncKaptureResolution(apiKey) {
 // recovery model shows a PICKUP_AT / RETURN_AT for the customer ON OR AFTER
 // the case was added (old pickups from earlier churn episodes don't count).
 // Complements the Finance-sheet Router Recovered stamping; never unsets 'Yes'.
+// ── Wiom Net queue purge ─────────────────────────────────────────────────────
+// The intake filter blocks tickets already IN the Wiom Net queue, but the CX
+// team also moves tickets there AFTER they enter the tracker. This sweep
+// removes any tracked flag-era case whose Kapture queue is now Wiom Net
+// (house accounts — per Shariq, they must not live in the tracker at all).
+async function purgeWiomNetQueue(apiKey) {
+  const all = await fbGet('/cases') || {};
+  const entries = Object.entries(all).filter(([k, c]) => {
+    if (k.startsWith('__') || !c || !c.ticket_no) return false;
+    const ts = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+    return ts >= TAT_LAUNCH_MS;
+  });
+  const byDig = {};
+  entries.forEach(([k, c]) => {
+    const d = String(c.ticket_no).replace(/\D/g, '');
+    if (d.length >= 6) (byDig[d] = byDig[d] || []).push(k);
+  });
+  const digs = Object.keys(byDig);
+  let purged = 0;
+  for (let i = 0; i < digs.length; i += 800) {
+    const ch = digs.slice(i, i + 800);
+    const rows = await queryMetabase(
+      "SELECT KAPTURE_TICKET_ID FROM PUBLIC.SERVICE_TICKET_MODEL WHERE CURRENT_QUEUE ILIKE '%wiom net%' AND KAPTURE_TICKET_ID IN (" +
+      ch.map(x => "'" + x + "'").join(',') + ')', apiKey);
+    for (const r of rows) {
+      const d = String(r.KAPTURE_TICKET_ID || '').trim();
+      for (const key of (byDig[d] || [])) {
+        await fbPut('/cases/' + key, null);
+        purged++;
+        log(`Wiom Net purge: removed ticket=${d} (moved into Wiom Net queue after intake).`);
+      }
+    }
+  }
+  if (purged) log(`Wiom Net purge: ${purged} case(s) removed this run.`);
+  else log('Wiom Net purge: nothing to remove.');
+}
+
 async function syncDevicePickup(apiKey) {
   const [all, sheet] = await Promise.all([fbGet('/cases'), fbGet('/refund_sheet')]);
   const sheetMap = sheet || {};
@@ -793,6 +830,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
 
   // ── Step 2.8: Device pickup from the recovery model ──
   try { await syncDevicePickup(apiKey); } catch (e) { log('WARN: device pickup sync failed — ' + e.message); }
+  try { await purgeWiomNetQueue(apiKey); } catch (e) { log('WARN: Wiom Net purge failed — ' + e.message); }
 
 
   // ── Step 3: Notify Slack (suppressed entirely during a silent backfill) ──
