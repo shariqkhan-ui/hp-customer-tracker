@@ -1292,7 +1292,10 @@ function editProof(ticket, field, td) {
     const prev = td.innerHTML;
     td.innerHTML = '<span style="color:var(--yellow);font-size:11px">&#x23F3; uploading…</span>';
     try {
-      const res = await fetch('/upload-proof?ticket=' + encodeURIComponent(ticket) + '&field=' + field + '&name=' + encodeURIComponent(f.name), {
+      // Uploads always go to the Railway server — the GitHub Pages copy of the
+      // dashboard has no backend, so a relative URL there 404s with an HTML page.
+      const UPLOAD_BASE = /railway\.app$/.test(location.hostname) || location.hostname === 'localhost' ? '' : 'https://hp-customer-tracker-production.up.railway.app';
+      const res = await fetch(UPLOAD_BASE + '/upload-proof?ticket=' + encodeURIComponent(ticket) + '&field=' + field + '&name=' + encodeURIComponent(f.name), {
         method: 'POST', headers: { 'content-type': f.type || 'application/octet-stream' }, body: f,
       });
       const j = await res.json();

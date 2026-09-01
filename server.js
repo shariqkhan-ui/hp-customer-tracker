@@ -15,6 +15,15 @@ const EXT = {
   'audio/mpeg': '.mp3', 'audio/mp4': '.m4a', 'audio/aac': '.aac', 'audio/ogg': '.ogg', 'audio/wav': '.wav',
   'audio/amr': '.amr', 'audio/3gpp': '.3gp', 'video/mp4': '.mp4', 'video/3gpp': '.3gp', 'application/pdf': '.pdf',
 };
+// CORS: the dashboard is also served from GitHub Pages (shariqkhan-ui.github.io),
+// which must be able to upload here cross-origin.
+app.use(['/upload-proof', '/proofs'], (req, res, next) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'content-type');
+  if (req.method === 'OPTIONS') return res.sendStatus(204);
+  next();
+});
 app.post('/upload-proof', express.raw({ type: () => true, limit: '30mb' }), (req, res) => {
   try {
     const ticket = String(req.query.ticket || '').replace(/[^0-9A-Za-z_-]/g, '').slice(0, 40);
