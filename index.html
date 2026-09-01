@@ -677,8 +677,8 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>TAT</th>
             <th>48h TAT &#x23F3;</th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
-            <th title="NQT customer-confirmation proof: paste the call recording link (Drive/WhatsApp)">&#x1F399; Call Recording &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; paste link</span></th>
-            <th title="NQT customer-confirmation proof: paste the screenshot / chat proof link">&#x1F4CE; Screenshot &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; paste link</span></th>
+            <th title="NQT customer-confirmation proof: paste the call recording link (Drive/WhatsApp)">&#x1F399; Call Recording &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x2B06; click to upload</span></th>
+            <th title="NQT customer-confirmation proof: paste the screenshot / chat proof link">&#x1F4CE; Screenshot &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x2B06; click to upload</span></th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Cx Action &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Owner &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
@@ -1183,29 +1183,54 @@ async function autoMigrateRemarks() {
   if (successCount > 0) { applyFilters(); toast(successCount + ' old remark(s) auto-fixed \u2713', 'success'); }
 }
 
-// NQT confirmation-proof cells: the value is a pasted URL (Drive / WhatsApp
-// export). Shows a clickable badge when set; click the pencil to paste/replace.
+// NQT confirmation-proof cells: click → phone gallery / file picker → the file
+// uploads to the tracker's own server (Railway volume, served at /proofs/…)
+// and the URL is saved on the case. Shows a clickable badge once uploaded.
 function makeProofCell(ticket, field, orig, icon) {
   const url = String(orig || '').trim();
   const isUrl = /^https?:\/\//i.test(url);
   const view = isUrl
     ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="badge badge-green" style="text-decoration:none">' + icon + ' Proof</a>'
-    : (url ? '<span class="badge badge-yellow" title="' + esc(url) + '">' + icon + ' (not a link)</span>' : '<span style="color:var(--muted)">—</span>');
-  return '<td style="text-align:center;cursor:pointer" title="Click to paste the proof link" ' +
+    : '<span style="color:var(--muted)">—</span>';
+  return '<td style="text-align:center;cursor:pointer" title="Click to upload from gallery / files" ' +
     'onclick="editProof(\'' + esc(ticket) + '\',\'' + field + '\',this)" data-orig="' + esc(url) + '">' + view +
-    ' <span style="color:var(--primary-light);font-size:10px">&#x270F;</span></td>';
+    ' <span style="color:var(--primary-light);font-size:10px">&#x2B06; upload</span></td>';
 }
-async function editProof(ticket, field, td) {
+function editProof(ticket, field, td) {
   const cur = td.dataset.orig || '';
-  const nv = prompt('Paste the ' + (field === 'proof_recording' ? 'call recording' : 'screenshot') + ' link (Drive / WhatsApp export URL).\nLeave empty to clear.', cur);
-  if (nv === null || nv.trim() === cur) return;
-  const val = nv.trim();
-  if (val && !/^https?:\/\//i.test(val)) { alert('Please paste a full link starting with http(s)://'); return; }
-  addAuditEntry(ticket, field, cur, val);
-  await saveToSheet(ticket, field, val);
-  const row = allRows.find(r => (r[1]||'').trim() === ticket);
-  if (row) row[field === 'proof_recording' ? 31 : 32] = val;
-  applyFilters();
+  if (cur && !confirm('A proof is already attached. Replace it?')) return;
+  const inp = document.createElement('input');
+  inp.type = 'file';
+  // Recording: audio/video files; Screenshot: images. image/* is included on
+  // the recording picker too since many teams save call proofs as screen
+  // recordings or WhatsApp exports — the phone shows its gallery either way.
+  inp.accept = field === 'proof_recording' ? 'audio/*,video/*,image/*' : 'image/*';
+  inp.style.display = 'none';
+  document.body.appendChild(inp);
+  inp.onchange = async function() {
+    const f = inp.files && inp.files[0];
+    document.body.removeChild(inp);
+    if (!f) return;
+    if (f.size > 25 * 1024 * 1024) { alert('File is over 25 MB — please trim the recording or compress and retry.'); return; }
+    const prev = td.innerHTML;
+    td.innerHTML = '<span style="color:var(--yellow);font-size:11px">&#x23F3; uploading…</span>';
+    try {
+      const res = await fetch('/upload-proof?ticket=' + encodeURIComponent(ticket) + '&field=' + field + '&name=' + encodeURIComponent(f.name), {
+        method: 'POST', headers: { 'content-type': f.type || 'application/octet-stream' }, body: f,
+      });
+      const j = await res.json();
+      if (!res.ok || !j.url) throw new Error(j.error || 'upload failed');
+      addAuditEntry(ticket, field, cur, j.url);
+      await saveToSheet(ticket, field, j.url);
+      const row = allRows.find(r => (r[1]||'').trim() === ticket);
+      if (row) row[field === 'proof_recording' ? 31 : 32] = j.url;
+      applyFilters();
+    } catch (e) {
+      td.innerHTML = prev;
+      alert('Upload failed: ' + e.message + '\nCheck your connection and try again.');
+    }
+  };
+  inp.click();
 }
 
 function makeEditCell(ticket, field, orig, tsHtml) {
