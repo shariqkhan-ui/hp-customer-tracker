@@ -1190,12 +1190,45 @@ function makeProofCell(ticket, field, orig, icon) {
   const url = String(orig || '').trim();
   const isUrl = /^https?:\/\//i.test(url);
   const view = isUrl
-    ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="badge badge-green" style="text-decoration:none">' + icon + ' Proof</a>'
+    ? '<a href="' + esc(url) + '" class="badge badge-green" style="text-decoration:none" onclick="event.stopPropagation();event.preventDefault();openProofViewer(\'' + esc(url) + '\')">' + icon + ' Proof</a>'
     : '<span style="color:var(--muted)">—</span>';
   return '<td style="text-align:center;cursor:pointer" title="Click to upload from gallery / files" ' +
     'onclick="editProof(\'' + esc(ticket) + '\',\'' + field + '\',this)" data-orig="' + esc(url) + '">' + view +
     ' <span style="color:var(--primary-light);font-size:10px">&#x2B06; upload</span></td>';
 }
+// In-tracker proof viewer: images show inline, recordings play in an
+// <audio>/<video> element — no download, no leaving the page.
+function openProofViewer(url) {
+  closeProofViewer();
+  const ext = (url.match(/\.([a-z0-9]{1,5})(?:\?|$)/i) || [,''])[1].toLowerCase();
+  let body;
+  if (['jpg','jpeg','png','webp','gif','heic'].includes(ext)) {
+    body = '<img src="' + esc(url) + '" style="max-width:90vw;max-height:78vh;border-radius:10px;display:block">';
+  } else if (['mp3','m4a','aac','ogg','wav','amr'].includes(ext)) {
+    body = '<div style="padding:26px 30px;background:var(--surface,#1c1c28);border-radius:12px"><div style="font-size:15px;margin-bottom:14px">&#x1F399; Call recording</div><audio controls autoplay style="width:min(420px,80vw)" src="' + esc(url) + '"></audio></div>';
+  } else if (['mp4','3gp','webm','mov'].includes(ext)) {
+    body = '<video controls autoplay style="max-width:90vw;max-height:78vh;border-radius:10px" src="' + esc(url) + '"></video>';
+  } else if (ext === 'pdf') {
+    body = '<iframe src="' + esc(url) + '" style="width:90vw;height:80vh;border:none;border-radius:10px;background:#fff"></iframe>';
+  } else {
+    body = '<div style="padding:26px 30px;background:var(--surface,#1c1c28);border-radius:12px">This file type cannot be previewed here. <a href="' + esc(url) + '" target="_blank" rel="noopener" style="color:var(--primary-light)">Open in a new tab</a></div>';
+  }
+  const ov = document.createElement('div');
+  ov.id = 'proofViewer';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.82);z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:12px';
+  ov.innerHTML = body +
+    '<button onclick="closeProofViewer()" style="background:#fff;color:#222;border:none;border-radius:20px;padding:8px 26px;font-weight:700;cursor:pointer;font-size:14px">&#x2715; Close</button>';
+  ov.addEventListener('click', function(e) { if (e.target === ov) closeProofViewer(); });
+  document.addEventListener('keydown', proofEscHandler);
+  document.body.appendChild(ov);
+}
+function proofEscHandler(e) { if (e.key === 'Escape') closeProofViewer(); }
+function closeProofViewer() {
+  const ov = document.getElementById('proofViewer');
+  if (ov) ov.remove();
+  document.removeEventListener('keydown', proofEscHandler);
+}
+
 function editProof(ticket, field, td) {
   const cur = td.dataset.orig || '';
   if (cur && !confirm('A proof is already attached. Replace it?')) return;
