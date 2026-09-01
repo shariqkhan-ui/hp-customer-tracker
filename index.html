@@ -432,6 +432,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="main-tab active" id="mtab_cases"  onclick="showMainTab('cases')">&#x1F4CB; Cases</div>
     <div class="main-tab" id="mtab_refund"  onclick="showMainTab('refund')">&#x1F4B8; Refund Done</div>
     <div class="main-tab" id="mtab_reports" onclick="showMainTab('reports')">&#x1F4C8; Reports</div>
+    <div class="main-tab" id="mtab_refundaction" onclick="showMainTab('refundaction')">&#x1F4B8; Refund Action</div>
     <div class="main-tab" id="mtab_actions" onclick="showMainTab('actions')">&#x1F4CB; Action Items</div>
   </div>
 
@@ -769,6 +770,16 @@ table.main-tbl tbody tr:hover { background: #220020; }
     </div>
   </div>
 
+  <!-- ═══ Refund Action tab (Deepakshi's live status on every breached case) ═══ -->
+  <div id="tabRefundAction" style="display:none">
+    <div class="report-card">
+      <h3 style="display:flex;justify-content:space-between;align-items:center">&#x1F4B8; Refund Action — every case that crossed 48 hrs <button class="sheet-csv-btn" onclick="downloadSheetCSV('raBody','refund-action')">&#x2B07; CSV</button></h3>
+      <p class="rc-sub">All flag-era cases that breached the 48-hour window — still unresolved OR later recovered. The <b>Refund Action</b> column carries the live status: cases that came back up are flagged <b>Ping up</b>, refunded ones show <b>Refund Done</b> (auto from the Finance sheet), and Deepakshi updates everything else here directly (click the cell).</p>
+      <div id="raSummary" style="font-size:13.5px;margin:6px 0 12px"></div>
+      <table class="rpt-table"><thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>CSP</th><th style="text-align:left">Ground Remark</th><th>Amount (&#8377;)</th><th>Age (days)</th><th>Kapture</th><th>Refund Action &#x270F;</th><th style="text-align:left">Note &#x270F;</th></tr></thead><tbody id="raBody"></tbody></table>
+    </div>
+  </div>
+
   <!-- ═══ Action Items tab (weekly-meeting decisions; posted daily to Slack) ═══ -->
   <div id="tabActions" style="display:none">
     <div class="report-card">
@@ -974,12 +985,14 @@ function dbRowToArray(r) {
     r.kapture_resolved_by || '', // 29 — Kapture FINAL_RESOLVED_NAME (who disposed it)
     r.kapture_status      || '', // 30 — Kapture ticket status (Completed / Pending / Closed), synced by cron
     r.proof_recording     || '', // 31 — URL of the NQT's customer-confirmation call recording
-    r.proof_screenshot    || ''  // 32 — URL of the confirmation screenshot / chat proof
+    r.proof_screenshot    || '', // 32 — URL of the confirmation screenshot / chat proof
+    r.refund_action       || '', // 33 — Refund Action tab status (Deepakshi's flag: Refund Done / Ping up / DNP3 …)
+    r.refund_action_note  || ''  // 34 — free note (e.g. ping-up date/time from the historical sheet)
   ];
 }
 
 // Map edit field name → Supabase column name
-const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action', refund_amount: 'refund_amount', device_picked_up: 'device_picked_up', proof_recording: 'proof_recording', proof_screenshot: 'proof_screenshot' };
+const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action', refund_amount: 'refund_amount', device_picked_up: 'device_picked_up', proof_recording: 'proof_recording', proof_screenshot: 'proof_screenshot', refund_action: 'refund_action', refund_action_note: 'refund_action_note' };
 
 let allRows = [], visRows = [], charts = {};
 
@@ -2326,16 +2339,95 @@ function renderWeekTable(rows) {
 
 // ── Main tabs ──
 function showMainTab(t) {
-  ['cases','refund','reports','actions'].forEach(x => {
+  ['cases','refund','reports','refundaction','actions'].forEach(x => {
     document.getElementById('mtab_' + x).classList.toggle('active', x === t);
   });
   document.getElementById('tabCases').style.display   = t === 'cases'   ? '' : 'none';
   document.getElementById('tabRefund').style.display  = t === 'refund'  ? '' : 'none';
   document.getElementById('tabReports').style.display = t === 'reports' ? '' : 'none';
+  document.getElementById('tabRefundAction').style.display = t === 'refundaction' ? '' : 'none';
   document.getElementById('tabActions').style.display = t === 'actions' ? '' : 'none';
   if (t === 'refund')  { renderRefundTab(); loadRefundSheet().then(renderRefundTab); }
   if (t === 'reports') renderReports();
+  if (t === 'refundaction') renderRefundAction();
   if (t === 'actions') loadActionItems();
+}
+
+// ── Refund Action tab ────────────────────────────────────────────────────────
+// Every flag-era case that has EVER breached 48 hrs. One status column
+// (refund_action) owned by Deepakshi; auto-fallbacks: Finance-sheet Refund
+// Done, then Ping up for cases that recovered after breaching.
+const REFUND_ACTION_OPTS = ['Refund Done', 'Ping up', 'Cx DNP 3', 'Amount 0 — refund not possible', 'Amount <10 — refund not possible', 'Pickup ticket not created by Cx', 'EXIT partner — refund by Kapil', 'CSP resolved — removed from PFT list', 'Duplicate ticket', '120 hr not crossed', 'Refund not demanded by Cx', 'PFT process miss', 'Refund not required'];
+function raEffective(r) {
+  const manual = (r[33] || '').trim();
+  if (manual) return { v: manual, auto: false };
+  if (sheetEntryFor(r) || effectiveVal(r, 23) === 'Refund Done') return { v: 'Refund Done', auto: true };
+  if (getStatus(r) !== 'Unresolved') return { v: 'Ping up', auto: true };
+  return { v: 'Refund Pending', auto: true };
+}
+function raBadge(v, auto) {
+  const cls = v === 'Refund Done' ? 'badge-green' : v === 'Ping up' ? 'badge-blue' : v === 'Refund Pending' ? 'badge-red' : 'badge-yellow';
+  return '<span class="badge ' + cls + '">' + esc(v) + '</span>' + (auto ? ' <span style="font-size:9px;color:var(--muted)">auto</span>' : '');
+}
+function renderRefundAction() {
+  const nowTs = Date.now();
+  const rows = allRows.filter(r => {
+    const t = caseStartTs(r);
+    if (!(t > 0 && (nowTs - t) >= TAT_LIMIT_MS)) return false;
+    if (getStatus(r) === 'Unresolved') return true;                       // breached & still open
+    const rt = Number(r[20]) || 0;                                        // recovered — but only if AFTER breaching
+    if (rt > 0) return (rt - t) > TAT_LIMIT_MS;
+    return (r[33] || '').trim() !== '';                                   // historical flag set → keep visible
+  }).sort((a, b) => caseStartTs(a) - caseStartTs(b));
+  const eff = rows.map(raEffective);
+  const counts = {};
+  eff.forEach(e => counts[e.v] = (counts[e.v] || 0) + 1);
+  document.getElementById('raSummary').innerHTML = '<b>' + rows.length + '</b> breached case(s) · ' +
+    Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => esc(k) + ': <b>' + n + '</b>').join(' · ');
+  document.getElementById('raBody').innerHTML = rows.map((r, i) => {
+    const e = eff[i];
+    const age = Math.floor((nowTs - caseStartTs(r)) / 86400000);
+    const ks = (r[30] || '').trim() || '—';
+    return '<tr>' +
+      '<td style="color:var(--muted)">' + (i + 1) + '</td>' +
+      '<td>' + ticketLink((r[1] || '').trim()) + '</td>' +
+      '<td>' + esc((r[3] || '').trim()) + '</td>' +
+      '<td>' + esc((r[5] || '').trim() || '—') + '</td>' +
+      '<td style="font-size:12px">' + esc((r[6] || '').trim() || '—') + '</td>' +
+      '<td style="text-align:left;font-size:12px;white-space:normal;max-width:180px">' + esc((r[8] || '').trim() || '—') + '</td>' +
+      '<td>' + (Number(r[24]) ? Math.round(Number(r[24])) : '—') + '</td>' +
+      '<td style="font-weight:700;color:' + (age >= 14 ? 'var(--red)' : age >= 7 ? 'var(--yellow)' : 'var(--text)') + '">' + age + '</td>' +
+      '<td style="font-size:11px">' + esc(ks) + '</td>' +
+      '<td style="cursor:pointer" title="Click to set the refund action" onclick="raEdit(\'' + esc((r[1] || '').trim()) + '\')">' + raBadge(e.v, e.auto) + '</td>' +
+      '<td style="text-align:left;font-size:11.5px;white-space:normal;max-width:190px;cursor:pointer" onclick="raEditNote(\'' + esc((r[1] || '').trim()) + '\')">' + esc((r[34] || '').trim() || '—') + '</td>' +
+      '</tr>';
+  }).join('');
+}
+async function raEdit(ticket) {
+  const row = allRows.find(r => (r[1] || '').trim() === ticket);
+  if (!row) return;
+  const cur = (row[33] || '').trim();
+  const menu = REFUND_ACTION_OPTS.map((o, i) => (i + 1) + '. ' + o).join('\n');
+  const pick = prompt('Refund Action for ' + ticket + ' — type the number:\n' + menu + '\n0. Clear (back to auto)', cur ? String(REFUND_ACTION_OPTS.indexOf(cur) + 1) : '');
+  if (pick === null) return;
+  const n = parseInt(pick, 10);
+  const nv = n === 0 ? '' : (REFUND_ACTION_OPTS[n - 1] || '');
+  if (pick.trim() !== '0' && !nv) { alert('Type a number from the list.'); return; }
+  addAuditEntry(ticket, 'refund_action', cur, nv);
+  await saveToSheet(ticket, 'refund_action', nv);
+  row[33] = nv;
+  renderRefundAction();
+}
+async function raEditNote(ticket) {
+  const row = allRows.find(r => (r[1] || '').trim() === ticket);
+  if (!row) return;
+  const cur = (row[34] || '').trim();
+  const nv = prompt('Note (e.g. ping-up date/time, follow-up detail):', cur);
+  if (nv === null || nv.trim() === cur) return;
+  addAuditEntry(ticket, 'refund_action_note', cur, nv.trim());
+  await saveToSheet(ticket, 'refund_action_note', nv.trim());
+  row[34] = nv.trim();
+  renderRefundAction();
 }
 
 // ── Action Items (weekly-meeting decisions) ──────────────────────────────────
