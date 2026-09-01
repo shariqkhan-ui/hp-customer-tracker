@@ -143,6 +143,31 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const ageing = AGE_SLOTS.map(([label, lo, hi]) => [label, breached.filter(c => {
     const d = (NOW - startTs(c)) / 86400000; return d >= lo && d < hi;
   }).length]).filter(([, n]) => n > 0);
+  // Reopened % week-on-week: every Mon-anchored week since launch; reopens
+  // counted among that week's gross ≤48h resolutions (cohort by added date).
+  const launchIst = new Date(LAUNCH + IST);
+  const launchMon = Date.UTC(launchIst.getUTCFullYear(), launchIst.getUTCMonth(), launchIst.getUTCDate() - ((launchIst.getUTCDay() + 6) % 7)) - IST;
+  const wowWeeks = [];
+  for (let f = launchMon; f < NOW; f += 7 * 86400000) wowWeeks.push({ from: Math.max(f, LAUNCH), to: f + 7 * 86400000 });
+  const reopWow = wowWeeks.map(w => {
+    const cohort = era.filter(c => { const t = startTs(c); return t >= w.from && t < w.to; });
+    const mat = cohort.filter(c => (NOW - startTs(c)) >= LIM);
+    const g = mat.filter(c => resolvedWithin48(c) === true).length;
+    const rp = mat.filter(c => resolvedWithin48(c) === true && isReop(c)).length;
+    return { label: fmtD(w.from) + ' – ' + fmtD(w.to - 1) + (cohort.length > mat.length ? '*' : ''), g, rp, m: mat.length };
+  });
+  const reopWowHtml = `<section>
+<h2>Reopened % — week on week</h2>
+<p class="sub">Reopens counted among each week's gross ≤48-hr resolutions (cohort by the week the case was added). * = current week, cohort not fully matured.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Metric</th>${reopWow.map(w => `<th>${w.label}</th>`).join('')}</tr></thead>
+<tbody>
+<tr><td>Resolved ≤ 48 hrs (gross)</td>${reopWow.map(w => `<td>${w.g || '-'}</td>`).join('')}</tr>
+<tr><td>Reopened among those</td>${reopWow.map(w => `<td${w.rp ? ' class="b"' : ''}>${w.rp || '-'}</td>`).join('')}</tr>
+<tr><td><b>Reopened %</b></td>${reopWow.map(w => `<td class="b"><b>${pct(w.rp, w.g)}</b></td>`).join('')}</tr>
+<tr><td>Net resolution %</td>${reopWow.map(w => `<td class="g">${pct(w.g - w.rp, w.m)}</td>`).join('')}</tr>
+</tbody></table></div>
+</section>`;
   // Reopened funnel: all era reopens, reasons, and re-resolution confirmed by PFT
   const reopens = era.filter(isReop);
   const reopReasons = countBy(reopens, c => trim(c.remarks));
@@ -338,6 +363,7 @@ ${ageing.map(([r, n]) => `<tr><td style="padding-left:34px">↳ Pending since ${
 ${closure.map(([s, n]) => `<tr><td style="padding-left:34px">↳ ${s}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left">${s === 'Completed' ? 'Disposed by PFT but tracker still shows unresolved — verify' : s === 'Pending' ? 'Still open in Kapture too' : ''}</td></tr>`).join('\n')}
 </tbody></table></div>
 </section>
+${reopWowHtml}
 ${cspRca}
 ${rcaLedger}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (IST).</div>
