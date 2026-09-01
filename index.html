@@ -2363,6 +2363,8 @@ function raEffective(r) {
   if (manual) return { v: manual, auto: false };
   if (sheetEntryFor(r) || effectiveVal(r, 23) === 'Refund Done') return { v: 'Refund Done', auto: true };
   if (getStatus(r) !== 'Unresolved') return { v: 'Ping up', auto: true };
+  // Pro-rata computed and came out ₹0 (no paid plan-days remaining) — nothing to refund
+  if (r[24] !== '' && r[24] !== null && Number(r[24]) === 0) return { v: 'Amount 0 — refund not possible', auto: true };
   return { v: 'Refund Pending', auto: true };
 }
 function raBadge(v, auto) {
