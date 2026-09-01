@@ -217,4 +217,34 @@ function row(label, count, total, indent, bold) {
     console.error('ERROR sending report:', res.error);
     process.exit(1);
   }
+
+  // ── Weekly-meeting action items (added by Shariq in the tracker's Action
+  // Items tab; stored at /cases/__action_items__). Posted daily so owners see
+  // their open items and mark status in the tracker. Never fails the report.
+  try {
+    const ai = await httpRequest('GET', FIREBASE_DB + '/cases/__action_items__.json', null, {}) || {};
+    const items = Object.values(ai).filter(v => v && v.item);
+    if (items.length) {
+      const open = items.filter(v => v.status !== 'Done')
+        .sort((a, b) => (a.owner || '').localeCompare(b.owner || ''));
+      const doneN = items.length - open.length;
+      const ICON = { 'Open': '⬜', 'In Progress': '🔄', 'Blocked': '🔴' };
+      const aiLines = open.map((v, i) =>
+        `${i + 1}. ${ICON[v.status] || '⬜'} *${v.item}* — ${v.owner || 'unassigned'}` +
+        (v.due ? ` (due ${v.due})` : '') + (v.notes ? `\n     _${v.notes}_` : ''));
+      const aiText =
+        `📋 *Weekly Meeting — Action Items* (${open.length} open · ${doneN} done)\n` +
+        (open.length ? aiLines.join('\n') : 'All items closed ✅') +
+        `\n\n👉 Update your item's status here: https://hp-customer-tracker-production.up.railway.app/ → Action Items tab`;
+      const res2 = await httpRequest('POST', 'https://slack.com/api/chat.postMessage', {
+        channel: SLACK_CHANNEL,
+        username: "Shariq's Slack Agent",
+        icon_url: 'https://raw.githubusercontent.com/shariqkhan-ui/hp-customer-tracker/master/shariq-agent.jpg',
+        text: aiText,
+      }, { 'Authorization': 'Bearer ' + token });
+      console.log(res2.ok ? 'Action items posted.' : 'Action items post FAILED: ' + res2.error);
+    } else {
+      console.log('No action items yet — skipping that post.');
+    }
+  } catch (e) { console.error('Action items section failed (non-fatal):', e.message); }
 })();

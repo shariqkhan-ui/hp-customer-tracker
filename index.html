@@ -432,6 +432,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="main-tab active" id="mtab_cases"  onclick="showMainTab('cases')">&#x1F4CB; Cases</div>
     <div class="main-tab" id="mtab_refund"  onclick="showMainTab('refund')">&#x1F4B8; Refund Done</div>
     <div class="main-tab" id="mtab_reports" onclick="showMainTab('reports')">&#x1F4C8; Reports</div>
+    <div class="main-tab" id="mtab_actions" onclick="showMainTab('actions')">&#x1F4CB; Action Items</div>
   </div>
 
   <!-- Filters (visible on every tab — applies to Cases, Refund Done and Reports) -->
@@ -765,6 +766,21 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div id="rptReopenHead" style="font-size:14px;margin-bottom:10px"></div>
       <div class="sheet-scroll" id="sheetReopen" style="margin:6px 0 16px"></div>
       <table class="rpt-table"><thead><tr><th>#</th><th>Ticket</th><th>Mobile</th><th>Customer</th><th>CSP</th><th>Engineer</th><th>Reopened On</th><th>Current Remark</th><th>Status</th></tr></thead><tbody id="rptReopenBody"></tbody></table>
+    </div>
+  </div>
+
+  <!-- ═══ Action Items tab (weekly-meeting decisions; posted daily to Slack) ═══ -->
+  <div id="tabActions" style="display:none">
+    <div class="report-card">
+      <h3>&#x1F4CB; Weekly meeting — action items</h3>
+      <p class="rc-sub">Items are added after each weekly review. Anyone can update the status/notes here — the open list is posted to #high-pain-customer-management every evening with the daily report.</p>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 16px">
+        <input id="aiItem" placeholder="Action item…" style="flex:2 1 260px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+        <input id="aiOwner" placeholder="Owner" style="flex:0 1 140px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+        <input id="aiDue" type="date" style="flex:0 1 150px;padding:8px 10px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text)">
+        <button class="btn btn-primary" onclick="addActionItem()" style="padding:8px 18px">&#x2795; Add</button>
+      </div>
+      <table class="rpt-table"><thead><tr><th>#</th><th style="text-align:left">Action item</th><th>Owner &#x270F;</th><th>Due</th><th>Status &#x270F;</th><th style="text-align:left">Notes &#x270F;</th><th>Added</th><th>Updated</th><th></th></tr></thead><tbody id="aiBody"></tbody></table>
     </div>
   </div>
 
@@ -1118,6 +1134,8 @@ const REMARKS_OPTIONS = [
   'CSP denied to resolve this ticket',
   // Added 24 Aug 2026 per field team (Pradeep)
   'CSP denied to work with Wiom',
+  // Added 1 Sep 2026 per Shariq
+  'Cx Plan Expired',
   'CSP has no router to replace / inventory not available',
   'Device not associated / disconnected',
   'CSP installed his own device',
@@ -2308,14 +2326,87 @@ function renderWeekTable(rows) {
 
 // ── Main tabs ──
 function showMainTab(t) {
-  ['cases','refund','reports'].forEach(x => {
+  ['cases','refund','reports','actions'].forEach(x => {
     document.getElementById('mtab_' + x).classList.toggle('active', x === t);
   });
   document.getElementById('tabCases').style.display   = t === 'cases'   ? '' : 'none';
   document.getElementById('tabRefund').style.display  = t === 'refund'  ? '' : 'none';
   document.getElementById('tabReports').style.display = t === 'reports' ? '' : 'none';
+  document.getElementById('tabActions').style.display = t === 'actions' ? '' : 'none';
   if (t === 'refund')  { renderRefundTab(); loadRefundSheet().then(renderRefundTab); }
   if (t === 'reports') renderReports();
+  if (t === 'actions') loadActionItems();
+}
+
+// ── Action Items (weekly-meeting decisions) ──────────────────────────────────
+// Stored at /cases/__action_items__ (the __ prefix keeps them out of case
+// queries, same pattern as the audit trail — /action_items root is locked).
+const AI_PATH = '/cases/__action_items__';
+const AI_STATUSES = ['Open', 'In Progress', 'Blocked', 'Done'];
+let aiItems = {};
+async function loadActionItems() {
+  try {
+    aiItems = await fetch(FIREBASE_DB + AI_PATH + '.json').then(r => r.json()) || {};
+  } catch (e) { aiItems = {}; }
+  renderActionItems();
+}
+function aiStatusBadge(s) {
+  const cls = s === 'Done' ? 'badge-green' : s === 'In Progress' ? 'badge-blue' : s === 'Blocked' ? 'badge-red' : 'badge-yellow';
+  return '<span class="badge ' + cls + '">' + esc(s || 'Open') + '</span>';
+}
+function renderActionItems() {
+  const body = document.getElementById('aiBody');
+  const list = Object.entries(aiItems).filter(([, v]) => v && v.item)
+    .sort((a, b) => (a[1].status === 'Done') - (b[1].status === 'Done') || (b[1].created_at || 0) - (a[1].created_at || 0));
+  if (!list.length) { body.innerHTML = '<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">No action items yet — add the decisions after the weekly meeting.</td></tr>'; return; }
+  body.innerHTML = list.map(([id, v], i) =>
+    '<tr' + (v.status === 'Done' ? ' style="opacity:.55"' : '') + '>' +
+    '<td style="color:var(--muted)">' + (i + 1) + '</td>' +
+    '<td style="text-align:left;max-width:340px;white-space:normal">' + esc(v.item) + '</td>' +
+    '<td style="cursor:pointer" onclick="aiEdit(\'' + id + '\',\'owner\')">' + esc(v.owner || '—') + '</td>' +
+    '<td>' + esc(v.due || '—') + '</td>' +
+    '<td style="cursor:pointer" onclick="aiCycleStatus(\'' + id + '\')" title="Click to change status">' + aiStatusBadge(v.status) + '</td>' +
+    '<td style="text-align:left;max-width:260px;white-space:normal;cursor:pointer" onclick="aiEdit(\'' + id + '\',\'notes\')">' + esc(v.notes || '—') + '</td>' +
+    '<td style="font-size:11px;color:var(--muted)">' + (v.created_at ? fmtTsDate(v.created_at) : '—') + '</td>' +
+    '<td style="font-size:11px;color:var(--muted)">' + (v.updated_at ? fmtTsDate(v.updated_at) : '—') + '</td>' +
+    '<td><span style="cursor:pointer;color:var(--red)" title="Delete item" onclick="aiDelete(\'' + id + '\')">&#x2715;</span></td>' +
+    '</tr>').join('');
+}
+async function aiSave(id, patch) {
+  patch.updated_at = Date.now();
+  await fetch(FIREBASE_DB + AI_PATH + '/' + id + '.json', { method: 'PATCH', body: JSON.stringify(patch) });
+  Object.assign(aiItems[id] = aiItems[id] || {}, patch);
+  renderActionItems();
+}
+async function addActionItem() {
+  const item = document.getElementById('aiItem').value.trim();
+  if (!item) { alert('Type the action item first.'); return; }
+  const owner = document.getElementById('aiOwner').value.trim();
+  const due = document.getElementById('aiDue').value;
+  const id = 'ai' + Date.now();
+  await fetch(FIREBASE_DB + AI_PATH + '/' + id + '.json', {
+    method: 'PUT',
+    body: JSON.stringify({ item, owner, due, status: 'Open', notes: '', created_at: Date.now(), updated_at: Date.now() }),
+  });
+  document.getElementById('aiItem').value = ''; document.getElementById('aiOwner').value = ''; document.getElementById('aiDue').value = '';
+  loadActionItems();
+}
+function aiCycleStatus(id) {
+  const cur = (aiItems[id] && aiItems[id].status) || 'Open';
+  const next = AI_STATUSES[(AI_STATUSES.indexOf(cur) + 1) % AI_STATUSES.length];
+  aiSave(id, { status: next });
+}
+function aiEdit(id, field) {
+  const cur = (aiItems[id] && aiItems[id][field]) || '';
+  const nv = prompt(field === 'owner' ? 'Owner:' : 'Notes / latest update:', cur);
+  if (nv === null || nv.trim() === cur) return;
+  aiSave(id, { [field]: nv.trim() });
+}
+async function aiDelete(id) {
+  if (!confirm('Delete this action item?')) return;
+  await fetch(FIREBASE_DB + AI_PATH + '/' + id + '.json', { method: 'DELETE' });
+  delete aiItems[id];
+  renderActionItems();
 }
 const inr = v => '₹' + Math.round(Number(v) || 0).toLocaleString('en-IN');
 const ticketLink = t => t ? '<a class="ticket-link" href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/' + esc(t) + '?query=' + esc(t) + '" target="_blank">' + esc(t) + '</a>' : '—';
