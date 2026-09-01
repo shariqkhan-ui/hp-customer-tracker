@@ -70,7 +70,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 /* >48h drill-down: hide Migration Date (14) — not relevant to the breached
    raw-data view. (Engineer Remarks and Migration Status columns were removed
    from the table entirely on 11 Aug; data kept in Firebase/CSV.) */
-.main-tbl.exp48-mode th:nth-child(14), .main-tbl.exp48-mode td:nth-child(14) { display: none; }
+.main-tbl.exp48-mode th:nth-child(16), .main-tbl.exp48-mode td:nth-child(16) { display: none; }
 
 /* ── Main tabs ── */
 .main-tabs { display:flex; gap:8px; margin:14px 0 4px; flex-wrap:wrap; }
@@ -677,6 +677,8 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>TAT</th>
             <th>48h TAT &#x23F3;</th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
+            <th title="NQT customer-confirmation proof: paste the call recording link (Drive/WhatsApp)">&#x1F399; Call Recording &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; paste link</span></th>
+            <th title="NQT customer-confirmation proof: paste the screenshot / chat proof link">&#x1F4CE; Screenshot &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; paste link</span></th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Cx Action &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th>Owner &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
@@ -696,6 +698,8 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
             <th></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
+            <th></th>
+            <th></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
             <th><input class="col-filter" placeholder="Pending / Done" oninput="setColFilter('cxAction',this.value)"></th>
             <th><input class="col-filter" placeholder="Cx / NQT" oninput="setColFilter('owner',this.value)"></th>
@@ -952,12 +956,14 @@ function dbRowToArray(r) {
     r.device_picked_up   || '',  // 27 — 'Yes' once the device is collected from a refund case
     r.kapture_resolved_at || 0,  // 28 — Kapture FINAL_RESOLVED_TIME (PFT completed), synced by cron
     r.kapture_resolved_by || '', // 29 — Kapture FINAL_RESOLVED_NAME (who disposed it)
-    r.kapture_status      || ''  // 30 — Kapture ticket status (Completed / Pending / Closed), synced by cron
+    r.kapture_status      || '', // 30 — Kapture ticket status (Completed / Pending / Closed), synced by cron
+    r.proof_recording     || '', // 31 — URL of the NQT's customer-confirmation call recording
+    r.proof_screenshot    || ''  // 32 — URL of the confirmation screenshot / chat proof
   ];
 }
 
 // Map edit field name → Supabase column name
-const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action', refund_amount: 'refund_amount', device_picked_up: 'device_picked_up' };
+const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action', refund_amount: 'refund_amount', device_picked_up: 'device_picked_up', proof_recording: 'proof_recording', proof_screenshot: 'proof_screenshot' };
 
 let allRows = [], visRows = [], charts = {};
 
@@ -1175,6 +1181,31 @@ async function autoMigrateRemarks() {
     }
   }
   if (successCount > 0) { applyFilters(); toast(successCount + ' old remark(s) auto-fixed \u2713', 'success'); }
+}
+
+// NQT confirmation-proof cells: the value is a pasted URL (Drive / WhatsApp
+// export). Shows a clickable badge when set; click the pencil to paste/replace.
+function makeProofCell(ticket, field, orig, icon) {
+  const url = String(orig || '').trim();
+  const isUrl = /^https?:\/\//i.test(url);
+  const view = isUrl
+    ? '<a href="' + esc(url) + '" target="_blank" rel="noopener" onclick="event.stopPropagation()" class="badge badge-green" style="text-decoration:none">' + icon + ' Proof</a>'
+    : (url ? '<span class="badge badge-yellow" title="' + esc(url) + '">' + icon + ' (not a link)</span>' : '<span style="color:var(--muted)">—</span>');
+  return '<td style="text-align:center;cursor:pointer" title="Click to paste the proof link" ' +
+    'onclick="editProof(\'' + esc(ticket) + '\',\'' + field + '\',this)" data-orig="' + esc(url) + '">' + view +
+    ' <span style="color:var(--primary-light);font-size:10px">&#x270F;</span></td>';
+}
+async function editProof(ticket, field, td) {
+  const cur = td.dataset.orig || '';
+  const nv = prompt('Paste the ' + (field === 'proof_recording' ? 'call recording' : 'screenshot') + ' link (Drive / WhatsApp export URL).\nLeave empty to clear.', cur);
+  if (nv === null || nv.trim() === cur) return;
+  const val = nv.trim();
+  if (val && !/^https?:\/\//i.test(val)) { alert('Please paste a full link starting with http(s)://'); return; }
+  addAuditEntry(ticket, field, cur, val);
+  await saveToSheet(ticket, field, val);
+  const row = allRows.find(r => (r[1]||'').trim() === ticket);
+  if (row) row[field === 'proof_recording' ? 31 : 32] = val;
+  applyFilters();
 }
 
 function makeEditCell(ticket, field, orig, tsHtml) {
@@ -2846,7 +2877,7 @@ function renderTable(allTableRows) {
   document.getElementById('rowCount').textContent = allTableRows.length + ' records';
   const tbody = document.getElementById('tBody');
   if (!allTableRows.length) {
-    tbody.innerHTML = '<tr><td colspan="17" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="19" style="text-align:center;padding:30px;color:var(--muted)">No records found</td></tr>';
     return;
   }
   const rows = allTableRows.slice(0, renderLimit);
@@ -2875,6 +2906,8 @@ function renderTable(allTableRows) {
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
       makeTatClockCell(r) +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim(), r[20] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[20]) + '</div>' : '') +
+      makeProofCell(ticket, 'proof_recording', r[31], '&#x1F399;') +
+      makeProofCell(ticket, 'proof_screenshot', r[32], '&#x1F4CE;') +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
       makeCxActionCell(ticket, (r[23]||'').trim(), st === 'Unresolved') +
       makeOwnerCell(ticket, owner) +
@@ -2900,7 +2933,7 @@ function renderTable(allTableRows) {
       '<td>' + link + '</td>' +
       '</tr>';
   }).join('') + (remaining > 0
-    ? '<tr><td colspan="17" style="text-align:center;padding:14px"><button class="btn btn-primary" onclick="showMoreRows()" style="font-size:13px;padding:8px 22px">&#x2B07; Show ' + Math.min(RENDER_STEP, remaining) + ' more (' + remaining + ' remaining)</button></td></tr>'
+    ? '<tr><td colspan="19" style="text-align:center;padding:14px"><button class="btn btn-primary" onclick="showMoreRows()" style="font-size:13px;padding:8px 22px">&#x2B07; Show ' + Math.min(RENDER_STEP, remaining) + ' more (' + remaining + ' remaining)</button></td></tr>'
     : '');
 }
 
@@ -2908,7 +2941,7 @@ function renderTable(allTableRows) {
 function downloadCSV() {
   const headers = [
     '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Customer Name','CSP',
-    'Sub-category','TAT','48h TAT','Cx Action','Ground Remarks','Remarks Updated At','Engineer','Engineer Assigned At',
+    'Sub-category','TAT','48h TAT','Cx Action','Ground Remarks','Call Recording Proof','Screenshot Proof','Remarks Updated At','Engineer','Engineer Assigned At',
     'Engineer Remarks','Owner','Pending Since','Migration Date','Status','Kapture Status','Ticket URL',
     'Col12','Col13'
   ];
@@ -2931,6 +2964,8 @@ function downloadCSV() {
       tatClockText(r),
       (r[23]||'').trim(),
       (r[8]||'').trim(),
+      (r[31]||'').trim(),
+      (r[32]||'').trim(),
       fmtTs(r[20]),
       (r[10]||'').trim(),
       fmtTs(r[21]),
