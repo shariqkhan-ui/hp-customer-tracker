@@ -743,9 +743,9 @@ table.main-tbl tbody tr:hover { background: #220020; }
 
   <!-- ═══ Reports tab ═══ -->
   <div id="tabReports" style="display:none">
-    <div class="sheet-panel"><div class="sheet-title"><span>&#x1F53B; Complete funnel — cases since 29 Jul (every drop with its reason)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('funnelMain','complete-funnel')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="funnelMain"></div></div>
-    <div class="sheet-panel"><div class="sheet-title"><span>&#x1F501; Reopened cases funnel — since 29 Jul</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('funnelReopen','reopened-funnel')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="funnelReopen"></div></div>
-    <div class="sheet-panel"><div class="sheet-title"><span>&#x1F3E0; Top 10 CSPs — unresolved &gt; 48 hrs (worst breach rate first)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('funnelCsps','top-csps-breached')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="funnelCsps"></div></div>
+    
+    
+    
     <div class="sheet-panel"><div class="sheet-title"><span>Total complaints sent for resolution</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetComplaints','complaints-for-resolution')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetComplaints"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Resolved within 48 hrs (flag live 29 Jul — matured cases only)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheet48','resolved-within-48hrs')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheet48"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Engineer assignment TAT % (Case added &#x2192; Engineer assigned)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAssignTat','engineer-assignment-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAssignTat"></div></div>
@@ -2713,111 +2713,7 @@ function renderReports() {
     document.getElementById(elId).innerHTML = html + '</tbody></table>';
   }
 
-  // 0. Complete funnel — flag-era cases (since 29 Jul), live from Firebase.
-  // Mirrors the weekly recap format: every drop shows what happened.
-  (function buildFunnels() {
-    const era = allRows.filter(r => caseStartTs(r) > 0);
-    const nowTs = Date.now();
-    const isReopRow = r => Number(r[26]) > 0 || effectiveVal(r, 18) === 'reopened-cron';
-    const res48 = r => {
-      if (getStatus(r) === 'Unresolved') return false;
-      const s = caseStartTs(r), rt = Number(r[20]) || 0;
-      if (rt > 0) return (rt - s) <= TAT_LIMIT_MS;
-      return !!effectiveVal(r, 14);
-    };
-    const matured = era.filter(r => (nowTs - caseStartTs(r)) >= TAT_LIMIT_MS);
-    const w48g = matured.filter(res48).length;
-    const w48 = matured.filter(r => res48(r) && !isReopRow(r)).length;
-    const breached = matured.filter(r => getStatus(r) === 'Unresolved');
-    const late = matured.length - w48g - breached.length;
-    const refunded = r => effectiveVal(r, 23) === 'Refund Done' || !!sheetEntryFor(r);
-    const brDone = breached.filter(refunded);
-    const brPend = breached.filter(r => !refunded(r));
-    const amtOf = r => Number(effectiveVal(r, 24)) || (sheetEntryFor(r) ? Number(sheetEntryFor(r).a) || 0 : 0);
-    const sumAmt = list => Math.round(list.reduce((a, r) => a + amtOf(r), 0));
-    const countBy = (list, fn) => {
-      const m = {};
-      list.forEach(r => { const k = fn(r) || '(no remark yet)'; m[k] = (m[k] || 0) + 1; });
-      return Object.entries(m).sort((a, b) => b[1] - a[1]);
-    };
-    const fPct = (n, d) => d ? (n / d * 100).toFixed(1) + '%' : '-';
-    const inrF = v => '₹' + v.toLocaleString('en-IN');
 
-    function funnelTable(elId, rows) {
-      document.getElementById(elId).innerHTML =
-        '<table class="sheet-table"><thead><tr><th class="rowh">Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead><tbody>' +
-        rows.map(function(x, i) {
-          const zebra = i % 2 ? '#F7F3F5' : '#fff';
-          const bg = x.bg || zebra;
-          const pad = x.indent ? ';padding-left:34px' : '';
-          const fw = x.bold ? ';font-weight:800' : '';
-          return '<tr><td class="rowh" style="background:' + bg + pad + fw + '">' + (x.indent ? '↳ ' : '') + esc(x.label) + '</td>' +
-            '<td style="background:' + bg + fw + '">' + (x.n === '' ? '' : numFmt(x.n)) + '</td>' +
-            '<td style="background:' + bg + fw + '">' + (x.pct || '') + '</td>' +
-            '<td style="background:' + bg + ';text-align:left;font-size:11.5px;color:#6d5a64">' + (x.note || '') + '</td></tr>';
-        }).join('') + '</tbody></table>';
-    }
-
-    const AGE_SLOTS = [['2 - 4 days', 2, 4], ['4 - 7 days', 4, 7], ['7 - 14 days', 7, 14], ['14 - 21 days', 14, 21], ['21+ days', 21, Infinity]];
-    // End-to-end journey: case added → resolved ≤48h → unresolved >48h → refund → closed
-    const mainRows = [
-      { label: '1. Case added', n: era.length, pct: '100%', note: 'All cases entering the tracker since 29 Jul', bold: true },
-      { label: 'Still inside 48-hr window', n: era.length - matured.length, pct: fPct(era.length - matured.length, era.length), note: 'Too fresh to judge — mature within 2 days', indent: true },
-      { label: 'Matured', n: matured.length, pct: fPct(matured.length, era.length), note: 'Completed the full 48-hour window — base for the stages below', indent: true },
-      { label: '2. Resolved within 48 hrs', n: w48, pct: fPct(w48, matured.length), note: 'Net of reopens: gross ' + numFmt(w48g) + ' (' + fPct(w48g, matured.length) + ') − ' + (w48g - w48) + ' later reopened', bg: GOOD, bold: true },
-      { label: 'Resolved late (after breaching)', n: late, pct: fPct(late, matured.length), note: 'Fixed only after the 48-hr promise was broken', indent: true },
-      { label: '3. Unresolved after 48 hrs', n: breached.length, pct: fPct(breached.length, matured.length), note: 'Breached and still open — every one owes a pro-rata refund', bg: PNK, bold: true }
-    ];
-    AGE_SLOTS.forEach(function(sl) {
-      const n = breached.filter(r => { const d = (nowTs - caseStartTs(r)) / 86400000; return d >= sl[1] && d < sl[2]; }).length;
-      if (n) mainRows.push({ label: 'Pending since ' + sl[0], n: n, pct: fPct(n, breached.length), indent: true });
-    });
-    mainRows.push({ label: '4. Refund', n: breached.length, pct: '100% eligible', note: 'Every breached case owes the customer a pro-rata refund', bold: true });
-    mainRows.push({ label: 'Refund done', n: brDone.length, pct: fPct(brDone.length, breached.length), note: inrF(sumAmt(brDone)) + ' paid (Finance sheet / Cx Action)', bg: GOOD, indent: true });
-    mainRows.push({ label: 'Refund pending', n: brPend.length, pct: fPct(brPend.length, breached.length), note: inrF(sumAmt(brPend)) + ' owed pro-rata', bg: PNK, indent: true });
-    const eraDone = era.filter(refunded);
-    mainRows.push({ label: 'Refund done — all tracker cases since 29 Jul', n: eraDone.length, pct: fPct(eraDone.length, era.length), note: inrF(sumAmt(eraDone)) + ' — includes cases resolved after the refund; the Finance sheet also holds refunds for tickets that never entered this tracker', indent: true });
-    mainRows.push({ label: '5. Closed — Kapture final status', n: breached.length, pct: '100%', note: 'Where the breached tickets stand in Kapture', bold: true });
-    countBy(breached, r => effectiveVal(r, 30) || 'Not yet synced').forEach(function(e) {
-      mainRows.push({ label: e[0], n: e[1], pct: fPct(e[1], breached.length),
-        note: e[0] === 'Completed' ? 'Disposed by PFT but tracker still unresolved — verify' : e[0] === 'Pending' ? 'Still open in Kapture too' : '', indent: true });
-    });
-    funnelTable('funnelMain', mainRows);
-
-    const reops = era.filter(isReopRow);
-    const resolvedAllEra = era.filter(r => getStatus(r) !== 'Unresolved').length;
-    const pftDone = reops.filter(r => effectiveVal(r, 30) === 'Completed').length;
-    const reopClosed = reops.filter(r => effectiveVal(r, 30) === 'Closed').length;
-    const reopRows = [
-      { label: 'Total reopened', n: reops.length, pct: fPct(reops.length, resolvedAllEra) + ' of resolved', note: 'Out of ' + numFmt(resolvedAllEra) + ' cases resolved since 29 Jul', bold: true }
-    ];
-    countBy(reops, r => effectiveVal(r, 8)).forEach(function(e) {
-      reopRows.push({ label: e[0], n: e[1], pct: fPct(e[1], reops.length),
-        note: e[0] === 'Resolved by Old CSP' ? 'Repeat fix by the same CSP — first fix did not hold' : '', indent: true });
-    });
-    reopRows.push({ label: 'Re-resolved & confirmed by PFT', n: pftDone, pct: fPct(pftDone, reops.length), note: 'Kapture Completed (disposed by PFT after the reopen)', bg: GOOD, bold: true });
-    reopRows.push({ label: 'Still open after reopen', n: reops.length - pftDone - reopClosed, pct: fPct(reops.length - pftDone - reopClosed, reops.length), note: 'Pending in Kapture / not yet synced — active pain', bg: PNK });
-    funnelTable('funnelReopen', reopRows);
-
-
-
-    // Top 10 CSPs by breached count, displayed worst breach-rate first
-    const brByCsp = {}, totByCsp = {};
-    era.forEach(r => { const p = (r[6] || '(unknown)').trim(); totByCsp[p] = (totByCsp[p] || 0) + 1; });
-    breached.forEach(r => { const p = (r[6] || '(unknown)').trim(); brByCsp[p] = (brByCsp[p] || 0) + 1; });
-    const top = Object.entries(brByCsp).sort((a, b) => b[1] - a[1]).slice(0, 10)
-      .map(e => ({ p: e[0], n: e[1], t: totByCsp[e[0]] || e[1] }))
-      .sort((a, b) => b.n / b.t - a.n / a.t);
-    document.getElementById('funnelCsps').innerHTML =
-      '<table class="sheet-table"><thead><tr><th class="rowh">CSP</th><th>Unresolved &gt;48h</th><th>Total cases</th><th>% of breached bucket</th><th>Breach rate (own)</th></tr></thead><tbody>' +
-      top.map(function(c, i) {
-        const rate = c.n / c.t * 100, zebra = i % 2 ? '#F7F3F5' : '#fff';
-        const rateBg = rate >= 50 ? PNK : rate >= 35 ? ORG : zebra;
-        return '<tr><td class="rowh" style="background:' + zebra + '">' + esc(c.p) + '</td><td style="background:' + zebra + '">' + c.n + '</td><td style="background:' + zebra + '">' + c.t + '</td>' +
-          '<td style="background:' + zebra + '">' + fPct(c.n, breached.length) + '</td><td style="background:' + rateBg + ';font-weight:700">' + Math.round(rate) + '%</td></tr>';
-      }).join('') +
-      '<tr><td class="rowh" style="background:#F6D4EA;font-weight:800">Top 10 together</td><td style="background:#F6D4EA;font-weight:800">' + top.reduce((a, c) => a + c.n, 0) + '</td><td style="background:#F6D4EA"></td><td style="background:#F6D4EA;font-weight:800">' + fPct(top.reduce((a, c) => a + c.n, 0), breached.length) + '</td><td style="background:#F6D4EA"></td></tr></tbody></table>';
-  })();
 
   // 1. Total complaints sent for resolution — PRIMARY category × period.
   // Primary = the folder before '|' in the sub-category ("Internet Issues|
