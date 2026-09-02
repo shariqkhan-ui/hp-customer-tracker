@@ -2441,11 +2441,17 @@ function renderRefundAction() {
   const counts = {};
   eff.forEach(e => counts[e.v] = (counts[e.v] || 0) + 1);
   const badCats = ['Refund Pending'];
+  // Average pro-rata refund per user (cases with a computed amount only)
+  const raAvg = list => {
+    const withAmt = list.filter(r => r[24] !== '' && r[24] != null && !isNaN(Number(r[24])));
+    if (!withAmt.length) return '—';
+    return '&#8377;' + Math.round(withAmt.reduce((a, r) => a + Number(r[24]), 0) / withAmt.length).toLocaleString('en-IN');
+  };
   document.getElementById('raSummary').innerHTML =
-    '<table class="rpt-table" style="max-width:560px;margin-bottom:4px"><thead><tr><th style="text-align:left">Refund Action status</th><th>Cases</th><th>%</th></tr></thead><tbody>' +
-    '<tr style="font-weight:800"><td style="text-align:left">Total breached cases</td><td>' + rows.length + '</td><td>100%</td></tr>' +
+    '<table class="rpt-table" style="max-width:660px;margin-bottom:4px"><thead><tr><th style="text-align:left">Refund Action status</th><th>Cases</th><th>%</th><th>Avg refund / user</th></tr></thead><tbody>' +
+    '<tr style="font-weight:800"><td style="text-align:left">Total breached cases</td><td>' + rows.length + '</td><td>100%</td><td>' + raAvg(rows) + '</td></tr>' +
     Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
-      '<tr><td style="text-align:left;color:' + (badCats.includes(k) ? 'var(--red)' : k === 'Refund Done' ? 'var(--green,#2ea043)' : 'var(--text)') + '">' + esc(k) + '</td><td>' + n + '</td><td>' + (n / rows.length * 100).toFixed(1) + '%</td></tr>'
+      '<tr><td style="text-align:left;color:' + (badCats.includes(k) ? 'var(--red)' : k === 'Refund Done' ? 'var(--green,#2ea043)' : 'var(--text)') + '">' + esc(k) + '</td><td>' + n + '</td><td>' + (n / rows.length * 100).toFixed(1) + '%</td><td>' + raAvg(rows.filter((r, i) => eff[i].v === k)) + '</td></tr>'
     ).join('') + '</tbody></table>';
   const bodyRows = rows.map((r, i) => {
     const e = eff[i];
@@ -2469,7 +2475,7 @@ function renderRefundAction() {
   // (and repeated at the bottom); reflects whatever filters are active.
   const totalRow = '<tr style="font-weight:800;background:rgba(229,23,143,.14)">' +
     '<td></td><td style="text-align:left" colspan="5">GRAND TOTAL — ' + rows.length + ' case' + (rows.length === 1 ? '' : 's') + '</td>' +
-    '<td>&#8377;' + Math.round(rows.reduce((a, r) => a + (Number(r[24]) || 0), 0)).toLocaleString('en-IN') + '</td>' +
+    '<td>&#8377;' + Math.round(rows.reduce((a, r) => a + (Number(r[24]) || 0), 0)).toLocaleString('en-IN') + ' <span style="font-weight:600;font-size:11px">(avg ' + raAvg(rows) + ')</span></td>' +
     '<td colspan="4"></td></tr>';
   document.getElementById('raBody').innerHTML = totalRow + bodyRows.join('') + (rows.length > 20 ? totalRow : '');
 }
