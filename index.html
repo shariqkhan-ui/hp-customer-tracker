@@ -1000,7 +1000,8 @@ function dbRowToArray(r) {
     r.proof_recording     || '', // 31 — URL of the NQT's customer-confirmation call recording
     r.proof_screenshot    || '', // 32 — URL of the confirmation screenshot / chat proof
     r.refund_action       || '', // 33 — Refund Action tab status (Deepakshi's flag: Refund Done / Ping up / DNP3 …)
-    r.refund_action_note  || ''  // 34 — free note (e.g. ping-up date/time from the historical sheet)
+    r.refund_action_note  || '', // 34 — free note (e.g. ping-up date/time from the historical sheet)
+    r.last_ping_at        || 0   // 35 — router's most recent successful ping (ms), stamped by cron
   ];
 }
 
@@ -1077,7 +1078,9 @@ function isCaseNeedsAction(r) {
 }
 
 // ── Effective value: always read directly from row (allRows is patched on save) ──
-function effectiveVal(r, col) { return (r[col] || '').trim(); }
+// String() guard: numeric fields (e.g. refund_amount from the cron) crashed
+// .trim() and silently killed whole render passes like Reports.
+function effectiveVal(r, col) { return String(r[col] == null ? '' : r[col]).trim(); }
 
 
 // ── Save edit: patch allRows in memory + write to Firebase ──
@@ -2382,6 +2385,8 @@ function raEffective(r) {
   if (manual) return { v: manual, auto: false };
   if (sheetEntryFor(r) || effectiveVal(r, 23) === 'Refund Done') return { v: 'Refund Done', auto: true };
   if (getStatus(r) !== 'Unresolved') return { v: 'Ping up', auto: true };
+  // Router pinged AFTER the ticket was raised → connection came back up
+  if (Number(r[35]) > 0 && Number(r[35]) > caseStartTs(r)) return { v: 'Ping up', auto: true };
   // Pro-rata computed and came out ₹0 (no paid plan-days remaining) — nothing to refund
   if (r[24] !== '' && r[24] !== null && Number(r[24]) === 0) return { v: 'Amount 0 — refund not possible', auto: true };
   return { v: 'Refund Pending', auto: true };

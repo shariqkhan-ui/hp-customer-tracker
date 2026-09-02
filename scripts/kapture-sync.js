@@ -364,6 +364,53 @@ async function syncKaptureResolution(apiKey) {
 // recovery model shows a PICKUP_AT / RETURN_AT for the customer ON OR AFTER
 // the case was added (old pickups from earlier churn episodes don't count).
 // Complements the Finance-sheet Router Recovered stamping; never unsets 'Yes'.
+// ── Router last-ping stamp (drives Refund Action "Ping up" classification) ───
+// For breached flag-era cases: look up the device's most recent successful
+// ping (S3.ROUTER_PING_HOURLY_DATA_V2 via SERVICE_TICKET_MODEL.DEVICE_ID) and
+// stamp last_ping_at (ms). The dashboard classifies a case as "Ping up" when
+// this is newer than the ticket creation time.
+async function syncLastPing(apiKey) {
+  const all = await fbGet('/cases') || {};
+  const targets = Object.entries(all).filter(([k, c]) => {
+    if (k.startsWith('__') || !c || !c.ticket_no) return false;
+    const ts = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+    return ts >= TAT_LAUNCH_MS && (Date.now() - ts) >= 48 * 3600000;
+  });
+  const byDig = {};
+  targets.forEach(([k, c]) => {
+    const d = String(c.ticket_no).replace(/\D/g, '');
+    if (d.length >= 6) (byDig[d] = byDig[d] || []).push({ key: k, c });
+  });
+  const digs = Object.keys(byDig);
+  let stamped = 0;
+  for (let i = 0; i < digs.length; i += 500) {
+    const ch = digs.slice(i, i + 500);
+    const rows = await queryMetabase(
+      `WITH dev AS (
+        SELECT KAPTURE_TICKET_ID TK, MAX(DEVICE_ID) DEV FROM PUBLIC.SERVICE_TICKET_MODEL
+        WHERE KAPTURE_TICKET_ID IN (${ch.map(x => "'" + x + "'").join(',')}) GROUP BY 1
+      )
+      SELECT d.TK, MAX(p.DATE || ' ' || p.START_TIME) LAST_PING
+      FROM dev d
+      JOIN S3.ROUTER_PING_HOURLY_DATA_V2 p
+        ON p.DEVICEID = d.DEV AND p.PING_COUNT > 0 AND p.DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
+      GROUP BY 1`, apiKey);
+    for (const r of rows) {
+      const tk = String(r.TK || '').trim();
+      const lp = String(r.LAST_PING || '').trim();          // 'YYYY-MM-DD HH:MM' IST
+      if (!tk || !lp) continue;
+      const ms = Date.parse(lp.replace(' ', 'T') + ':00+05:30');
+      if (!ms) continue;
+      for (const t of (byDig[tk] || [])) {
+        if (Number(t.c.last_ping_at) === ms) continue;      // unchanged → skip write
+        await fbPatch('/cases/' + t.key, { last_ping_at: ms });
+        stamped++;
+      }
+    }
+  }
+  log(`Last-ping stamp: updated ${stamped} case(s).`);
+}
+
 // ── Wiom Net queue purge ─────────────────────────────────────────────────────
 // The intake filter blocks tickets already IN the Wiom Net queue, but the CX
 // team also moves tickets there AFTER they enter the tracker. This sweep
@@ -831,6 +878,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // ── Step 2.8: Device pickup from the recovery model ──
   try { await syncDevicePickup(apiKey); } catch (e) { log('WARN: device pickup sync failed — ' + e.message); }
   try { await purgeWiomNetQueue(apiKey); } catch (e) { log('WARN: Wiom Net purge failed — ' + e.message); }
+  try { await syncLastPing(apiKey); } catch (e) { log('WARN: last-ping stamp failed — ' + e.message); }
 
 
   // ── Step 3: Notify Slack (suppressed entirely during a silent backfill) ──
