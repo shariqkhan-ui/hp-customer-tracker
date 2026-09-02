@@ -437,7 +437,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
   </div>
 
   <!-- Filters (visible on every tab — applies to Cases, Refund Done and Reports) -->
-  <div class="filters-bar">
+  <div class="filters-bar" id="filtersBar">
     <div class="filter-item">
       <div class="filter-label">Week</div>
       <div class="ms-wrap" id="ms_fWeek">
@@ -2363,6 +2363,9 @@ function showMainTab(t) {
   document.getElementById('tabReports').style.display = t === 'reports' ? '' : 'none';
   document.getElementById('tabRefundAction').style.display = t === 'refundaction' ? '' : 'none';
   document.getElementById('tabActions').style.display = t === 'actions' ? '' : 'none';
+  // Global week/engineer/status filters only apply to Cases / Refund Done / Reports
+  var fb = document.getElementById('filtersBar');
+  if (fb) fb.style.display = (t === 'refundaction' || t === 'actions') ? 'none' : '';
   if (t === 'refund')  { renderRefundTab(); loadRefundSheet().then(renderRefundTab); }
   if (t === 'reports') renderReports();
   if (t === 'refundaction') renderRefundAction();
@@ -2433,8 +2436,13 @@ function renderRefundAction() {
   const eff = rows.map(raEffective);
   const counts = {};
   eff.forEach(e => counts[e.v] = (counts[e.v] || 0) + 1);
-  document.getElementById('raSummary').innerHTML = '<b>' + rows.length + '</b> breached case(s) · ' +
-    Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) => esc(k) + ': <b>' + n + '</b>').join(' · ');
+  const badCats = ['Refund Pending'];
+  document.getElementById('raSummary').innerHTML =
+    '<table class="rpt-table" style="max-width:560px;margin-bottom:4px"><thead><tr><th style="text-align:left">Refund Action status</th><th>Cases</th><th>%</th></tr></thead><tbody>' +
+    '<tr style="font-weight:800"><td style="text-align:left">Total breached cases</td><td>' + rows.length + '</td><td>100%</td></tr>' +
+    Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
+      '<tr><td style="text-align:left;color:' + (badCats.includes(k) ? 'var(--red)' : k === 'Refund Done' ? 'var(--green,#2ea043)' : 'var(--text)') + '">' + esc(k) + '</td><td>' + n + '</td><td>' + (n / rows.length * 100).toFixed(1) + '%</td></tr>'
+    ).join('') + '</tbody></table>';
   document.getElementById('raBody').innerHTML = rows.map((r, i) => {
     const e = eff[i];
     const age = Math.floor((nowTs - caseStartTs(r)) / 86400000);
