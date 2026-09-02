@@ -13,7 +13,7 @@ try { fs.mkdirSync(PROOF_DIR, { recursive: true }); } catch (e) { console.error(
 const EXT = {
   'image/jpeg': '.jpg', 'image/png': '.png', 'image/webp': '.webp', 'image/gif': '.gif', 'image/heic': '.heic',
   'audio/mpeg': '.mp3', 'audio/mp4': '.m4a', 'audio/aac': '.aac', 'audio/ogg': '.ogg', 'audio/wav': '.wav',
-  'audio/amr': '.amr', 'audio/3gpp': '.3gp', 'video/mp4': '.mp4', 'video/3gpp': '.3gp', 'application/pdf': '.pdf',
+  'audio/amr': '.amr', 'audio/3gpp': '.3gp', 'audio/opus': '.opus', 'audio/webm': '.weba', 'video/mp4': '.mp4', 'video/3gpp': '.3gp', 'video/webm': '.webm', 'application/pdf': '.pdf',
 };
 // CORS: the dashboard is also served from GitHub Pages (shariqkhan-ui.github.io),
 // which must be able to upload here cross-origin.
@@ -43,6 +43,9 @@ app.post('/upload-proof', express.raw({ type: () => true, limit: '30mb' }), (req
   }
 });
 app.use('/proofs', express.static(PROOF_DIR, { maxAge: '365d', immutable: true }));
+// A missing proof must be an explicit 404 — falling through to the SPA
+// catch-all made dead links look like 200s with an HTML body.
+app.use('/proofs', (req, res) => res.status(404).json({ error: 'proof not found' }));
 
 // index.html must never be cached — teams kept seeing stale UI after deploys
 const noCache = (res) => res.setHeader('Cache-Control', 'no-cache, must-revalidate');

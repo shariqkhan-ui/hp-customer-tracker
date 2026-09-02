@@ -1250,7 +1250,7 @@ function openProofViewer(url) {
   let body;
   if (['jpg','jpeg','png','webp','gif','heic'].includes(ext)) {
     body = '<img src="' + esc(url) + '" style="max-width:90vw;max-height:78vh;border-radius:10px;display:block">';
-  } else if (['mp3','m4a','aac','ogg','wav','amr'].includes(ext)) {
+  } else if (['mp3','m4a','aac','ogg','wav','amr','opus','weba','mpeg'].includes(ext)) {
     body = '<div style="padding:26px 30px;background:var(--surface,#1c1c28);border-radius:12px"><div style="font-size:15px;margin-bottom:14px">&#x1F399; Call recording</div><audio controls autoplay style="width:min(420px,80vw)" src="' + esc(url) + '"></audio></div>';
   } else if (['mp4','3gp','webm','mov'].includes(ext)) {
     body = '<video controls autoplay style="max-width:90vw;max-height:78vh;border-radius:10px" src="' + esc(url) + '"></video>';
