@@ -2447,7 +2447,7 @@ function renderRefundAction() {
     Object.entries(counts).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
       '<tr><td style="text-align:left;color:' + (badCats.includes(k) ? 'var(--red)' : k === 'Refund Done' ? 'var(--green,#2ea043)' : 'var(--text)') + '">' + esc(k) + '</td><td>' + n + '</td><td>' + (n / rows.length * 100).toFixed(1) + '%</td></tr>'
     ).join('') + '</tbody></table>';
-  document.getElementById('raBody').innerHTML = rows.map((r, i) => {
+  const bodyRows = rows.map((r, i) => {
     const e = eff[i];
     const age = Math.floor((nowTs - caseStartTs(r)) / 86400000);
     const ks = (r[30] || '').trim() || '—';
@@ -2464,12 +2464,14 @@ function renderRefundAction() {
       '<td style="cursor:pointer" title="Click to set the refund action" onclick="raEdit(\'' + esc((r[1] || '').trim()) + '\')">' + raBadge(e.v, e.auto) + '</td>' +
       '<td style="text-align:left;font-size:11.5px;white-space:normal;max-width:190px;cursor:pointer" onclick="raEditNote(\'' + esc((r[1] || '').trim()) + '\')">' + esc((r[34] || '').trim() || '—') + '</td>' +
       '</tr>';
-  }).join('') +
-  // Totals row — reflects whatever filters are active
-  '<tr style="font-weight:800;background:rgba(229,23,143,.10)">' +
-    '<td></td><td style="text-align:left" colspan="5">Total (' + rows.length + ' case' + (rows.length === 1 ? '' : 's') + ')</td>' +
-    '<td>' + Math.round(rows.reduce((a, r) => a + (Number(r[24]) || 0), 0)).toLocaleString('en-IN') + '</td>' +
+  });
+  // Grand-total row — pinned at the TOP so it's visible without scrolling
+  // (and repeated at the bottom); reflects whatever filters are active.
+  const totalRow = '<tr style="font-weight:800;background:rgba(229,23,143,.14)">' +
+    '<td></td><td style="text-align:left" colspan="5">GRAND TOTAL — ' + rows.length + ' case' + (rows.length === 1 ? '' : 's') + '</td>' +
+    '<td>&#8377;' + Math.round(rows.reduce((a, r) => a + (Number(r[24]) || 0), 0)).toLocaleString('en-IN') + '</td>' +
     '<td colspan="4"></td></tr>';
+  document.getElementById('raBody').innerHTML = totalRow + bodyRows.join('') + (rows.length > 20 ? totalRow : '');
 }
 async function raEdit(ticket) {
   const row = allRows.find(r => (r[1] || '').trim() === ticket);
