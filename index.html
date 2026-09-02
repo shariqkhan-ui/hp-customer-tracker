@@ -2794,35 +2794,7 @@ function renderReports() {
     reopRows.push({ label: 'Still open after reopen', n: reops.length - pftDone - reopClosed, pct: fPct(reops.length - pftDone - reopClosed, reops.length), note: 'Pending in Kapture / not yet synced — active pain', bg: PNK });
     funnelTable('funnelReopen', reopRows);
 
-    // Reopened % week-on-week: cohorts by case-added week (Mon-anchored IST),
-    // reopens counted among that week's gross ≤48-hr resolutions — the same
-    // definition as the weekly recap's "Reopen % of resolved" row.
-    (function reopenWow() {
-      const IST_MS = 5.5 * 3600000, WK = 7 * 86400000;
-      const launchIst = new Date(TAT_LAUNCH_TS + IST_MS);
-      const launchMon = Date.UTC(launchIst.getUTCFullYear(), launchIst.getUTCMonth(), launchIst.getUTCDate() - ((launchIst.getUTCDay() + 6) % 7)) - IST_MS;
-      const weeks = [];
-      for (let f = launchMon; f < nowTs; f += WK) weeks.push({ from: Math.max(f, TAT_LAUNCH_TS), to: f + WK });
-      const fD = ts => { const d = new Date(ts + IST_MS); return d.getUTCDate() + ' ' + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getUTCMonth()]; };
-      let head = '<tr><th class="rowh">Metric</th>', rGross = '<tr><td class="rowh">Resolved &le; 48 hrs (gross)</td>', rReop = '<tr><td class="rowh">Reopened among those</td>', rPct = '<tr><td class="rowh" style="font-weight:800">Reopened %</td>', rNet = '<tr><td class="rowh">Net resolution %</td>';
-      weeks.forEach(function(w) {
-        const cohort = era.filter(r => { const t = caseStartTs(r); return t >= w.from && t < w.to; });
-        const mat = cohort.filter(r => (nowTs - caseStartTs(r)) >= TAT_LIMIT_MS);
-        const g = mat.filter(r => res48(r) === true).length;
-        const rp = mat.filter(r => res48(r) === true && isReopRow(r)).length;
-        const netP = mat.length ? ((g - rp) / mat.length * 100).toFixed(1) + '%' : '-';
-        const rpP = g ? (rp / g * 100).toFixed(1) + '%' : '-';
-        const partial = cohort.length > mat.length ? '*' : '';
-        head += '<th>' + fD(w.from) + ' – ' + fD(w.to - 1) + partial + '</th>';
-        rGross += '<td>' + (g || '-') + '</td>';
-        rReop += '<td style="' + (rp ? 'color:#c2410c;font-weight:700' : '') + '">' + (rp || '-') + '</td>';
-        rPct += '<td style="background:' + (parseFloat(rpP) >= 5 ? PNK : parseFloat(rpP) >= 3 ? ORG : '#fff') + ';font-weight:700">' + rpP + '</td>';
-        rNet += '<td>' + netP + '</td>';
-      });
-      document.getElementById('funnelReopenWow').innerHTML =
-        '<table class="sheet-table"><thead>' + head + '</tr></thead><tbody>' + rGross + '</tr>' + rReop + '</tr>' + rPct + '</tr>' + rNet + '</tr></tbody></table>' +
-        '<div style="font-size:11px;color:#7a5c6e;padding:6px 4px 0">* current week — cohort not fully matured yet. Reopens counted on the week the case was ADDED (matches the Monday recap doc).</div>';
-    })();
+
 
     // Top 10 CSPs by breached count, displayed worst breach-rate first
     const brByCsp = {}, totByCsp = {};
