@@ -383,22 +383,13 @@ async function syncLastPing(apiKey) {
   });
   const digs = Object.keys(byDig);
   let stamped = 0;
-  for (let i = 0; i < digs.length; i += 500) {
-    const ch = digs.slice(i, i + 500);
-    const rows = await queryMetabase(
-      `WITH dev AS (
-        SELECT KAPTURE_TICKET_ID TK, MAX(DEVICE_ID) DEV FROM PUBLIC.SERVICE_TICKET_MODEL
-        WHERE KAPTURE_TICKET_ID IN (${ch.map(x => "'" + x + "'").join(',')}) GROUP BY 1
-      )
-      SELECT d.TK, MAX(p.DATE || ' ' || p.START_TIME) LAST_PING
-      FROM dev d
-      JOIN S3.ROUTER_PING_HOURLY_DATA_V2 p
-        ON p.DEVICEID = d.DEV AND p.PING_COUNT > 0 AND p.DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
-      GROUP BY 1`, apiKey);
+  const seen = new Set();
+  const applyRows = async rows => {
     for (const r of rows) {
       const tk = String(r.TK || '').trim();
       const lp = String(r.LAST_PING || '').trim();          // 'YYYY-MM-DD HH:MM' IST
       if (!tk || !lp) continue;
+      seen.add(tk);
       const ms = Date.parse(lp.replace(' ', 'T') + ':00+05:30');
       if (!ms) continue;
       for (const t of (byDig[tk] || [])) {
@@ -407,8 +398,40 @@ async function syncLastPing(apiKey) {
         stamped++;
       }
     }
+  };
+  for (let i = 0; i < digs.length; i += 500) {
+    const ch = digs.slice(i, i + 500);
+    await applyRows(await queryMetabase(
+      `WITH dev AS (
+        SELECT KAPTURE_TICKET_ID TK, MAX(DEVICE_ID) DEV FROM PUBLIC.SERVICE_TICKET_MODEL
+        WHERE KAPTURE_TICKET_ID IN (${ch.map(x => "'" + x + "'").join(',')}) GROUP BY 1
+      )
+      SELECT d.TK, MAX(p.DATE || ' ' || p.START_TIME) LAST_PING
+      FROM dev d
+      JOIN S3.ROUTER_PING_HOURLY_DATA_V2 p
+        ON p.DEVICEID = d.DEV AND p.PING_COUNT > 0 AND p.DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
+      GROUP BY 1`, apiKey));
   }
-  log(`Last-ping stamp: updated ${stamped} case(s).`);
+  // Fallback: live-open/chat/manual cases missing from SERVICE_TICKET_MODEL —
+  // resolve the router via T_TICKETS_NEW.NAS_ID and join pings on NASID.
+  // (Found 3 Sep: 15 pinging cases sat unclassified because stm had no row.)
+  const missing = digs.filter(d => !seen.has(d));
+  for (let i = 0; i < missing.length; i += 500) {
+    const ch = missing.slice(i, i + 500);
+    await applyRows(await queryMetabase(
+      `WITH t AS (
+        SELECT REGEXP_REPLACE(KAPTURE_TICKET_ID,'[^0-9]','') TK, MAX(NAS_ID) NAS
+        FROM PUBLIC.T_TICKETS_NEW
+        WHERE REGEXP_REPLACE(KAPTURE_TICKET_ID,'[^0-9]','') IN (${ch.map(x => "'" + x + "'").join(',')})
+        GROUP BY 1
+      )
+      SELECT t.TK, MAX(p.DATE || ' ' || p.START_TIME) LAST_PING
+      FROM t
+      JOIN S3.ROUTER_PING_HOURLY_DATA_V2 p
+        ON TO_VARCHAR(p.NASID) = TO_VARCHAR(t.NAS) AND p.PING_COUNT > 0 AND p.DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
+      GROUP BY 1`, apiKey));
+  }
+  log(`Last-ping stamp: updated ${stamped} case(s) (${missing.length} resolved via NAS fallback pool).`);
 }
 
 // ── Wiom Net queue purge ─────────────────────────────────────────────────────

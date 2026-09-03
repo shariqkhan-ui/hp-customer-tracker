@@ -2464,7 +2464,7 @@ function renderRefundAction() {
       '<td>' + esc((r[5] || '').trim() || '—') + '</td>' +
       '<td style="font-size:12px">' + esc((r[6] || '').trim() || '—') + '</td>' +
       '<td style="text-align:left;font-size:12px;white-space:normal;max-width:180px">' + esc((r[8] || '').trim() || '—') + '</td>' +
-      '<td>' + (Number(r[24]) ? Math.round(Number(r[24])) : '—') + '</td>' +
+      '<td>' + (r[24] !== '' && r[24] != null && !isNaN(Number(r[24])) ? Math.round(Number(r[24])) : '—') + '</td>' +
       '<td style="font-weight:700;color:' + (age >= 14 ? 'var(--red)' : age >= 7 ? 'var(--yellow)' : 'var(--text)') + '">' + age + '</td>' +
       '<td style="font-size:11px">' + esc(ks) + '</td>' +
       '<td style="cursor:pointer" title="Click to set the refund action" onclick="raEdit(\'' + esc((r[1] || '').trim()) + '\')">' + raBadge(e.v, e.auto) + '</td>' +
