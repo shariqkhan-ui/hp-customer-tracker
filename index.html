@@ -989,7 +989,7 @@ function dbRowToArray(r) {
     r.engineer_assigned_at || 0, // 21 — Unix ms when engineer was last assigned
     r.engineer_remarks   || '',  // 22 — Engineer remarks (dropdown)
     r.cx_action          || '',  // 23 — Cx team refund action (Refund Pending / Refund Done)
-    r.refund_amount      || '',  // 24 — Pro-rata refund amount (₹), editable
+    (r.refund_amount == null ? '' : r.refund_amount),  // 24 — Pro-rata refund amount (₹); == null guard because a computed ₹0 is real data (0 || '' would blank it)
     r.cx_action_updated_at || 0, // 25 — Unix ms when cx_action was last changed
     r.reopened_at        || 0,   // 26 — Unix ms when a resolved remark was reverted within 24h
     r.device_picked_up   || '',  // 27 — 'Yes' once the device is collected from a refund case
