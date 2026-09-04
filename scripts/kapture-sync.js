@@ -467,6 +467,28 @@ async function purgeWiomNetQueue(apiKey) {
       }
     }
   }
+  // Second net: cases whose ticket only exists in T_TICKETS_NEW and came from
+  // the free-WiFi (Wiom Net) app flow — stm never gets a row for these, so the
+  // queue check above is permanently blind to them.
+  for (let i = 0; i < digs.length; i += 800) {
+    const ch = digs.slice(i, i + 800);
+    const rows = await queryMetabase(
+      `SELECT REGEXP_REPLACE(t.KAPTURE_TICKET_ID,'[^0-9]','') TK
+       FROM PUBLIC.T_TICKETS_NEW t
+       LEFT JOIN PUBLIC.SERVICE_TICKET_MODEL s
+         ON REGEXP_REPLACE(s.KAPTURE_TICKET_ID,'[^0-9]','') = REGEXP_REPLACE(t.KAPTURE_TICKET_ID,'[^0-9]','')
+       WHERE REGEXP_REPLACE(t.KAPTURE_TICKET_ID,'[^0-9]','') IN (${ch.map(x => "'" + x + "'").join(',')})
+         AND s.KAPTURE_TICKET_ID IS NULL
+         AND t.EXTRA_DATA:transaction_id::string ILIKE 'WIFI%'`, apiKey);
+    for (const r of rows) {
+      const d = String(r.TK || '').trim();
+      for (const key of (byDig[d] || [])) {
+        await fbPut('/cases/' + key, null);
+        purged++;
+        log(`Wiom Net purge: removed ticket=${d} (free-WiFi app flow, no stm row).`);
+      }
+    }
+  }
   if (purged) log(`Wiom Net purge: ${purged} case(s) removed this run.`);
   else log('Wiom Net purge: nothing to remove.');
 }
@@ -834,6 +856,10 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       AND t.CREATED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())
       ${chatAgeCap}
       AND t.KAPTURE_TICKET_ID IS NOT NULL
+      -- Tickets raised via the free-WiFi (Wiom Net) app flow — not home
+      -- customers; these never reach SERVICE_TICKET_MODEL so the queue check
+      -- below can't catch them (leak found 4 Sep, mobile 9560458813).
+      AND COALESCE(t.EXTRA_DATA:transaction_id::string, '') NOT ILIKE 'WIFI%'
       -- Wiom Net house accounts: the flag lives in the Kapture folder
       -- (SERVICE_TICKET_MODEL.CURRENT_QUEUE), not in the title. Excluded
       -- per Shariq 31 Aug — the field team can't action these.
