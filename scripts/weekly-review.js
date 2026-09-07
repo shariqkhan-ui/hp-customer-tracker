@@ -517,19 +517,17 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
   <div class="tablewrap"><table style="min-width:940px">
     <thead><tr><th>Metric</th>${cols}</tr></thead>
     <tbody>
-      ${row('Cases received', s => s.n, { head: true })}
-      ${row('Matured — past 48 hrs since being added', s => s.m, { head: true, note: 'the denominator for every % below' })}
-      ${row('Resolved within 48 hrs', s => pctCell(s.gross, s.m, true), { head: true })}
-      ${row('Resolved, count', s => s.gross, { step: true })}
-      ${row('Reopened', s => `<b>${pct(s.gross - s.net, s.gross)}</b>`, { head: true, note: "of this week's own within-48hr resolutions, the ones that later came back down" })}
-      ${row('Reopened, count', s => `${s.gross - s.net} of ${s.gross} resolutions`, { step: true })}
-      ${row('Resolved within 48 hrs — net of reopened', s => pctCell(s.net, s.m, true), { head: true })}
-      ${row('Unresolved', s => pctCell(s.unres, s.m, false), { head: true, note: 'still down when the 48 hrs ran out' })}
-      ${row('Unresolved, count', s => s.unres, { step: true })}
-      ${row('Unresolved and eligible for refund', s => `<b>${s.elig}</b> <span class="note">${pct(s.elig, s.m)} of matured</span>`, { head: true, note: 'no ping since the complaint — the line never came back' })}
-      ${row('Average amount paid to a customer', s => (s.paidN ? inr(s.paidAmt / s.paidN) : '–'), { head: true, note: 'across the customers actually refunded' })}
+      ${row('Cases received', s => s.n.toLocaleString('en-IN'), { head: true })}
+      ${row('Matured — past 48 hrs since being added', s => `${s.m.toLocaleString('en-IN')} <span class="note">${pct(s.m, s.n)}</span>`, { head: true, note: 'the denominator for every % below' })}
+      ${row('Resolved within 48 hrs', s => `${s.gross.toLocaleString('en-IN')} <span class="note">${pct(s.gross, s.m)}</span>`, { head: true })}
+      ${row('Reopened', s => `${s.gross - s.net} <span class="note">${pct(s.gross - s.net, s.gross)}</span>`, { head: true, note: "of this week's own within-48hr resolutions, the ones that later came back down" })}
+      ${row('Resolved within 48 hrs — net of reopened', s => `${s.net.toLocaleString('en-IN')} <span class="note">${pct(s.net, s.m)}</span>`, { head: true })}
+      ${row('Unresolved', s => `${s.unres.toLocaleString('en-IN')} <span class="note">${pct(s.unres, s.m)}</span>`, { head: true, note: 'still down when the 48 hrs ran out' })}
+      ${row('Unresolved and eligible for refund', s => `${s.elig.toLocaleString('en-IN')} <span class="note">${pct(s.elig, s.m)}</span>`, { head: true, note: 'no ping since the complaint — the line never came back' })}
+      ${row('Customers refunded', s => s.paidN.toLocaleString('en-IN'), { step: true })}
+      ${row('Average amount paid to a customer', s => (s.paidN ? inr(s.paidAmt / s.paidN) : '–'), { head: true })}
       ${row('Total amount refunded to customers', s => inr(s.paidAmt), { head: true })}
-      ${row('CSPs contributing to the unresolved cases', s => s.csps, { head: true })}
+      ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('en-IN'), { head: true })}
     </tbody></table></div>
   <div class="callout"><b>Since 29 Jul, holistically:</b> ${SL.n.toLocaleString('en-IN')} cases taken in, ${SL.m.toLocaleString('en-IN')} of them matured. ${pct(SL.net, SL.m)} were put right inside 48 hours net of reopens; ${pct(SL.unres, SL.m)} breached, and ${SL.elig.toLocaleString('en-IN')} of those never pinged again and are owed money. ${inr(SL.paidAmt)} has gone back to ${SL.paidN} customers, an average of ${SL.paidN ? inr(SL.paidAmt / SL.paidN) : '—'} each. ${SL.csps} distinct CSPs have carried at least one breach.</div>
   <div class="callout">${periods[0].key}, ${periods[1].key} and ${periods[2].key} are complete weeks and final. <b>${periods[3].key} runs ${periods[3].label} only</b> — that week slice is still open and its refund actions are entered later, so read that column as directional.</div>

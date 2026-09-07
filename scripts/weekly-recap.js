@@ -474,23 +474,21 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 ${aiHtml}
 <section>
 <h2>Week-wise numbers</h2>
-<p class="sub">Weeks are the tracker's own buckets (1-7 / 8-14 / 15-21 / 22-end), cohorted by the date the case entered the tracker, so every row answers the same question: of the cases received in this week, what happened. Reopened is read the same way — of this week's own within-48hr resolutions, the ones that later came back down. Cases received after ${cutLabel} are excluded, and every percentage is over matured cases only — those that completed their full 48-hour window.</p>
+<p class="sub">Weeks are the tracker's own buckets (1-7 / 8-14 / 15-21 / 22-end), cohorted by the date the case entered the tracker, so every row answers the same question: of the cases received in this week, what happened. Reopened is read the same way — of this week's own within-48hr resolutions, the ones that later came back down. Each cell shows the absolute number with its share in brackets. Cases received after ${cutLabel} are excluded, and every percentage is over matured cases only — those that completed their full 48-hour window.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>Metric</th>${cols}</tr></thead>
 <tbody>
 ${row('Cases received', s => s.n.toLocaleString('en-IN'))}
-${row('Matured — past 48 hrs since being added', s => s.m.toLocaleString('en-IN'))}
-${row('<b>Resolved within 48 hrs</b>', s => pct(s.w48g, s.m), 'g')}
-${row('Resolved, count', s => s.w48g.toLocaleString('en-IN'))}
-${row('<b>Reopened</b>', s => pct(s.w48g - s.w48, s.w48g), 'b')}
-${row('Reopened, count', s => (s.w48g - s.w48) + ' of ' + s.w48g.toLocaleString('en-IN') + ' resolutions')}
-${row('<b>Resolved within 48 hrs — net of reopened</b>', s => pct(s.w48, s.m), 'g')}
-${row('<b>Unresolved</b>', s => pct(s.unresM, s.m), 'b')}
-${row('Unresolved, count', s => s.unresM.toLocaleString('en-IN'))}
+${row('Matured — past 48 hrs since being added', s => s.m.toLocaleString('en-IN') + ' (' + pct(s.m, s.n) + ')')}
+${row('<b>Resolved within 48 hrs</b>', s => s.w48g.toLocaleString('en-IN') + ' (' + pct(s.w48g, s.m) + ')', 'g')}
+${row('<b>Reopened</b>', s => (s.w48g - s.w48) + ' (' + pct(s.w48g - s.w48, s.w48g) + ')', 'b')}
+${row('<b>Resolved within 48 hrs — net of reopened</b>', s => s.w48.toLocaleString('en-IN') + ' (' + pct(s.w48, s.m) + ')', 'g')}
+${row('<b>Unresolved</b>', s => s.unresM.toLocaleString('en-IN') + ' (' + pct(s.unresM, s.m) + ')', 'b')}
 ${row('<b>Unresolved and eligible for refund</b> <span style="font-weight:400;color:var(--muted)">(no ping since the complaint)</span>', s => s.elig.toLocaleString('en-IN') + ' (' + pct(s.elig, s.m) + ')', 'b')}
+${row('Customers refunded', s => s.paidN.toLocaleString('en-IN'))}
 ${row('<b>Average amount paid to a customer</b>', s => (s.paidN ? inr(s.paidAmt / s.paidN) : '—'))}
 ${row('<b>Total amount refunded to customers</b>', s => inr(s.paidAmt), 'g')}
-${row('CSPs contributing to the unresolved cases', s => s.csps)}
+${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('en-IN'))}
 <tr><td>Calls at PTL by those CSPs</td>${ptlRow.map((x, i) =>
   `<td class="${i === LASTCOL ? 'tot' : ''}">${x ? x.calls.toLocaleString('en-IN') : '—'}</td>`).join('')}</tr>
 </tbody></table></div>
