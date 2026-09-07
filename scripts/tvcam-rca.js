@@ -44,6 +44,16 @@ const open = ROWS.filter(r => r.state === 'Open');
 const deviceSwaps = has(/Faulty Wi-Fi device/).length;
 const ssidCases = ROWS.filter(r => /SSID not visible/i.test(r.symptom)).length;
 const tvLabelled = ROWS.filter(r => /tv|camera/i.test(r.issue)).length;
+// Were the swaps warranted? Tested against DBT.HOURLY_DEVICE_PING_INFLUX —
+// a dead unit stops pinging, a configuration fault leaves it online.
+const swapped = ROWS.filter(r => /Faulty Wi-Fi device/.test(r.cause));
+const vNot = swapped.filter(r => r.verdict === 'Not a device failure').length;
+const vYes = swapped.filter(r => r.verdict === 'Consistent with a device failure').length;
+const vUnk = swapped.filter(r => r.verdict === 'Cannot be verified').length;
+const swapRows = swapped.map(r =>
+  `<tr><td class="mono">${esc(r.dev)}</td><td class="mono">${esc(r.mob)}</td>` +
+  `<td><span class="pill ${r.verdict === 'Not a device failure' ? 'no' : r.verdict === 'Consistent with a device failure' ? 'ok' : 'na'}">${esc(r.verdict)}</span></td>` +
+  `<td class="wrap">${esc(r.evidence)}</td></tr>`).join(String.fromCharCode(10));
 
 const causeRows = by('cause').map(([k, n]) =>
   `<tr><td class="lbl wrap">${esc(k)}</td><td class="lay">${esc(layerOf(k))}</td><td>${n}</td><td>${pct(n, N)}</td></tr>`).join('\n');
@@ -151,8 +161,8 @@ const bodyInner = `<div class="wrap">
   <p class="thesis">${N} customers raised a TV or camera complaint. <b>${ourSide} of them turned out to be faults in the network we run</b> — the device, the cabling, the coverage, the line — not the television. The TV is simply where the customer notices.</p>
 </header>
 <div class="stamp">
-  <span>${reported.length} cases formally documented by the field team</span>
-  <span>${N - reported.length} further cases taken end to end</span>
+  <span>${reported.length} cases, all formally documented by the field team</span>
+  <span>Replacements re-tested against the device ping record</span>
   <span>Every figure derived from the case file</span>
 </div>
 
@@ -188,7 +198,18 @@ const bodyInner = `<div class="wrap">
 </section>
 
 <section>
-  <div class="sec-head"><span class="sec-no">03</span><h2>What fixed it</h2></div>
+  <div class="sec-head"><span class="sec-no">03</span><h2>Were the replacements necessary?</h2></div>
+  <p class="sub">Every one of the ${deviceSwaps} swaps was raised on the same symptom: the network name had disappeared. That symptom has two very different causes — a dead radio, or an SSID the television cannot see while every other device can. The two are separable after the fact, because a dead unit stops pinging and a configuration fault does not. Each swap was tested against the hourly device ping record.</p>
+  <div class="tablewrap"><table style="min-width:760px">
+    <thead><tr><th>Device</th><th>Mobile</th><th>Verdict</th><th style="text-align:left">Evidence</th></tr></thead>
+    <tbody>${swapRows}</tbody></table></div>
+  <div class="finding"><b>Of the ${deviceSwaps} replacements, ${vYes} is consistent with a genuine device failure, ${vNot} demonstrably was not, and ${vUnk} cannot be checked</b> — those two complaints predate the ping record, which begins 24 June. On SY048096 the router was carrying clients on both 2.4 GHz and 5 GHz on the day it was swapped, and was broadcasting all three of its SSIDs. Replacing it worked, but only because a new unit comes up with a fresh WLAN configuration. We changed the hardware to fix a setting.</div>
+  <p class="sub" style="margin-top:18px">Band steering is measured on every device and the flag was never set on any of these four, so this is not the platform steering clients between bands. It is the narrower problem of a television failing to detect an SSID that is plainly being broadcast — the same fault family as the two cases that were fixed by renaming the network, with no visit and no hardware.</p>
+  <div class="finding" style="border-left-color:var(--warn)"><b>What this costs.</b> On the evidence available, at least one of the ${deviceSwaps} swaps was avoidable, and the honest reading of the remaining three is one confirmed and two unknown. A router costs materially more than a remote SSID change, and the swap needs a CSP visit, so the process gap is not cosmetic. The check that separates them takes seconds and is already in our own data.</p></div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-no">04</span><h2>What fixed it</h2></div>
   <p class="sub">${resolved.length} cases are fixed and confirmed by the customer; ${noFault.length} closed with no fault on our side; ${open.length} remain open.</p>
   <div class="tablewrap"><table style="min-width:560px">
     <thead><tr><th>Action that closed the case</th><th>Cases</th><th style="text-align:left">Outcome</th></tr></thead>
@@ -207,21 +228,21 @@ const bodyInner = `<div class="wrap">
 </section>
 
 <section>
-  <div class="sec-head"><span class="sec-no">04</span><h2>Why it keeps happening</h2></div>
+  <div class="sec-head"><span class="sec-no">05</span><h2>Why it keeps happening</h2></div>
   <p class="sub">Three patterns run underneath the ${N} cases. Each is a process gap, not a one-off.</p>
   <ol class="steps">
     <li><b>We diagnose the appliance, not the network.</b> The complaint arrives named after the TV, so the first hour goes into the TV. In ${ourSide} of ${N} cases that hour was spent on the wrong side of the wall.</li>
-    <li><b>A dead Wi-Fi unit looks exactly like a customer problem.</b> The only symptom is “the network name isn't showing”, which reads as a setting. ${deviceSwaps} units were replaced; a reset saved none of them. We have no field test that separates a dead radio from a configuration error, so cases sit in a reset loop before anyone raises a swap.</li>
+    <li><b>We cannot tell a dead unit from a hidden SSID in the field.</b> Both present as “the network name isn't showing”. ${deviceSwaps} units were replaced on that symptom and, where it can be checked, at least one was online and broadcasting at the time. The ping record answers this in seconds and nobody consults it before authorising a swap.</li>
     <li><b>We close on the customer's word, not on a measurement.</b> Coverage, optical power and ISP throughput each caused a case here, and none of the three is visible to the CSP standing in the room. Where it was measured — ${'−30 dBm'} on one line, a speed shortfall on another — the cause was found immediately.</li>
   </ol>
 </section>
 
 <section>
-  <div class="sec-head"><span class="sec-no">05</span><h2>What we are changing</h2></div>
+  <div class="sec-head"><span class="sec-no">06</span><h2>What we are changing</h2></div>
   <p class="sub">A remote-first triage drawn from these ${N} cases. It is written so a support agent can run it on the call, before any visit is booked.</p>
   <ol class="steps">
     <li><b>Ask what the customer can see, not what is broken.</b> “Is the Wi-Fi name showing in the TV's network list?” splits these ${N} cases almost in half. Name missing means a device or configuration fault; name present means speed, coverage or the TV itself.</li>
-    <li><b>Name missing on every device → treat the unit as dead and raise the swap.</b> Skip the reset loop. It recovered none of the ${deviceSwaps} cases that ended in a replacement.</li>
+    <li><b>Name missing → check the ping record before raising a swap.</b> If the router is pinging and shows clients on either band, the unit is alive and the fault is the SSID, not the hardware. Only a unit that has genuinely stopped reporting should be replaced.</li>
     <li><b>Name visible on the phone but not the TV → rename the SSID from WLAN settings.</b> This closed a case remotely with no visit, and is the open action on one more.</li>
     <li><b>TV joins nothing while the phone is fine → check the band before booking anyone.</b> Older sets are 2.4 GHz only. One customer needed a TV service centre, not us.</li>
     <li><b>Buffering rather than disconnection → read the line first.</b> Optical receive power and ISP throughput, before dispatch. −30 dBm is already out of range and no CSP visit will move it.</li>
@@ -232,10 +253,10 @@ const bodyInner = `<div class="wrap">
 </section>
 
 <section>
-  <div class="sec-head"><span class="sec-no">06</span><h2>Case ledger</h2></div>
-  <p class="sub">All ${N} cases. The ✓ column marks the ${reported.length} formally documented in the field team's final report.</p>
+  <div class="sec-head"><span class="sec-no">07</span><h2>Case ledger</h2></div>
+  <p class="sub">All ${N} cases, every one formally documented across the field team's two reports.</p>
   <div class="tablewrap" style="max-height:560px;overflow:auto"><table style="min-width:1060px">
-    <thead><tr><th>#</th><th>Mobile</th><th>Device</th><th style="text-align:left">Reported as</th><th style="text-align:left">Root cause</th><th style="text-align:left">What we found</th><th style="text-align:left">Action</th><th>Status</th><th>Rpt</th></tr></thead>
+    <thead><tr><th>#</th><th>Mobile</th><th>Device</th><th style="text-align:left">Reported as</th><th style="text-align:left">Root cause</th><th style="text-align:left">What we found</th><th style="text-align:left">Action</th><th>Status</th></tr></thead>
     <tbody>${ledger}</tbody></table></div>
 </section>
 

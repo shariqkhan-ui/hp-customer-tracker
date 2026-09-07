@@ -96,8 +96,8 @@ footer{margin-top:58px;padding-top:18px;border-top:1px solid var(--rule);
   <p class="thesis">15 customers raised a TV or camera complaint. <b>12 of them turned out to be faults in the network we run</b> — the device, the cabling, the coverage, the line — not the television. The TV is simply where the customer notices.</p>
 </header>
 <div class="stamp">
-  <span>15 cases formally documented by the field team</span>
-  <span>0 further cases taken end to end</span>
+  <span>15 cases, all formally documented by the field team</span>
+  <span>Replacements re-tested against the device ping record</span>
   <span>Every figure derived from the case file</span>
 </div>
 
@@ -143,7 +143,21 @@ footer{margin-top:58px;padding-top:18px;border-top:1px solid var(--rule);
 </section>
 
 <section>
-  <div class="sec-head"><span class="sec-no">03</span><h2>What fixed it</h2></div>
+  <div class="sec-head"><span class="sec-no">03</span><h2>Were the replacements necessary?</h2></div>
+  <p class="sub">Every one of the 4 swaps was raised on the same symptom: the network name had disappeared. That symptom has two very different causes — a dead radio, or an SSID the television cannot see while every other device can. The two are separable after the fact, because a dead unit stops pinging and a configuration fault does not. Each swap was tested against the hourly device ping record.</p>
+  <div class="tablewrap"><table style="min-width:760px">
+    <thead><tr><th>Device</th><th>Mobile</th><th>Verdict</th><th style="text-align:left">Evidence</th></tr></thead>
+    <tbody><tr><td class="mono">GX98428</td><td class="mono">9355443156</td><td><span class="pill ok">Consistent with a device failure</span></td><td class="wrap">No ping data at all until 22 Aug, two days after the complaint, then normal reporting. The unit only appears once it was replaced.</td></tr>
+<tr><td class="mono">SY048096</td><td class="mono">9318310141</td><td><span class="pill no">Not a device failure</span></td><td class="wrap">Router was online throughout: 276 pings/day, only 12 missed, and clients connected on BOTH 2.4 GHz and 5 GHz every day including the complaint day. It was broadcasting Sumit9090, Sumit9090_5G and the Wiom Net SSID on 23 Jul. Band-steering flag never set. The swap changed the SSID configuration, not failed hardware.</td></tr>
+<tr><td class="mono">GX52551</td><td class="mono">9580840030</td><td><span class="pill na">Cannot be verified</span></td><td class="wrap">Complaint dates from 20 Apr; the hourly ping table only starts 24 Jun, so there is no evidence either way.</td></tr>
+<tr><td class="mono">SY043299</td><td class="mono">8800884497</td><td><span class="pill na">Cannot be verified</span></td><td class="wrap">Complaint dates from 9 Jun; the hourly ping table only starts 24 Jun, so there is no evidence either way.</td></tr></tbody></table></div>
+  <div class="finding"><b>Of the 4 replacements, 1 is consistent with a genuine device failure, 1 demonstrably was not, and 2 cannot be checked</b> — those two complaints predate the ping record, which begins 24 June. On SY048096 the router was carrying clients on both 2.4 GHz and 5 GHz on the day it was swapped, and was broadcasting all three of its SSIDs. Replacing it worked, but only because a new unit comes up with a fresh WLAN configuration. We changed the hardware to fix a setting.</div>
+  <p class="sub" style="margin-top:18px">Band steering is measured on every device and the flag was never set on any of these four, so this is not the platform steering clients between bands. It is the narrower problem of a television failing to detect an SSID that is plainly being broadcast — the same fault family as the two cases that were fixed by renaming the network, with no visit and no hardware.</p>
+  <div class="finding" style="border-left-color:var(--warn)"><b>What this costs.</b> On the evidence available, at least one of the 4 swaps was avoidable, and the honest reading of the remaining three is one confirmed and two unknown. A router costs materially more than a remote SSID change, and the swap needs a CSP visit, so the process gap is not cosmetic. The check that separates them takes seconds and is already in our own data.</p></div>
+</section>
+
+<section>
+  <div class="sec-head"><span class="sec-no">04</span><h2>What fixed it</h2></div>
   <p class="sub">8 cases are fixed and confirmed by the customer; 3 closed with no fault on our side; 4 remain open.</p>
   <div class="tablewrap"><table style="min-width:560px">
     <thead><tr><th>Action that closed the case</th><th>Cases</th><th style="text-align:left">Outcome</th></tr></thead>
@@ -165,21 +179,21 @@ footer{margin-top:58px;padding-top:18px;border-top:1px solid var(--rule);
 </section>
 
 <section>
-  <div class="sec-head"><span class="sec-no">04</span><h2>Why it keeps happening</h2></div>
+  <div class="sec-head"><span class="sec-no">05</span><h2>Why it keeps happening</h2></div>
   <p class="sub">Three patterns run underneath the 15 cases. Each is a process gap, not a one-off.</p>
   <ol class="steps">
     <li><b>We diagnose the appliance, not the network.</b> The complaint arrives named after the TV, so the first hour goes into the TV. In 12 of 15 cases that hour was spent on the wrong side of the wall.</li>
-    <li><b>A dead Wi-Fi unit looks exactly like a customer problem.</b> The only symptom is “the network name isn't showing”, which reads as a setting. 4 units were replaced; a reset saved none of them. We have no field test that separates a dead radio from a configuration error, so cases sit in a reset loop before anyone raises a swap.</li>
+    <li><b>We cannot tell a dead unit from a hidden SSID in the field.</b> Both present as “the network name isn't showing”. 4 units were replaced on that symptom and, where it can be checked, at least one was online and broadcasting at the time. The ping record answers this in seconds and nobody consults it before authorising a swap.</li>
     <li><b>We close on the customer's word, not on a measurement.</b> Coverage, optical power and ISP throughput each caused a case here, and none of the three is visible to the CSP standing in the room. Where it was measured — −30 dBm on one line, a speed shortfall on another — the cause was found immediately.</li>
   </ol>
 </section>
 
 <section>
-  <div class="sec-head"><span class="sec-no">05</span><h2>What we are changing</h2></div>
+  <div class="sec-head"><span class="sec-no">06</span><h2>What we are changing</h2></div>
   <p class="sub">A remote-first triage drawn from these 15 cases. It is written so a support agent can run it on the call, before any visit is booked.</p>
   <ol class="steps">
     <li><b>Ask what the customer can see, not what is broken.</b> “Is the Wi-Fi name showing in the TV's network list?” splits these 15 cases almost in half. Name missing means a device or configuration fault; name present means speed, coverage or the TV itself.</li>
-    <li><b>Name missing on every device → treat the unit as dead and raise the swap.</b> Skip the reset loop. It recovered none of the 4 cases that ended in a replacement.</li>
+    <li><b>Name missing → check the ping record before raising a swap.</b> If the router is pinging and shows clients on either band, the unit is alive and the fault is the SSID, not the hardware. Only a unit that has genuinely stopped reporting should be replaced.</li>
     <li><b>Name visible on the phone but not the TV → rename the SSID from WLAN settings.</b> This closed a case remotely with no visit, and is the open action on one more.</li>
     <li><b>TV joins nothing while the phone is fine → check the band before booking anyone.</b> Older sets are 2.4 GHz only. One customer needed a TV service centre, not us.</li>
     <li><b>Buffering rather than disconnection → read the line first.</b> Optical receive power and ISP throughput, before dispatch. −30 dBm is already out of range and no CSP visit will move it.</li>
@@ -190,10 +204,10 @@ footer{margin-top:58px;padding-top:18px;border-top:1px solid var(--rule);
 </section>
 
 <section>
-  <div class="sec-head"><span class="sec-no">06</span><h2>Case ledger</h2></div>
-  <p class="sub">All 15 cases. The ✓ column marks the 15 formally documented in the field team's final report.</p>
+  <div class="sec-head"><span class="sec-no">07</span><h2>Case ledger</h2></div>
+  <p class="sub">All 15 cases, every one formally documented across the field team's two reports.</p>
   <div class="tablewrap" style="max-height:560px;overflow:auto"><table style="min-width:1060px">
-    <thead><tr><th>#</th><th>Mobile</th><th>Device</th><th style="text-align:left">Reported as</th><th style="text-align:left">Root cause</th><th style="text-align:left">What we found</th><th style="text-align:left">Action</th><th>Status</th><th>Rpt</th></tr></thead>
+    <thead><tr><th>#</th><th>Mobile</th><th>Device</th><th style="text-align:left">Reported as</th><th style="text-align:left">Root cause</th><th style="text-align:left">What we found</th><th style="text-align:left">Action</th><th>Status</th></tr></thead>
     <tbody><tr><td class="num">1</td><td class="mono">9355443156</td><td class="mono">GX98428</td><td class="wrap">Wi-Fi connectivity / laptop not connecting</td><td class="wrap"><b>Faulty Wi-Fi device</b></td><td class="wrap">Laptop could not connect because the SSID was not visible on any device. Investigation traced it to the Wi-Fi device itself; the technical team replaced it and the network became visible.</td><td class="wrap">Device replaced by technical team</td><td><span class="pill ok">Resolved</span></td><td>✓</td></tr>
 <tr><td class="num">2</td><td class="mono">9289457016</td><td class="mono">GX27204</td><td class="wrap">Wi-Fi network not visible on TV</td><td class="wrap"><b>SSID visibility / TV compatibility</b></td><td class="wrap">TV supports Wi-Fi but the SSID was not being displayed. Renaming the Wi-Fi made the network visible on the TV, but internet connectivity was still not working.</td><td class="wrap">SSID renamed; internet still down. Separate SSID for the TV to be configured and tested</td><td><span class="pill no">Open</span></td><td>✓</td></tr>
 <tr><td class="num">3</td><td class="mono">7838199019</td><td class="mono">SY065918</td><td class="wrap">Camera not working</td><td class="wrap"><b>Faulty LAN cabling (RJ45)</b></td><td class="wrap">Wi-Fi device and DVR sit at two nearby premises joined by a LAN run. The RJ45 connector on that cable was faulty, breaking connectivity between camera and DVR.</td><td class="wrap">Faulty RJ45 connector to be replaced or re-terminated</td><td><span class="pill no">Open</span></td><td>✓</td></tr>

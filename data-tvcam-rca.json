@@ -9,7 +9,9 @@
   "fix": "Device replaced by technical team",
   "state": "Resolved",
   "rca": "Laptop could not connect because the SSID was not visible on any device. Investigation traced it to the Wi-Fi device itself; the technical team replaced it and the network became visible.",
-  "reported": true
+  "reported": true,
+  "verdict": "Consistent with a device failure",
+  "evidence": "No ping data at all until 22 Aug, two days after the complaint, then normal reporting. The unit only appears once it was replaced."
  },
  {
   "mob": "9289457016",
@@ -45,7 +47,9 @@
   "fix": "CSP replaced the Wi-Fi device",
   "state": "Resolved",
   "rca": "SSID was not appearing on the TV — only the 4G network showed. The CSP replaced the Wi-Fi device and the customer confirmed the TV works.",
-  "reported": true
+  "reported": true,
+  "verdict": "Not a device failure",
+  "evidence": "Router was online throughout: 276 pings/day, only 12 missed, and clients connected on BOTH 2.4 GHz and 5 GHz every day including the complaint day. It was broadcasting Sumit9090, Sumit9090_5G and the Wiom Net SSID on 23 Jul. Band-steering flag never set. The swap changed the SSID configuration, not failed hardware."
  },
  {
   "mob": "9580840030",
@@ -57,7 +61,9 @@
   "fix": "CSP replaced the Wi-Fi device; customer declined the follow-up site visit",
   "state": "Resolved",
   "rca": "SSID was not appearing on the TV — only the 4G network showed. After the CSP replaced the device the network became visible and the TV worked. Customer declined a further site visit.",
-  "reported": true
+  "reported": true,
+  "verdict": "Cannot be verified",
+  "evidence": "Complaint dates from 20 Apr; the hourly ping table only starts 24 Jun, so there is no evidence either way."
  },
  {
   "mob": "8800884497",
@@ -69,7 +75,9 @@
   "fix": "CSP replaced the Wi-Fi device",
   "state": "Resolved",
   "rca": "SSID was not visible on any device at the premises and stayed hidden after a device reset. The CSP replaced the Wi-Fi device and the network came back.",
-  "reported": true
+  "reported": true,
+  "verdict": "Cannot be verified",
+  "evidence": "Complaint dates from 9 Jun; the hourly ping table only starts 24 Jun, so there is no evidence either way."
  },
  {
   "mob": "9899350634",
