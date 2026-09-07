@@ -322,6 +322,13 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
 </tbody></table></div>
 </section>`;
   // Reopened funnel: all era reopens, reasons, and re-resolution confirmed by PFT
+  // Three legitimate reopen counts exist and they must be shown together, or
+  // the page contradicts the tracker. The dashboard's "Reopened < 24 Hrs" card
+  // counts every case ever stamped; this doc is scoped to the 48-hr flag era;
+  // and only a subset of era reopens were within-48hr resolutions, which is
+  // the number the funnel's "net of reopened" arithmetic uses.
+  const reopensAllTime = Object.entries(casesRaw).filter(([k]) => !k.startsWith('__'))
+    .map(([, c]) => c).filter(c => c && c.ticket_no && isReop(c)).length;
   const reopens = era.filter(isReop);
   const reopReasons = countBy(reopens, c => trim(c.remarks));
   const reopPftDone = reopens.filter(c => trim(c.kapture_status) === 'Completed').length;
@@ -608,9 +615,9 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 <div class="tile"><div class="label">Resolution within 48 hrs</div><div class="value" style="color:var(--good)">${pct(sTD.w48, sTD.m)}</div><div class="note">${sTD.w48} of ${sTD.m} matured · till date · <b>last week (${lwLabel}): ${pct(sLW.w48, sLW.m)}</b> · target ${TARGET_PCT}%</div></div>
 <div class="tile"><div class="label">Unresolved matured tickets</div><div class="value" style="color:var(--bad)">${pct(sTD.unresM, sTD.m)}</div><div class="note">${sTD.unresM} of ${sTD.m} matured still unresolved past 48 hrs · <b>last week: ${pct(sLW.unresM, sLW.m)}</b></div></div>
 <div class="tile"><div class="label">Cases added since 29 Jul</div><div class="value">${sTD.n.toLocaleString('en-IN')}</div><div class="note">avg <b>~${avgPerDay} tickets/day</b> · ${sTD.m.toLocaleString('en-IN')} matured · ${(sTD.n - sTD.m).toLocaleString('en-IN')} in window · <b>last week: ${sLW.n} added</b></div></div>
-<div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending (&gt;48 hrs unresolved)</div><div class="value" style="color:var(--bad)">${inr(sTD.pendAmt)}</div><div class="note">${sTD.pendN} breached open cases owe a pro-rata refund · <b>last week cohort: ${sLW.pendN} (${inr(sLW.pendAmt)})</b></div></div>
-<div class="tile" style="border-color:var(--good)"><div class="label">Refund done</div><div class="value" style="color:var(--good)">${inr(sTD.doneBrAmt)}</div><div class="note">${sTD.doneBr} of ${sTD.unresM} breached refunded (${pct(sTD.doneBr, sTD.unresM)}) · <b>last week cohort: ${sLW.doneBr} (${inr(sLW.doneBrAmt)})</b> · all-in incl. later-resolved: ${sTD.doneN} (${inr(sTD.doneAmt)})</div></div>
-<div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened % of resolved</div><div class="value" style="color:var(--accent-ink)">${pct(reopens.length, resolvedAllTD)}</div><div class="note"><b>${reopens.length} reopens</b> of ${resolvedAllTD.toLocaleString('en-IN')} cases resolved since 29 Jul · <b>last week: ${sLW.w48g - sLW.w48} reopens (${pct(sLW.w48g - sLW.w48, sLW.w48g)})</b></div></div>
+<div class="tile" style="border-color:var(--bad)"><div class="label">Still owed to customers</div><div class="value" style="color:var(--bad)">${inr(grp['Still owed to the customer'] ? grp['Still owed to the customer'].amt : 0)}</div><div class="note"><b>${grp['Still owed to the customer'] ? grp['Still owed to the customer'].n : 0} eligible cases</b> not yet paid &middot; see the refund funnel below</div></div>
+<div class="tile" style="border-color:var(--good)"><div class="label">Refunded to eligible customers</div><div class="value" style="color:var(--good)">${inr(sumA(eligPaid))}</div><div class="note"><b>${eligPaid.length} of ${E} refund-eligible</b> (${pct(eligPaid.length, E)}) &middot; <b>last week: ${sLW.eligPaidN} (${inr(sLW.eligPaidAmt)})</b> &middot; all refunds incl. cases since recovered: ${isDoneAll.length} (${inr(sumA(isDoneAll))})</div></div>
+<div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened cases</div><div class="value" style="color:var(--accent-ink)">${reopensAllTime}</div><div class="note"><b>${reopensAllTime} in the tracker all-time</b> (matches the dashboard's Reopened &lt; 24 Hrs card) &middot; ${reopens.length} of them since the 29 Jul launch &middot; ${sTD.w48g - sTD.w48} of those were within-48hr resolutions that came back &mdash; the number the table below nets off &middot; <b>last week: ${sLW.w48g - sLW.w48}</b></div></div>
 <div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Resolved within 48 hrs: <b>${pct(sWB.w48, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.w48, sLW.m)}</b> (${lwLabel})</div></div>
 </div>
 </header>
@@ -653,7 +660,7 @@ ${cspRca}
     `• Received since 29 Jul: *${sTD.n.toLocaleString('en-IN')}* → matured ${sTD.m.toLocaleString('en-IN')} → resolved ≤48h (net) *${sTD.w48.toLocaleString('en-IN')}* (${pct(sTD.w48, sTD.m)}) → breached ${breached.length} (${pct(breached.length, sTD.m)})\n` +
     `• Last week: *${pct(sLW.w48, sLW.m)}* net resolution vs ${pct(sWB.w48, sWB.m)} week before (${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp)\n` +
     `• Refund on breached: done ${breachedDone.length} (${inr(breachedDoneAmt)}) · pending *${breachedPend.length}* (*${inr(breachedPendAmt)}*)\n` +
-    `• Reopened: *${reopens.length}* (${pct(reopens.length, resolvedAllTD)} of resolved) · top reason: ${reopReasons[0] ? reopReasons[0][0] + ' (' + reopReasons[0][1] + ')' : '—'} · re-resolved & PFT-confirmed ${reopPftDone}, still open ${reopStillOpen}\n` +
+    `• Reopened: *${reopensAllTime}* in the tracker all-time, ${reopens.length} since launch, ${sTD.w48g - sTD.w48} of them within-48hr resolutions that came back · top reason: ${reopReasons[0] ? reopReasons[0][0] + ' (' + reopReasons[0][1] + ')' : '—'} · re-resolved & PFT-confirmed ${reopPftDone}, still open ${reopStillOpen}\n` +
     `🎯 Target: ${TARGET_PCT}% within-48h resolution by end of Aug — ${(TARGET_PCT - sTD.w48 / sTD.m * 100) > 0 ? (TARGET_PCT - sTD.w48 / sTD.m * 100).toFixed(1) + ' pp to go' : 'met ✅'}\n` +
     `📄 Full funnel doc: ${DOC_URL}`;
   const res = await fetch('https://slack.com/api/chat.postMessage', {
