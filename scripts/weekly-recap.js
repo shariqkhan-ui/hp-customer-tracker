@@ -242,6 +242,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // the rate ~7x. It is reported separately instead.
   const reopTs = c => Number(c.reopened_at) || 0;
   const isReop = c => reopTs(c) > 0;
+  const amtOf = c => (c.refund_amount !== '' && c.refund_amount != null && !isNaN(Number(c.refund_amount))) ? Number(c.refund_amount) : (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0);
   const isDone = c => !!sheetEntry(c) || trim(c.cx_action) === 'Refund Done' || trim(c.refund_action) === 'Refund Done';
   const cameInAsReopen = c => String(c.source) === 'reopened-cron';
   const RES_REMARKS = ['resolved by old partner', 'resolved by old csp'];
@@ -258,18 +259,21 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     const pend = matured.filter(c => getStatus(c) === 'Unresolved' && !sheetEntry(c) && trim(c.cx_action) !== 'Refund Done');
     const pendAmt = pend.reduce((a, c) => a + (Number(c.refund_amount) || 0), 0);
     const done = list.filter(c => sheetEntry(c) || trim(c.cx_action) === 'Refund Done');
-    const doneAmt = done.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
+    const doneAmt = done.reduce((a, c) => a + amtOf(c), 0);
     // Breached-scoped refund done — THE refund-done metric everywhere (matches
     // the funnel's Refund stage); doneN/doneAmt keep the all-in count for notes.
     const doneBrL = matured.filter(c => getStatus(c) === 'Unresolved' && (sheetEntry(c) || trim(c.cx_action) === 'Refund Done'));
-    const doneBrAmt = doneBrL.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
+    const doneBrAmt = doneBrL.reduce((a, c) => a + amtOf(c), 0);
     // Refund-eligible = breached AND the router never pinged again.
     const eligL = matured.filter(c => getStatus(c) === 'Unresolved' && !pingedAfter(c));
-    const paidL = done.filter(c => ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)) > 0);
-    const paidAmt = paidL.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
+    const paidL = done.filter(c => amtOf(c) > 0);
+    const paidAmt = paidL.reduce((a, c) => a + amtOf(c), 0);
+    const eligPaidL = eligL.filter(c => sheetEntry(c) || trim(c.cx_action) === 'Refund Done' || trim(c.refund_action) === 'Refund Done');
+    const eligPaidAmt = eligPaidL.reduce((a, c) => a + amtOf(c), 0);
     const cspSet = new Set(matured.filter(c => getStatus(c) === 'Unresolved').map(c => trim(c.partner) || '(unknown)'));
     return { n: list.length, m, w48, w48g, unresM, late, resolvedAll, pendN: pend.length, pendAmt, doneN: done.length, doneAmt, doneBr: doneBrL.length, doneBrAmt,
-      elig: eligL.length, paidN: paidL.length, paidAmt, csps: cspSet.size };
+      elig: eligL.length, paidN: paidL.length, paidAmt, csps: cspSet.size,
+      eligPaidN: eligPaidL.length, eligPaidAmt };
   };
   // ── Funnel extras (till date) ─────────────────────────────────────────────
   const countBy = (list, keyFn) => {
@@ -281,7 +285,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const breached = maturedTD.filter(c => getStatus(c) === 'Unresolved');
   const unresReasons = countBy(breached, c => trim(c.remarks));
   const breachedDone = breached.filter(c => sheetEntry(c) || trim(c.cx_action) === 'Refund Done');
-  const breachedDoneAmt = breachedDone.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
+  const breachedDoneAmt = breachedDone.reduce((a, c) => a + amtOf(c), 0);
   const breachedPend = breached.filter(c => !sheetEntry(c) && trim(c.cx_action) !== 'Refund Done');
   const breachedPendAmt = breachedPend.reduce((a, c) => a + (Number(c.refund_amount) || 0), 0);
   const closure = countBy(breached, c => trim(c.kapture_status) || 'Not yet synced');
@@ -460,7 +464,7 @@ ${top.map(c => {
   const unresAll = maturedAll.filter(c => getStatus(c) === 'Unresolved');
   const pingedBack = unresAll.filter(c => pingedAfter(c));
   const eligAll = unresAll.filter(c => !pingedAfter(c));
-  const amtRA = c => (c.refund_amount !== '' && c.refund_amount != null && !isNaN(Number(c.refund_amount))) ? Number(c.refund_amount) : (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0);
+  const amtRA = amtOf;
   // Inside the eligible set, split on the only question that matters first —
   // was the customer paid? Then break the unpaid ones down by what is blocking
   // them. Refunded + not refunded = eligible, exactly.
@@ -528,12 +532,12 @@ ${['Nothing payable', 'Still owed to the customer'].map(g => {
 }).join(NL)}
 </tbody></table></div>
 
-<h2 style="margin-top:26px;font-size:15px">Reconciling with &ldquo;Customers refunded&rdquo; above</h2>
-<p class="sub">The week-wise table counts every matured case that was refunded, whatever state it ended in. This funnel follows only the ones still down. The difference is the cases that came back up before or after the money moved.</p>
+<h2 style="margin-top:26px;font-size:15px">All refunds paid, including cases that recovered</h2>
+<p class="sub">The funnel above follows only customers who are still down. Money also went to cases that came back up before or after payment; this is every refund paid on a matured case, so the first line here is the full amount that left the business.</p>
 <div class="tablewrap"><table>
 <thead><tr><th style="text-align:left">Refunded customers</th><th>Cases</th><th>Amount</th><th style="text-align:left">Where they sit now</th></tr></thead>
 <tbody>
-<tr><td><b>Customers refunded (week-wise table)</b></td><td><b>${isDoneAll.length.toLocaleString('en-IN')}</b></td><td><b>${inr(sumA(isDoneAll))}</b></td><td style="text-align:left;font-weight:400"></td></tr>
+<tr><td><b>All refunds paid on matured cases</b></td><td><b>${isDoneAll.length.toLocaleString('en-IN')}</b></td><td><b>${inr(sumA(isDoneAll))}</b></td><td style="text-align:left;font-weight:400"></td></tr>
 <tr><td style="padding-left:34px;font-weight:400">&#8627; Refund-eligible, still down</td><td>${eligPaid.length.toLocaleString('en-IN')}</td><td>${inr(sumA(eligPaid))}</td><td style="text-align:left;font-weight:400">The &ldquo;Refunded&rdquo; line in the funnel above</td></tr>
 <tr><td style="padding-left:34px;font-weight:400">&#8627; Unresolved, but the line pinged back</td><td>${donePinged.length.toLocaleString('en-IN')}</td><td>${inr(sumA(donePinged))}</td><td style="text-align:left;font-weight:400">Paid, then the connection recovered</td></tr>
 <tr><td style="padding-left:34px;font-weight:400">&#8627; Case resolved by the time it was paid</td><td>${doneResolved.length.toLocaleString('en-IN')}</td><td>${inr(sumA(doneResolved))}</td><td style="text-align:left;font-weight:400">Refunded on a case that had already closed</td></tr>
@@ -624,9 +628,10 @@ ${row('<b>Reopened</b>', s => (s.w48g - s.w48) + ' (' + pct(s.w48g - s.w48, s.w4
 ${row('<b>Resolved within 48 hrs — net of reopened</b>', s => s.w48.toLocaleString('en-IN') + ' (' + pct(s.w48, s.m) + ')', 'g')}
 ${row('<b>Unresolved</b>', s => s.unresM.toLocaleString('en-IN') + ' (' + pct(s.unresM, s.m) + ')', 'b')}
 ${row('<b>Unresolved and eligible for refund</b> <span style="font-weight:400;color:var(--muted)">(no ping since the complaint)</span>', s => s.elig.toLocaleString('en-IN') + ' (' + pct(s.elig, s.m) + ')', 'b')}
-${row('Customers refunded', s => s.paidN.toLocaleString('en-IN'))}
-${row('<b>Average amount paid to a customer</b>', s => (s.paidN ? inr(s.paidAmt / s.paidN) : '—'))}
-${row('<b>Total amount refunded to customers</b>', s => inr(s.paidAmt), 'g')}
+${row('Customers refunded <span style="font-weight:400;color:var(--muted)">(of those eligible)</span>', s => s.eligPaidN.toLocaleString('en-IN') + ' (' + pct(s.eligPaidN, s.elig) + ')', 'g')}
+${row('<b>Average amount paid to a customer</b>', s => (s.eligPaidN ? inr(s.eligPaidAmt / s.eligPaidN) : '—'))}
+${row('<b>Total amount refunded to eligible customers</b>', s => inr(s.eligPaidAmt), 'g')}
+${row('Refunds paid on cases that had already recovered', s => (s.paidN - s.eligPaidN).toLocaleString('en-IN') + ' (' + inr(s.paidAmt - s.eligPaidAmt) + ')')}
 ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('en-IN'))}
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">A further ${S.map(x => x.intake).slice(0, 3).join(' / ')} cases (the three completed weeks) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
