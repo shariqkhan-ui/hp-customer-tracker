@@ -438,67 +438,70 @@ ${top.map(c => {
   const lwLabel = periods[2].key + ' (' + periods[2].label + ')';
   const tdLabel = '29 Jul – ' + cutLabel;
 
+  const NL = String.fromCharCode(10);
   // ── Refund cases funnel ───────────────────────────────────────────────────
-  // Mirrors the tracker's Refund Action tab: every flag-era case that has EVER
-  // breached 48 hrs, then the one status column that says what happened to the
-  // refund (manual refund_action, else the tab's auto-fallbacks).
-  const everBreached = era.filter(c => {
-    const t = clockTs(c);
-    if (!(t > 0 && (NOW - t) >= LIM)) return false;
-    if (getStatus(c) === 'Unresolved') return true;
-    const rt = Number(c.remarks_updated_at) || 0;
-    if (rt > 0) return (rt - t) > LIM;      // recovered, but only after breaching
-    return trim(c.refund_action) !== '';    // historical flag set -> keep visible
-  });
+  // Descends from the week-wise table's own since-launch column, so every line
+  // here ties to a line there: received -> matured -> unresolved -> eligible,
+  // then the eligible cases split by the tracker's Refund Action status. Each
+  // case lands in exactly one bucket, so the buckets sum back to eligible.
+  const escR = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const maturedAll = era.filter(isMatured);
+  const unresAll = maturedAll.filter(c => getStatus(c) === 'Unresolved');
+  const pingedBack = unresAll.filter(c => pingedAfter(c));
+  const eligAll = unresAll.filter(c => !pingedAfter(c));
+  const amtRA = c => (c.refund_amount !== '' && c.refund_amount != null && !isNaN(Number(c.refund_amount))) ? Number(c.refund_amount) : (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0);
+  // The Refund Action tab's own reading: the desk's entry where it exists,
+  // otherwise the tab's automatic fallback.
   const raEffective = c => {
     const manual = trim(c.refund_action);
     if (manual) return manual;
     if (sheetEntry(c) || trim(c.cx_action) === 'Refund Done') return 'Refund Done';
-    if (getStatus(c) !== 'Unresolved') return 'Ping up';
-    if (pingedAfter(c)) return 'Ping up';
-    if (c.refund_amount !== '' && c.refund_amount != null && Number(c.refund_amount) === 0) return 'Amount 0 - refund not possible';
+    if (c.refund_amount !== '' && c.refund_amount != null && Number(c.refund_amount) === 0) return 'Amount 0 — refund not possible';
     return 'Refund Pending';
   };
-  const amtRA = c => (c.refund_amount !== '' && c.refund_amount != null && !isNaN(Number(c.refund_amount))) ? Number(c.refund_amount) : 0;
-  // Three buckets: settled, nothing payable, still owed.
   const BUCKETS = [
-    ['Settled', ['Refund Done', 'Ping up', 'CSP resolved - removed from PFT list']],
-    ['Nothing payable', ['Amount 0 - refund not possible', 'Amount <10 - refund not possible', 'Duplicate ticket', 'Refund not required', 'Refund not demanded by Cx', 'EXIT partner - refund by Kapil']],
-    ['Still owed', ['Refund Pending', 'Cx DNP 3', 'Pickup ticket not created by Cx', 'PFT process miss', '120 hr not crossed']],
+    ['Refund settled', ['Refund Done', 'CSP resolved — removed from PFT list', 'Ping up'], 'g'],
+    ['Nothing payable', ['Amount 0 — refund not possible', 'Amount <10 — refund not possible', 'Duplicate ticket', 'Refund not demanded by Cx', 'Refund not required', 'EXIT partner — refund by Kapil'], ''],
+    ['Still owed to the customer', ['Refund Pending', 'Cx DNP 3', 'Pickup ticket not created by Cx', 'PFT process miss', '120 hr not crossed'], 'b'],
   ];
-  const raOf = {};
-  everBreached.forEach(c => {
-    const k = raEffective(c).replace(/—/g, '-');
-    (raOf[k] = raOf[k] || []).push(c);
+  const bucketFor = k => (BUCKETS.find(b => b[1].includes(k)) || BUCKETS[2])[0];
+  const grp = {};
+  eligAll.forEach(c => {
+    const k = raEffective(c), g = bucketFor(k);
+    const e = grp[g] || (grp[g] = { n: 0, amt: 0, sub: {} });
+    e.n++; e.amt += amtRA(c);
+    const t = e.sub[k] || (e.sub[k] = { n: 0, amt: 0 });
+    t.n++; t.amt += amtRA(c);
   });
-  const bucketOf = k => (BUCKETS.find(b => b[1].includes(k)) || ['Still owed'])[0];
-  const grpTotals = {};
-  Object.entries(raOf).forEach(([k, list]) => {
-    const g = bucketOf(k);
-    (grpTotals[g] = grpTotals[g] || { n: 0, amt: 0, rows: [] });
-    grpTotals[g].n += list.length;
-    grpTotals[g].amt += list.reduce((a, c) => a + amtRA(c), 0);
-    grpTotals[g].rows.push([k, list]);
-  });
-  const B = everBreached.length;
-  const avgOf = list => { const w = list.filter(c => amtRA(c) > 0); return w.length ? inr(w.reduce((a, c) => a + amtRA(c), 0) / w.length) : '-'; };
-  const NL = String.fromCharCode(10);
+  const E = eligAll.length;
+  // Refunds also went to cases that are no longer in the eligible bucket —
+  // they recovered after the breach. Named so the totals row reconciles.
+  const isDone = c => !!sheetEntry(c) || trim(c.cx_action) === 'Refund Done' || trim(c.refund_action) === 'Refund Done';
+  const doneAll = maturedAll.filter(isDone);
+  const doneOutside = doneAll.filter(c => !eligAll.includes(c));
+  const doneOutsideAmt = doneOutside.reduce((a, c) => a + amtRA(c), 0);
+  const stage = (label, n, base, note, cls) =>
+    `<tr><td class="${cls || ''}"><b>${label}</b></td><td class="${cls || ''}"><b>${n.toLocaleString('en-IN')}</b></td><td class="${cls || ''}">${base ? pct(n, base) : '100%'}</td><td></td><td style="text-align:left;font-weight:400">${note}</td></tr>`;
   const refundFunnel = `<section>
 <h2>Refund cases funnel</h2>
-<p class="sub">Every case that has ever breached the 48-hour promise, and what happened to the refund it owed. Status is the tracker's Refund Action column - the desk's own entry where one exists, otherwise the tab's automatic reading.</p>
+<p class="sub">Reads straight down from the Since-launch column above: received &rarr; matured &rarr; unresolved &rarr; refund-eligible, then what the refund desk did with those eligible cases. Every case sits in exactly one bucket, so the buckets add back to the eligible line.</p>
 <div class="tablewrap"><table>
-<thead><tr><th style="text-align:left">Stage</th><th>Cases</th><th>%</th><th>Amount</th><th>Avg / customer</th></tr></thead>
+<thead><tr><th style="text-align:left">Stage</th><th>Cases</th><th>%</th><th>Amount</th><th style="text-align:left">What happened</th></tr></thead>
 <tbody>
-<tr><td><b>Breached 48 hrs - refund owed</b></td><td><b>${B.toLocaleString('en-IN')}</b></td><td><b>100%</b></td><td>${inr(everBreached.reduce((a, c) => a + amtRA(c), 0))}</td><td>${avgOf(everBreached)}</td></tr>
-${BUCKETS.map(([g]) => {
-  const t = grpTotals[g];
+${stage('Cases received', era.length, 0, 'Since 29 Jul, up to ' + cutLabel)}
+${stage('Matured', maturedAll.length, era.length, 'Completed the full 48-hour window')}
+${stage('Unresolved at 48 hrs', unresAll.length, maturedAll.length, 'Breached the promise', 'b')}
+<tr><td style="padding-left:34px;font-weight:400">&#8627; Line came back later (ping seen)</td><td>${pingedBack.length.toLocaleString('en-IN')}</td><td>${pct(pingedBack.length, unresAll.length)}</td><td></td><td style="text-align:left;font-weight:400">Recovered after the breach &mdash; nothing owed</td></tr>
+${stage('Refund-eligible &mdash; no ping since the complaint', E, unresAll.length, 'The customer is still down and is owed money', 'b')}
+${BUCKETS.map(([g, , cls]) => {
+  const t = grp[g];
   if (!t) return '';
-  const cls = g === 'Settled' ? 'g' : g === 'Still owed' ? 'b' : '';
-  return `<tr><td class="${cls}"><b>${g}</b></td><td class="${cls}"><b>${t.n.toLocaleString('en-IN')}</b></td><td class="${cls}"><b>${pct(t.n, B)}</b></td><td>${inr(t.amt)}</td><td></td></tr>` + NL +
-    t.rows.sort((a, b) => b[1].length - a[1].length).map(([k, list]) =>
-      `<tr><td style="padding-left:34px;font-weight:400">${String(k).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td><td>${list.length.toLocaleString('en-IN')}</td><td>${pct(list.length, B)}</td><td>${inr(list.reduce((a, c) => a + amtRA(c), 0))}</td><td>${avgOf(list)}</td></tr>`).join(NL);
+  return `<tr><td class="${cls}" style="padding-left:20px"><b>${g}</b></td><td class="${cls}"><b>${t.n.toLocaleString('en-IN')}</b></td><td class="${cls}"><b>${pct(t.n, E)}</b></td><td>${inr(t.amt)}</td><td></td></tr>` + NL +
+    Object.entries(t.sub).sort((x, y) => y[1].n - x[1].n).map(([k, v]) =>
+      `<tr><td style="padding-left:52px;font-weight:400">${escR(k)}</td><td>${v.n.toLocaleString('en-IN')}</td><td>${pct(v.n, E)}</td><td>${inr(v.amt)}</td><td></td></tr>`).join(NL);
 }).join(NL)}
 </tbody></table></div>
+<p class="sub" style="margin-top:10px">The week-wise table's <b>Customers refunded (${doneAll.length.toLocaleString('en-IN')})</b> is larger than the settled count here because ${doneOutside.length} of those refunds went to cases that had already come back up or been resolved by the time they were paid (${inr(doneOutsideAmt)}). Amounts are the tracker's pro-rata figure, or the Finance sheet's where that is the only record.</p>
 </section>`;
 
   // ── Last meeting's action items ───────────────────────────────────────────
