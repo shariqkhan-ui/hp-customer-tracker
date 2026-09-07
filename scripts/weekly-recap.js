@@ -380,17 +380,6 @@ ${top.map(c => {
   }
   const S = periods.map(pp => Object.assign(stats(inRange(pp)), reopStats(pp)));
 
-  // Calls placed at PTL, in each period, by the CSPs that left cases unresolved
-  // in that same period — the pairing the review asks for.
-  const ptlRow = periods.map((pp, i) => {
-    if (!ptl) return null;
-    const csps = new Set(inRange(pp).filter(c => isMatured(c) && getStatus(c) === 'Unresolved')
-      .map(c => normName(c.partner)).filter(Boolean));
-    let calls = 0, matched = 0;
-    csps.forEach(k => { if (ptl[k]) { calls += ptl[k][i]; matched++; } });
-    return { calls, csps: csps.size, matched };
-  });
-
   const sWB = S[1];          // week -2
   const sLW = S[2];          // week -1 (the most recent completed slice)
   const sTD = S[LASTCOL];    // since launch
@@ -489,10 +478,8 @@ ${row('Customers refunded', s => s.paidN.toLocaleString('en-IN'))}
 ${row('<b>Average amount paid to a customer</b>', s => (s.paidN ? inr(s.paidAmt / s.paidN) : '—'))}
 ${row('<b>Total amount refunded to customers</b>', s => inr(s.paidAmt), 'g')}
 ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('en-IN'))}
-<tr><td>Calls at PTL by those CSPs</td>${ptlRow.map((x, i) =>
-  `<td class="${i === LASTCOL ? 'tot' : ''}">${x ? x.calls.toLocaleString('en-IN') : '—'}</td>`).join('')}</tr>
 </tbody></table></div>
-<p class="sub" style="margin-top:10px">Calls at PTL = Ameyo calls on the PartnerSupportQueue placed by those CSPs' registered numbers, same attribution as Metabase card 12025.${ptlRow[LASTCOL] ? ` Matched ${ptlRow[LASTCOL].matched} of the ${ptlRow[LASTCOL].csps} CSPs since launch.` : ''}<br>A further ${S.map(x => x.intake).slice(0, 3).join(' / ')} cases (Week −3 / −2 / −1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
+<p class="sub" style="margin-top:10px">A further ${S.map(x => x.intake).slice(0, 3).join(' / ')} cases (Week −3 / −2 / −1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
 </section>
 ${cspRca}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a resolution of ours that came back down (reopened_at), counted in the week it came back.</div>
