@@ -448,7 +448,7 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 </header>
 <section>
 <h2>Week-wise numbers</h2>
-<p class="sub">Weeks are the tracker's own buckets (1-7 / 8-14 / 15-21 / 22-end), cohorted by the date the case entered the tracker. Cases received after ${cutLabel} are excluded, and every percentage is over matured cases only — those that completed their full 48-hour window.</p>
+<p class="sub">Weeks are the tracker's own buckets (1-7 / 8-14 / 15-21 / 22-end), cohorted by the date the case entered the tracker, so every row answers the same question: of the cases received in this week, what happened. Reopened is read the same way — of this week's own within-48hr resolutions, the ones that later came back down. Cases received after ${cutLabel} are excluded, and every percentage is over matured cases only — those that completed their full 48-hour window.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>Metric</th>${cols}</tr></thead>
 <tbody>
@@ -456,8 +456,8 @@ ${row('Cases received', s => s.n.toLocaleString('en-IN'))}
 ${row('Matured — past 48 hrs since being added', s => s.m.toLocaleString('en-IN'))}
 ${row('<b>Resolved within 48 hrs</b>', s => pct(s.w48g, s.m), 'g')}
 ${row('Resolved, count', s => s.w48g.toLocaleString('en-IN'))}
-${row('<b>Reopened</b>', s => pct(s.reopWeek, s.resWeek), 'b')}
-${row('Reopened, count', s => s.reopWeek + ' of ' + s.resWeek.toLocaleString('en-IN') + ' resolutions')}
+${row('<b>Reopened</b>', s => pct(s.w48g - s.w48, s.w48g), 'b')}
+${row('Reopened, count', s => (s.w48g - s.w48) + ' of ' + s.w48g.toLocaleString('en-IN') + ' resolutions')}
 ${row('<b>Resolved within 48 hrs — net of reopened</b>', s => pct(s.w48, s.m), 'g')}
 ${row('<b>Unresolved</b>', s => pct(s.unresM, s.m), 'b')}
 ${row('Unresolved, count', s => s.unresM.toLocaleString('en-IN'))}

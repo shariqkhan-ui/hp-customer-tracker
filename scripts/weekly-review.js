@@ -520,8 +520,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
       ${row('Matured — past 48 hrs since being added', s => s.m, { head: true, note: 'the denominator for every % below' })}
       ${row('Resolved within 48 hrs', s => pctCell(s.gross, s.m, true), { head: true })}
       ${row('Resolved, count', s => s.gross, { step: true })}
-      ${row('Reopened', s => `<b>${pct(s.reopWeek, s.resWeek)}</b>`, { head: true, note: 'cases we had marked resolved that came back down, counted in the week they came back' })}
-      ${row('Reopened, count', s => `${s.reopWeek} of ${s.resWeek} resolutions`, { step: true })}
+      ${row('Reopened', s => `<b>${pct(s.gross - s.net, s.gross)}</b>`, { head: true, note: "of this week's own within-48hr resolutions, the ones that later came back down" })}
+      ${row('Reopened, count', s => `${s.gross - s.net} of ${s.gross} resolutions`, { step: true })}
       ${row('Resolved within 48 hrs — net of reopened', s => pctCell(s.net, s.m, true), { head: true })}
       ${row('Unresolved', s => pctCell(s.unres, s.m, false), { head: true, note: 'still down when the 48 hrs ran out' })}
       ${row('Unresolved, count', s => s.unres, { step: true })}
