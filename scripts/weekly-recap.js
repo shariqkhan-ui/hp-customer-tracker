@@ -43,6 +43,49 @@ const TARGET_PCT = 80; // within-48h resolution target by end of August
 // column simply renders blank rather than failing the recap.
 const METABASE = 'https://metabase.wiom.in';
 const normName = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+// Why they called. Ameyo's own disposition is 88% 'wrap.timeout' (the agent
+// never tagged the call), so the usable reason is the Kapture PTL ticket the
+// call raised — DISPOSITION_FOLDER_LEVEL_2, deduped to the latest snapshot
+// per ticket. Keyed to the CSP by CUSTOMER_CODE = partner account id.
+async function ptlReasonsByPartner(from, to) {
+  const key = process.env.METABASE_API_KEY;
+  if (!key) return null;
+  const d = t => new Date(t + IST).toISOString().slice(0, 10);
+  const sql = `WITH pb AS (
+    SELECT DISTINCT partner_account_id, partner_name FROM hierarchy_base WHERE dedup_flag = 1
+  ), t AS (
+    SELECT REGEXP_REPLACE(CAST(CUSTOMER_CODE AS STRING), '\.0$', '') AS acct,
+           NULLIF(TRIM(DISPOSITION_FOLDER_LEVEL_2), '') AS reason
+    FROM PROD_DB.PUBLIC.KAPTURE_PARTNER_TICKETS_REPORT
+    WHERE TO_DATE(CREATED_DATE, 'DD/MM/YYYY') >= '${d(from)}'
+      AND TO_DATE(CREATED_DATE, 'DD/MM/YYYY') <  '${d(to)}'
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY TICKET_NO ORDER BY INGESTED_AT DESC) = 1
+  )
+  SELECT pb.partner_name, COALESCE(t.reason, 'Not categorised') AS reason, COUNT(*) AS n
+  FROM t JOIN pb ON CAST(pb.partner_account_id AS STRING) = t.acct
+  GROUP BY 1, 2
+  QUALIFY ROW_NUMBER() OVER (PARTITION BY pb.partner_name ORDER BY COUNT(*) DESC) <= 3`;
+  try {
+    const r = await fetch(METABASE + '/api/dataset', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'content-type': 'application/json' },
+      body: JSON.stringify({ database: 113, type: 'native', native: { query: sql } }),
+    }).then(x => x.json());
+    if (!r.data || !r.data.rows) throw new Error(JSON.stringify(r.error || r).slice(0, 200));
+    const map = {};
+    r.data.rows.forEach(([name, reason, n]) => {
+      const k = normName(name);
+      if (!k) return;
+      (map[k] = map[k] || []).push({ reason, n: Number(n) || 0 });
+    });
+    Object.values(map).forEach(v => v.sort((a, b) => b.n - a.n));
+    console.log('PTL ticket reasons fetched for', Object.keys(map).length, 'CSPs');
+    return map;
+  } catch (e) {
+    console.error('PTL reasons query failed (non-fatal):', e.message);
+    return null;
+  }
+}
 async function ptlCallsByPartner(periods) {
   const key = process.env.METABASE_API_KEY;
   if (!key) { console.log('METABASE_API_KEY not set — PTL calls column left blank.'); return null; }
@@ -188,6 +231,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   periods.forEach(pp => { pp.to = Math.min(pp.to, CUT); pp.label = fmtD(pp.from) + ' – ' + fmtD(pp.to - 1); });
   const LASTCOL = periods.length - 1;
   const ptl = await ptlCallsByPartner(periods);
+  const ptlWhy = await ptlReasonsByPartner(LAUNCH, CUT);
   era = era.filter(c => startTs(c) < CUT);
 
   // A reopen is a case WE marked resolved that came back down (reopened_at).
@@ -352,17 +396,21 @@ ${ledgerRows}
     const anyRca = Object.keys(rcaByCsp).length > 0;
     cspRca = `<section>
 <h2>CSP ticket breach &amp; resolution status — top 10</h2>
-<p class="sub">Top 10 CSPs by breached (unresolved past 48 hrs) cases, worst breach rate first. Calls at PTL = that CSP's calls on the PartnerSupportQueue since 29 Jul. Pending reason &amp; current status maintained by the ground team in the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit" style="color:var(--accent-ink)">CSP RCA tab</a>.${anyRca ? '' : ' <b>Tab has no entries yet — team to fill CSP | Pending Reason | Current Status.</b>'}</p>
+<p class="sub">Top 10 CSPs by breached (unresolved past 48 hrs) cases, worst breach rate first. Calls at PTL = that CSP's calls on the PartnerSupportQueue since 29 Jul; why they called = the top reasons on the PTL tickets those calls raised (Ameyo's own disposition is 88% untagged, so it is unusable). Pending reason &amp; current status maintained by the ground team in the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit" style="color:var(--accent-ink)">CSP RCA tab</a>.${anyRca ? '' : ' <b>Tab has no entries yet — team to fill CSP | Pending Reason | Current Status.</b>'}</p>
 <div class="tablewrap"><table style="min-width:900px">
-<thead><tr><th>CSP</th><th>Breached</th><th>Total cases</th><th>Breach rate</th><th>Calls at PTL</th><th style="text-align:left">Pending reason</th><th style="text-align:left">Current status</th></tr></thead>
+<thead><tr><th>CSP</th><th>Breached</th><th>Total cases</th><th>Breach rate</th><th>Calls at PTL</th><th style="text-align:left">Why they called</th><th style="text-align:left">Pending reason</th><th style="text-align:left">Current status</th></tr></thead>
 <tbody>
 ${top.map(c => {
   const e = rcaByCsp[normName(c.p)] || {};
   const rate = Math.round(c.n / c.t * 100);
   const calls = ptl && ptl[normName(c.p)] ? ptl[normName(c.p)][LASTCOL] : null;
-  return `<tr><td>${c.p.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td><td>${c.n}</td><td>${c.t}</td><td${rate >= 50 ? ' class="b"' : ''}>${rate}%</td><td>${calls == null ? '—' : calls.toLocaleString('en-IN')}</td><td style="text-align:left;white-space:normal">${(e.reason || '—').replace(/</g, '&lt;')}</td><td style="text-align:left;white-space:normal">${(e.status || '—').replace(/</g, '&lt;')}</td></tr>`;
+  return `<tr><td>${c.p.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td><td>${c.n}</td><td>${c.t}</td><td${rate >= 50 ? ' class="b"' : ''}>${rate}%</td><td>${calls == null ? '—' : calls.toLocaleString('en-IN')}</td><td style="text-align:left;white-space:normal;font-weight:400">${(() => {
+    const w = ptlWhy && ptlWhy[normName(c.p)];
+    if (!w || !w.length) return '—';
+    return w.slice(0, 2).map(x => `${x.reason.replace(/</g, '&lt;')} (${x.n})`).join('<br>');
+  })()}</td><td style="text-align:left;white-space:normal">${(e.reason || '—').replace(/</g, '&lt;')}</td><td style="text-align:left;white-space:normal">${(e.status || '—').replace(/</g, '&lt;')}</td></tr>`;
 }).join('\n')}
-<tr><td class="tot"><b>Top 10 together</b></td><td class="tot b"><b>${top.reduce((a, c) => a + c.n, 0)}</b></td><td class="tot">${top.reduce((a, c) => a + c.t, 0)}</td><td class="tot"><b>${pct(top.reduce((a, c) => a + c.n, 0), breached.length)} of breached</b></td><td class="tot"><b>${ptl ? top.reduce((a, c) => a + (ptl[normName(c.p)] ? ptl[normName(c.p)][LASTCOL] : 0), 0).toLocaleString('en-IN') : '—'}</b></td><td class="tot" colspan="2"></td></tr>
+<tr><td class="tot"><b>Top 10 together</b></td><td class="tot b"><b>${top.reduce((a, c) => a + c.n, 0)}</b></td><td class="tot">${top.reduce((a, c) => a + c.t, 0)}</td><td class="tot"><b>${pct(top.reduce((a, c) => a + c.n, 0), breached.length)} of breached</b></td><td class="tot"><b>${ptl ? top.reduce((a, c) => a + (ptl[normName(c.p)] ? ptl[normName(c.p)][LASTCOL] : 0), 0).toLocaleString('en-IN') : '—'}</b></td><td class="tot" colspan="3"></td></tr>
 </tbody></table></div>
 </section>`;
   } catch (e) {
@@ -389,6 +437,69 @@ ${top.map(c => {
   const wbLabel = periods[1].key + ' (' + periods[1].label + ')';
   const lwLabel = periods[2].key + ' (' + periods[2].label + ')';
   const tdLabel = '29 Jul – ' + cutLabel;
+
+  // ── Refund cases funnel ───────────────────────────────────────────────────
+  // Mirrors the tracker's Refund Action tab: every flag-era case that has EVER
+  // breached 48 hrs, then the one status column that says what happened to the
+  // refund (manual refund_action, else the tab's auto-fallbacks).
+  const everBreached = era.filter(c => {
+    const t = clockTs(c);
+    if (!(t > 0 && (NOW - t) >= LIM)) return false;
+    if (getStatus(c) === 'Unresolved') return true;
+    const rt = Number(c.remarks_updated_at) || 0;
+    if (rt > 0) return (rt - t) > LIM;      // recovered, but only after breaching
+    return trim(c.refund_action) !== '';    // historical flag set -> keep visible
+  });
+  const raEffective = c => {
+    const manual = trim(c.refund_action);
+    if (manual) return manual;
+    if (sheetEntry(c) || trim(c.cx_action) === 'Refund Done') return 'Refund Done';
+    if (getStatus(c) !== 'Unresolved') return 'Ping up';
+    if (pingedAfter(c)) return 'Ping up';
+    if (c.refund_amount !== '' && c.refund_amount != null && Number(c.refund_amount) === 0) return 'Amount 0 - refund not possible';
+    return 'Refund Pending';
+  };
+  const amtRA = c => (c.refund_amount !== '' && c.refund_amount != null && !isNaN(Number(c.refund_amount))) ? Number(c.refund_amount) : 0;
+  // Three buckets: settled, nothing payable, still owed.
+  const BUCKETS = [
+    ['Settled', ['Refund Done', 'Ping up', 'CSP resolved - removed from PFT list']],
+    ['Nothing payable', ['Amount 0 - refund not possible', 'Amount <10 - refund not possible', 'Duplicate ticket', 'Refund not required', 'Refund not demanded by Cx', 'EXIT partner - refund by Kapil']],
+    ['Still owed', ['Refund Pending', 'Cx DNP 3', 'Pickup ticket not created by Cx', 'PFT process miss', '120 hr not crossed']],
+  ];
+  const raOf = {};
+  everBreached.forEach(c => {
+    const k = raEffective(c).replace(/—/g, '-');
+    (raOf[k] = raOf[k] || []).push(c);
+  });
+  const bucketOf = k => (BUCKETS.find(b => b[1].includes(k)) || ['Still owed'])[0];
+  const grpTotals = {};
+  Object.entries(raOf).forEach(([k, list]) => {
+    const g = bucketOf(k);
+    (grpTotals[g] = grpTotals[g] || { n: 0, amt: 0, rows: [] });
+    grpTotals[g].n += list.length;
+    grpTotals[g].amt += list.reduce((a, c) => a + amtRA(c), 0);
+    grpTotals[g].rows.push([k, list]);
+  });
+  const B = everBreached.length;
+  const avgOf = list => { const w = list.filter(c => amtRA(c) > 0); return w.length ? inr(w.reduce((a, c) => a + amtRA(c), 0) / w.length) : '-'; };
+  const NL = String.fromCharCode(10);
+  const refundFunnel = `<section>
+<h2>Refund cases funnel</h2>
+<p class="sub">Every case that has ever breached the 48-hour promise, and what happened to the refund it owed. Status is the tracker's Refund Action column - the desk's own entry where one exists, otherwise the tab's automatic reading.</p>
+<div class="tablewrap"><table>
+<thead><tr><th style="text-align:left">Stage</th><th>Cases</th><th>%</th><th>Amount</th><th>Avg / customer</th></tr></thead>
+<tbody>
+<tr><td><b>Breached 48 hrs - refund owed</b></td><td><b>${B.toLocaleString('en-IN')}</b></td><td><b>100%</b></td><td>${inr(everBreached.reduce((a, c) => a + amtRA(c), 0))}</td><td>${avgOf(everBreached)}</td></tr>
+${BUCKETS.map(([g]) => {
+  const t = grpTotals[g];
+  if (!t) return '';
+  const cls = g === 'Settled' ? 'g' : g === 'Still owed' ? 'b' : '';
+  return `<tr><td class="${cls}"><b>${g}</b></td><td class="${cls}"><b>${t.n.toLocaleString('en-IN')}</b></td><td class="${cls}"><b>${pct(t.n, B)}</b></td><td>${inr(t.amt)}</td><td></td></tr>` + NL +
+    t.rows.sort((a, b) => b[1].length - a[1].length).map(([k, list]) =>
+      `<tr><td style="padding-left:34px;font-weight:400">${String(k).replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td><td>${list.length.toLocaleString('en-IN')}</td><td>${pct(list.length, B)}</td><td>${inr(list.reduce((a, c) => a + amtRA(c), 0))}</td><td>${avgOf(list)}</td></tr>`).join(NL);
+}).join(NL)}
+</tbody></table></div>
+</section>`;
 
   // ── Last meeting's action items ───────────────────────────────────────────
   // Live from the tracker's Action Items tab — nothing typed by hand.
@@ -481,6 +592,7 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">A further ${S.map(x => x.intake).slice(0, 3).join(' / ')} cases (Week −3 / −2 / −1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
 </section>
+${refundFunnel}
 ${cspRca}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a resolution of ours that came back down (reopened_at), counted in the week it came back.</div>
 </div></body></html>`;
