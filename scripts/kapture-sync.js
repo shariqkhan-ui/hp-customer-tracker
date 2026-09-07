@@ -240,6 +240,7 @@ async function syncRefundSheet() {
 // falling back to the account's registered mobile via SERVICE_TICKET_MODEL
 // (tracker mobile ≠ registered mobile for some customers). No active paid
 // plan at complaint (lapsed/churned/free) → 0.
+let _openMobiles;
 const TAT_LAUNCH_MS = Date.parse('2026-07-29T00:00:00+05:30');
 
 async function computeProRataAmounts(apiKey) {
@@ -489,6 +490,26 @@ async function purgeWiomNetQueue(apiKey) {
       }
     }
   }
+  // Third net: cases with NO resolvable CSP and NO Wiom Hub record for the
+  // customer (zero HOME_ROUTER_PLAN_INFO rows) — non-customers (Wiom Net /
+  // junk numbers). Found 7 Sep via 9810396162: "details not found in Wiom Hub".
+  const blankP = entries.filter(([k, c]) => !String(c.partner || '').trim());
+  const mobOf = c => String(c.mobile || '').replace(/\D/g, '').slice(-10);
+  const bpMobs = [...new Set(blankP.map(([, c]) => mobOf(c)).filter(m => m.length === 10))];
+  if (bpMobs.length) {
+    const rows = await queryMetabase(
+      `SELECT DISTINCT RIGHT(REGEXP_REPLACE(MOBILE,'[^0-9]',''),10) M
+       FROM DYNAMODB.HOME_ROUTER_PLAN_INFO
+       WHERE RIGHT(REGEXP_REPLACE(MOBILE,'[^0-9]',''),10) IN (${bpMobs.map(m => "'" + m + "'").join(',')})`, apiKey);
+    const inHub = new Set(rows.map(r => String(r.M)));
+    for (const [key, c] of blankP) {
+      const m = mobOf(c);
+      if (m.length !== 10 || inHub.has(m)) continue;
+      await fbPut('/cases/' + key, null);
+      purged++;
+      log(`Wiom Net purge: removed ticket=${c.ticket_no} (no CSP + mobile ${m} not in Wiom Hub).`);
+    }
+  }
   if (purged) log(`Wiom Net purge: ${purged} case(s) removed this run.`);
   else log('Wiom Net purge: nothing to remove.');
 }
@@ -587,10 +608,39 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     return m;
   }, new Map()).values()];
 
-  let added = 0, skipped = 0, enriched = 0;
+  // Same-customer duplicate guard: if the tracker already holds an OPEN
+  // (unresolved) case for this mobile, a second concurrent ticket is a
+  // duplicate row, not a new complaint — skip it. (253 such rows cleaned
+  // 7 Sep; this stops them re-accumulating.)
+  if (_openMobiles === undefined) {
+    try {
+      const allCases = await fbGet('/cases') || {};
+      _openMobiles = new Set();
+      const PINGKW = ['ping up', 'internet working', 'internet up', 'speed up', 'link up'];
+      for (const [k, c] of Object.entries(allCases)) {
+        if (k.startsWith('__') || !c || !c.ticket_no) continue;
+        const g = String(c.remarks || '').trim().toLowerCase();
+        const resolved = String(c.migration_date || '').trim() !== '' ||
+          g === 'resolved by old partner' || g === 'resolved by old csp' ||
+          PINGKW.some(kw => g.includes(kw));
+        if (resolved) continue;
+        const m = String(c.mobile || '').replace(/\D/g, '').slice(-10);
+        if (m.length === 10) _openMobiles.add(m);
+      }
+      log(`Duplicate guard: ${_openMobiles.size} mobiles currently have an open case.`);
+    } catch (e) { _openMobiles = null; log('WARN: duplicate guard unavailable — ' + e.message); }
+  }
+
+  let added = 0, skipped = 0, enriched = 0, dupSkipped = 0;
   for (const t of uniq) {
     const ticketId = String(t.KAPTURE_TICKET_ID || '').trim();
     if (!ticketId) continue;
+    const tMob = String(t.CUSTOMER_MOBILE || '').replace(/\D/g, '').slice(-10);
+    if (_openMobiles && tMob.length === 10 && _openMobiles.has(tMob)) {
+      const key0 = ticketKey(ticketId);
+      const already = await fbGet('/cases/' + key0);
+      if (already === null) { dupSkipped++; continue; }   // new ticket, same open customer → duplicate
+    }
 
     const newPartner = String(t.PARTNER         || '').trim();
     const newName    = String(t.CUSTOMER_NAME   || '').trim();
@@ -646,10 +696,12 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       await fbPut('/cases/' + key, payload);
       log(`  Added ticket=${ticketId} channel="${payload.channel}" subcat="${t.SUB_CATEGORY}" tat="${tatLabel}"`);
       added++;
+      if (_openMobiles && String(payload.mobile||'').replace(/D/g,'').slice(-10).length === 10) _openMobiles.add(String(payload.mobile).replace(/D/g,'').slice(-10));
     } catch (e) {
       log(`  ERROR adding ticket=${ticketId}: ${e.message}`);
     }
   }
+  if (dupSkipped) log(`  Duplicate guard: skipped ${dupSkipped} ticket(s) — customer already has an open case.`);
   return { added, skipped, enriched };
 }
 
