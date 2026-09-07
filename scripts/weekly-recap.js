@@ -583,16 +583,6 @@ ${['Nothing payable', 'Still owed to the customer'].map(g => {
 }).join(NL)}
 </tbody></table></div>
 
-<h2 style="margin-top:26px;font-size:15px">All refunds paid, including cases that recovered</h2>
-<p class="sub">The funnel above follows only customers who are still down. Money also went to cases that came back up before or after payment; this is every refund paid on a matured case, so the first line here is the full amount that left the business.</p>
-<div class="tablewrap"><table>
-<thead><tr><th style="text-align:left">Refunded customers</th><th>Cases</th><th>Amount</th><th style="text-align:left">Where they sit now</th></tr></thead>
-<tbody>
-<tr><td><b>All refunds paid on matured cases</b></td><td><b>${isDoneAll.length.toLocaleString('en-IN')}</b></td><td><b>${inr(sumA(isDoneAll))}</b></td><td style="text-align:left;font-weight:400"></td></tr>
-<tr><td style="padding-left:34px;font-weight:400">&#8627; Refund-eligible, still down</td><td>${eligPaid.length.toLocaleString('en-IN')}</td><td>${inr(sumA(eligPaid))}</td><td style="text-align:left;font-weight:400">The &ldquo;Refunded&rdquo; line in the funnel above</td></tr>
-<tr><td style="padding-left:34px;font-weight:400">&#8627; Unresolved, but the line pinged back</td><td>${donePinged.length.toLocaleString('en-IN')}</td><td>${inr(sumA(donePinged))}</td><td style="text-align:left;font-weight:400">Paid, then the connection recovered</td></tr>
-<tr><td style="padding-left:34px;font-weight:400">&#8627; Case resolved by the time it was paid</td><td>${doneResolved.length.toLocaleString('en-IN')}</td><td>${inr(sumA(doneResolved))}</td><td style="text-align:left;font-weight:400">Refunded on a case that had already closed</td></tr>
-</tbody></table></div>
 </section>`;
 
   // ── Last meeting's action items ───────────────────────────────────────────
