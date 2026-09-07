@@ -113,8 +113,13 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
   const thisMon = d0 - ((istNow.getUTCDay() + 6) % 7) * 86400000;
   const mStart = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1) - IST;
   const wk = i => ({ key: 'Week −' + i, from: thisMon - i * 7 * 86400000, to: thisMon - (i - 1) * 7 * 86400000 });
-  const periods = [wk(3), wk(2), wk(1), { key: 'MTD', from: mStart, to: NOW }];
+  // Three finished-ish weeks, the month so far, and the whole flag era since
+  // the 29 Jul launch — the last column is what the programme has done overall.
+  const periods = [wk(3), wk(2), wk(1),
+    { key: 'MTD', from: mStart, to: NOW },
+    { key: 'Since launch', from: LAUNCH, to: NOW }];
   periods.forEach(p => { p.label = fmtD(p.from) + ' – ' + fmtD(Math.min(p.to, NOW) - 1); });
+  const LASTCOL = periods.length - 1;
   const inRange = r => era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to; });
 
   function stats(list) {
@@ -198,7 +203,7 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
   const row = (label, fn, opt = {}) => {
     const cls = [opt.cls || '', opt.step ? 'step' : '', opt.head ? 'head' : ''].filter(Boolean).join(' ');
     return `<tr class="${cls}"><td class="lbl">${label}${opt.note ? `<span class="note">${opt.note}</span>` : ''}</td>` +
-      S.map((s, i) => `<td${i === 3 ? ' class="mtd"' : ''}>${fn(s, i)}</td>`).join('') + '</tr>';
+      S.map((s, i) => `<td${i === LASTCOL ? ' class="mtd"' : ''}>${fn(s, i)}</td>`).join('') + '</tr>';
   };
   const bar = (v, good) => {
     const w = Math.max(0, Math.min(100, v));
@@ -206,7 +211,7 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
   };
   const pctCell = (a, b, good) => `<span class="pv">${pct(a, b)}</span>${bar(pctN(a, b), good)}`;
 
-  const lastW = S[2], prevW = S[1];
+  const lastW = S[2], prevW = S[1], SL = S[LASTCOL];
   const deltaNet = pctN(lastW.net, lastW.m) - pctN(prevW.net, prevW.m);
 
   const aiHtml = items.map(([, v], i) => `
@@ -428,8 +433,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
 
 <section id="funnel">
   <div class="sec-head"><span class="sec-no">02</span><h2>The week-wise funnel</h2></div>
-  <p class="sub">Cases are grouped by the week they were <b>added</b> to the tracker, and only counted once they have completed a full 48 hours. Each drop below the top line has its own row, so the question “where did the rest go?” is answered on the page.</p>
-  <div class="tablewrap"><table style="min-width:760px">
+  <p class="sub">Cases are grouped by the week they were <b>added</b> to the tracker, and only counted once they have completed a full 48 hours. Each drop below the top line has its own row, so the question “where did the rest go?” is answered on the page. The last column is the whole flag era since the 29 Jul launch — the programme's holistic number, not a week.</p>
+  <div class="tablewrap"><table style="min-width:940px">
     <thead><tr><th>Metric</th>${cols}</tr></thead>
     <tbody>
       ${row('Cases added', s => s.n, { head: true })}
@@ -451,6 +456,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
       ${row('Total refunded to customers', s => inr(s.paidAmt), { head: true })}
       ${row('CSPs behind the unresolved cases', s => s.csps, { head: true, note: 'distinct CSPs with at least one breach' })}
     </tbody></table></div>
+  <div class="callout"><b>Since 29 Jul, holistically:</b> ${SL.n.toLocaleString('en-IN')} cases taken in, ${SL.m.toLocaleString('en-IN')} of them matured. ${pct(SL.net, SL.m)} were put right inside 48 hours net of reopens; ${pct(SL.unres, SL.m)} breached, and ${SL.elig.toLocaleString('en-IN')} of those never pinged again and are owed money. ${inr(SL.paidAmt)} has gone back to ${SL.paidN} customers, an average of ${SL.paidN ? inr(SL.paidAmt / SL.paidN) : '—'} each. ${SL.csps} distinct CSPs have carried at least one breach.</div>
   <div class="callout">Week −1 and MTD are still settling: cases added in the last two days have not finished their 48-hr window, and the refund actions for that week are entered later in the following week. Read them as directional; Week −2 and Week −3 are final.</div>
 </section>
 
