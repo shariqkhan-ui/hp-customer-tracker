@@ -36,6 +36,54 @@ function parseCSVText(text) {
 }
 const TARGET_PCT = 80; // within-48h resolution target by end of August
 
+// ── PTL calls ────────────────────────────────────────────────────────────────
+// The CSP-side call desk. Attribution follows Metabase card 12025: an Ameyo
+// call on QUEUE_NAME 'PartnerSupportQueue' belongs to the CSP whose owner or
+// Rohit contact number placed it. Needs METABASE_API_KEY; without it the
+// column simply renders blank rather than failing the recap.
+const METABASE = 'https://metabase.wiom.in';
+const normName = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+async function ptlCallsByPartner(periods) {
+  const key = process.env.METABASE_API_KEY;
+  if (!key) { console.log('METABASE_API_KEY not set — PTL calls column left blank.'); return null; }
+  const ts = t => new Date(t + IST).toISOString().slice(0, 19).replace('T', ' ');
+  const buckets = periods.map((p, i) =>
+    `COUNT_IF(ct >= '${ts(p.from)}' AND ct < '${ts(p.to)}') AS p${i}`).join(', ');
+  const sql = `WITH pb AS (
+    SELECT partner_account_id, partner_name, partner_mobile AS mobile FROM hierarchy_base WHERE dedup_flag = 1
+    UNION ALL
+    SELECT partner_account_id, partner_name, rohit_contact FROM hierarchy_base WHERE dedup_flag = 1
+  ), c AS (
+    SELECT pb.partner_name AS pn, a.CALL_TIME AS ct
+    FROM PROD_DB.PUBLIC.AMEYO_CALL_DETAILS_REPORT a
+    JOIN pb ON a.PHONE = pb.mobile
+    WHERE a.QUEUE_NAME = 'PartnerSupportQueue'
+      AND a.CALL_TIME >= '${ts(periods[periods.length - 1].from)}'
+      AND a.CALL_TIME <  '${ts(periods[periods.length - 1].to)}'
+  )
+  SELECT pn, ${buckets} FROM c GROUP BY pn`;
+  try {
+    const r = await fetch(METABASE + '/api/dataset', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'content-type': 'application/json' },
+      body: JSON.stringify({ database: 113, type: 'native', native: { query: sql } }),
+    }).then(x => x.json());
+    if (!r.data || !r.data.rows) throw new Error(JSON.stringify(r.error || r).slice(0, 200));
+    const map = {};
+    r.data.rows.forEach(row => {
+      const k = normName(row[0]);
+      if (!k) return;
+      const arr = map[k] || (map[k] = periods.map(() => 0));
+      for (let i = 0; i < periods.length; i++) arr[i] += Number(row[i + 1]) || 0;
+    });
+    console.log('PTL calls fetched for', Object.keys(map).length, 'CSPs');
+    return map;
+  } catch (e) {
+    console.error('PTL calls query failed (non-fatal):', e.message);
+    return null;
+  }
+}
+
 const MON = { jan:0, feb:1, mar:2, apr:3, may:4, jun:5, jul:6, aug:7, sep:8, oct:9, nov:10, dec:11 };
 function parseDate(s) {
   if (!s) return null;
@@ -62,6 +110,15 @@ function startTs(c) {
   if (!t) t = Number(c.owner_assigned_at) || 0;
   return t;
 }
+// caseStartTs (index.html:2926) — the clock the 48-hr flag actually runs on.
+function clockTs(c) {
+  let t = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+  if (!t) { const d = parseDate(c.case_added_on); t = d ? d.getTime() : 0; }
+  return t >= LAUNCH ? t : 0;
+}
+const isMatured = c => { const t = clockTs(c); return t > 0 && (Date.now() - t) >= LIM; };
+// Router pinged AFTER the complaint -> the line came back, nothing owed.
+const pingedAfter = c => Number(c.last_ping_at) > 0 && Number(c.last_ping_at) > startTs(c);
 function resolvedWithin48(c) {
   if (getStatus(c) === 'Unresolved') return false;
   const s = startTs(c), rt = Number(c.remarks_updated_at) || 0;
@@ -89,22 +146,58 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // Finance-sheet match by Kapture ticket OR the customer's registered number
   const sheetEntry = c => (sheet && sheet[dig(c.ticket_no)]) ||
     (sheetMob && sheetMob[dig(c.mobile).slice(-10)]) || null;
-  const era = Object.entries(casesRaw)
+  let era = Object.entries(casesRaw)
     .filter(([k]) => !k.startsWith('__'))
     .map(([, c]) => c)
     .filter(c => c && c.ticket_no && startTs(c) >= LAUNCH);
+  // (CUT is applied just below, once the week slices are known.)
 
-  // Monday-anchored IST weeks
+  // Weeks are the TRACKER's own buckets (index.html weekSliceOf): calendar
+  // slices 1-7 / 8-14 / 15-21 / 22-end. Those drive the dashboard's Week
+  // filter and every Reports column, so the recap has to use them too.
+  // Intake stops at the end of the most recent Saturday — an unworked
+  // Sunday/Monday arrival must not drag a week's numbers down.
+  const MN2 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
   const istNow = new Date(NOW + IST);
-  const d0 = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()) - IST; // IST midnight today
-  const dow = (istNow.getUTCDay() + 6) % 7; // Mon=0
-  const thisMon = d0 - dow * 86400000;
-  const lastWeek = { from: thisMon - 7 * 86400000, to: thisMon };
-  const weekBefore = { from: Math.max(LAUNCH, thisMon - 14 * 86400000), to: thisMon - 7 * 86400000 };
+  const istMs = (y, m, day) => Date.UTC(y, m, day) - IST;
+  const istMidnight = istMs(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate());
+  const CUT = istMidnight - (istNow.getUTCDay() % 7) * 86400000;
+  const cutLabel = fmtD(CUT - 1);
+  function sliceOf(ts) {
+    const d = new Date(ts + IST);
+    const y = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate();
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const ranges = [[1, 7], [8, 14], [15, 21], [22, lastDay]];
+    let wi = 4, a = 22, b = lastDay;
+    for (let i = 0; i < 4; i++) { if (day >= ranges[i][0] && day <= ranges[i][1]) { wi = i + 1; a = ranges[i][0]; b = ranges[i][1]; break; } }
+    return { id: y * 10000 + m * 100 + wi, key: MN2[m] + ' W' + wi, from: istMs(y, m, a), to: istMs(y, m, b + 1) };
+  }
+  const allSlices = [];
+  for (let t = LAUNCH; t < NOW; t += 86400000) {
+    const sl = sliceOf(t);
+    if (!allSlices.some(x => x.id === sl.id)) allSlices.push(sl);
+  }
+  const doneSlices = allSlices.filter(x => x.to <= CUT).slice(-3);
+  const mStart = istMs(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
+  const periods = doneSlices.concat([
+    { key: 'MTD', from: mStart, to: CUT },
+    { key: 'Since launch', from: LAUNCH, to: CUT },
+  ]);
+  periods.forEach(pp => { pp.to = Math.min(pp.to, CUT); pp.label = fmtD(pp.from) + ' – ' + fmtD(pp.to - 1); });
+  const LASTCOL = periods.length - 1;
+  era = era.filter(c => startTs(c) < CUT);
 
-  const isReop = c => Number(c.reopened_at) > 0 || String(c.source) === 'reopened-cron';
+  // A reopen is a case WE marked resolved that came back down (reopened_at).
+  // source='reopened-cron' is an INTAKE label — Kapture already showed the
+  // ticket reopened when the cron pulled it in — and counting it here inflated
+  // the rate ~7x. It is reported separately instead.
+  const reopTs = c => Number(c.reopened_at) || 0;
+  const isReop = c => reopTs(c) > 0;
+  const cameInAsReopen = c => String(c.source) === 'reopened-cron';
+  const RES_REMARKS = ['resolved by old partner', 'resolved by old csp'];
+  const isResRemark = c => RES_REMARKS.includes(trim(c.remarks).toLowerCase()) || trim(c.migration_date) !== '';
   const stats = list => {
-    const matured = list.filter(c => (NOW - startTs(c)) >= LIM);
+    const matured = list.filter(isMatured);
     const m = matured.length;
     // NET of reopened: resolutions later reopened don't count
     const w48 = matured.filter(c => resolvedWithin48(c) === true && !isReop(c)).length;
@@ -120,7 +213,13 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     // the funnel's Refund stage); doneN/doneAmt keep the all-in count for notes.
     const doneBrL = matured.filter(c => getStatus(c) === 'Unresolved' && (sheetEntry(c) || trim(c.cx_action) === 'Refund Done'));
     const doneBrAmt = doneBrL.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
-    return { n: list.length, m, w48, w48g, unresM, late, resolvedAll, pendN: pend.length, pendAmt, doneN: done.length, doneAmt, doneBr: doneBrL.length, doneBrAmt };
+    // Refund-eligible = breached AND the router never pinged again.
+    const eligL = matured.filter(c => getStatus(c) === 'Unresolved' && !pingedAfter(c));
+    const paidL = done.filter(c => ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)) > 0);
+    const paidAmt = paidL.reduce((a, c) => a + ((Number(c.refund_amount) || 0) || (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0)), 0);
+    const cspSet = new Set(matured.filter(c => getStatus(c) === 'Unresolved').map(c => trim(c.partner) || '(unknown)'));
+    return { n: list.length, m, w48, w48g, unresM, late, resolvedAll, pendN: pend.length, pendAmt, doneN: done.length, doneAmt, doneBr: doneBrL.length, doneBrAmt,
+      elig: eligL.length, paidN: paidL.length, paidAmt, csps: cspSet.size };
   };
   // ── Funnel extras (till date) ─────────────────────────────────────────────
   const countBy = (list, keyFn) => {
@@ -128,7 +227,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     list.forEach(c => { const k = keyFn(c) || '(no remark yet)'; map[k] = (map[k] || 0) + 1; });
     return Object.entries(map).sort((a, b) => b[1] - a[1]);
   };
-  const maturedTD = era.filter(c => (NOW - startTs(c)) >= LIM);
+  const maturedTD = era.filter(isMatured);
   const breached = maturedTD.filter(c => getStatus(c) === 'Unresolved');
   const unresReasons = countBy(breached, c => trim(c.remarks));
   const breachedDone = breached.filter(c => sheetEntry(c) || trim(c.cx_action) === 'Refund Done');
@@ -267,20 +366,44 @@ ${top.map(c => {
     cspRca = '';
   }
   const inRange = (r) => era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to; });
+  // Reopens are an EVENT: counted in the week they came back, against the
+  // resolutions marked in that same week.
+  function reopStats(r) {
+    const back = era.filter(c => { const t = reopTs(c); return t >= r.from && t < r.to; });
+    const resMarked = era.filter(c => { const t = Number(c.remarks_updated_at) || 0; return t >= r.from && t < r.to && isResRemark(c); });
+    const intake = era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to && cameInAsReopen(c); });
+    return { reopWeek: back.length, resWeek: resMarked.length, intake: intake.length };
+  }
+  const S = periods.map(pp => Object.assign(stats(inRange(pp)), reopStats(pp)));
 
-  const sWB = stats(inRange(weekBefore));
-  const sLW = stats(inRange(lastWeek));
-  const sTD = stats(era);
+  const ptl = await ptlCallsByPartner(periods);
+  // Calls placed at PTL, in each period, by the CSPs that left cases unresolved
+  // in that same period — the pairing the review asks for.
+  const ptlRow = periods.map((pp, i) => {
+    if (!ptl) return null;
+    const csps = new Set(inRange(pp).filter(c => isMatured(c) && getStatus(c) === 'Unresolved')
+      .map(c => normName(c.partner)).filter(Boolean));
+    let calls = 0, matched = 0;
+    csps.forEach(k => { if (ptl[k]) { calls += ptl[k][i]; matched++; } });
+    return { calls, csps: csps.size, matched };
+  });
+
+  const sWB = S[1];          // week -2
+  const sLW = S[2];          // week -1 (the most recent completed slice)
+  const sTD = S[LASTCOL];    // since launch
 
   const wowRes = (sLW.m && sWB.m) ? (sLW.w48 / sLW.m - sWB.w48 / sWB.m) * 100 : 0;
   const avgPerDay = Math.round(sTD.n / Math.max(1, Math.ceil((NOW - LAUNCH) / 86400000)));
-  const wbLabel = fmtD(weekBefore.from) + ' – ' + fmtD(weekBefore.to - 1);
-  const lwLabel = fmtD(lastWeek.from) + ' – ' + fmtD(lastWeek.to - 1);
-  const tdLabel = '29 Jul – ' + fmtD(NOW);
+  const wbLabel = periods[1].key + ' (' + periods[1].label + ')';
+  const lwLabel = periods[2].key + ' (' + periods[2].label + ')';
+  const tdLabel = '29 Jul – ' + cutLabel;
 
   // ── HTML doc ──
   const row = (label, f, cls) =>
-    `<tr><td>${label}</td><td${cls ? ` class="${cls}"` : ''}>${f(sWB)}</td><td${cls ? ` class="${cls}"` : ''}>${f(sLW)}</td><td class="tot${cls ? ' ' + cls : ''}">${f(sTD)}</td></tr>`;
+    `<tr><td>${label}</td>` + S.map((st, i) =>
+      `<td class="${i === LASTCOL ? 'tot ' : ''}${cls || ''}">${f(st)}</td>`).join('') + '</tr>';
+  const cols = periods.map((pp, i) =>
+    `<th${i === LASTCOL ? ' class="tot"' : ''}>${pp.key}<br><span style="font-weight:400;opacity:.85">${pp.label}</span></th>`).join('');
   const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>48-Hour TAT — Weekly Metrics Recap</title>
 <style>
@@ -324,24 +447,28 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 </div>
 </header>
 <section>
-<h2>Week before vs last week vs till date</h2>
-<p class="sub">Cohorts by the date the case entered the tracker. Recent cases still inside their 48-hour window are excluded from matured metrics.</p>
+<h2>Week-wise numbers</h2>
+<p class="sub">Weeks are the tracker's own buckets (1-7 / 8-14 / 15-21 / 22-end), cohorted by the date the case entered the tracker. Cases received after ${cutLabel} are excluded, and every percentage is over matured cases only — those that completed their full 48-hour window.</p>
 <div class="tablewrap"><table>
-<thead><tr><th>Metric</th><th>Week before<br>(${wbLabel})</th><th>Last week<br>(${lwLabel})</th><th class="tot">Till date<br>(${tdLabel})</th></tr></thead>
+<thead><tr><th>Metric</th>${cols}</tr></thead>
 <tbody>
-${row('Cases added', s => s.n.toLocaleString('en-IN'))}
-${row('Matured (completed 48-hr window)', s => s.m.toLocaleString('en-IN') + ' (' + pct(s.m, s.n) + ')')}
-${row('Resolved ≤ 48 hrs (gross)', s => s.w48g.toLocaleString('en-IN') + ' (' + pct(s.w48g, s.m) + ')')}
-${row('Reopened among those resolutions', s => (s.w48g - s.w48) + ' (' + pct(s.w48g - s.w48, s.w48g) + ')', 'b')}
-${row('Resolved ≤ 48 hrs — <b>net of reopened</b>', s => s.w48.toLocaleString('en-IN') + ' (' + pct(s.w48, s.m) + ')', 'g')}
-${row('Resolved late (after breaching)', s => s.late + ' (' + pct(s.late, s.m) + ')')}
-${row('Unresolved matured (breached, still open)', s => s.unresM + ' (' + pct(s.unresM, s.m) + ')', 'b')}
-${row('Overall resolved (any time)', s => s.resolvedAll + ' (' + pct(s.resolvedAll, s.n) + ' of added)')}
-${row('Refund pending — cases', s => s.pendN + ' (' + pct(s.pendN, s.unresM) + ' of breached)')}
-${row('<b>Refund pending — pro-rata amount</b>', s => inr(s.pendAmt), 'b')}
-${row('Refund done — cases (of breached)', s => s.doneBr + ' (' + pct(s.doneBr, s.unresM) + ' of breached)')}
-${row('<b>Refund done — amount</b>', s => inr(s.doneBrAmt), 'g')}
+${row('Cases received', s => s.n.toLocaleString('en-IN'))}
+${row('Matured — past 48 hrs since being added', s => s.m.toLocaleString('en-IN'))}
+${row('<b>Resolved within 48 hrs</b>', s => pct(s.w48g, s.m), 'g')}
+${row('Resolved, count', s => s.w48g.toLocaleString('en-IN'))}
+${row('<b>Reopened</b>', s => pct(s.reopWeek, s.resWeek), 'b')}
+${row('Reopened, count', s => s.reopWeek + ' of ' + s.resWeek.toLocaleString('en-IN') + ' resolutions')}
+${row('<b>Resolved within 48 hrs — net of reopened</b>', s => pct(s.w48, s.m), 'g')}
+${row('<b>Unresolved</b>', s => pct(s.unresM, s.m), 'b')}
+${row('Unresolved, count', s => s.unresM.toLocaleString('en-IN'))}
+${row('<b>Unresolved and eligible for refund</b> <span style="font-weight:400;color:var(--muted)">(no ping since the complaint)</span>', s => s.elig.toLocaleString('en-IN') + ' (' + pct(s.elig, s.m) + ')', 'b')}
+${row('<b>Average amount paid to a customer</b>', s => (s.paidN ? inr(s.paidAmt / s.paidN) : '—'))}
+${row('<b>Total amount refunded to customers</b>', s => inr(s.paidAmt), 'g')}
+${row('CSPs contributing to the unresolved cases', s => s.csps)}
+<tr><td>Calls at PTL by those CSPs</td>${ptlRow.map((x, i) =>
+  `<td class="${i === LASTCOL ? 'tot' : ''}">${x ? x.calls.toLocaleString('en-IN') : '—'}</td>`).join('')}</tr>
 </tbody></table></div>
+<p class="sub" style="margin-top:10px">Calls at PTL = Ameyo calls on the PartnerSupportQueue placed by those CSPs' registered numbers, same attribution as Metabase card 12025.${ptlRow[LASTCOL] ? ` Matched ${ptlRow[LASTCOL].matched} of the ${ptlRow[LASTCOL].csps} CSPs since launch.` : ''}<br>A further ${S.map(x => x.intake).slice(0, 3).join(' / ')} cases (Week −3 / −2 / −1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
 </section>
 <section>
 <h2>The complete funnel — case added → resolved ≤48h → unresolved &gt;48h → refund → closed (${tdLabel})</h2>
@@ -363,10 +490,9 @@ ${ageing.map(([r, n]) => `<tr><td style="padding-left:34px">↳ Pending since ${
 ${closure.map(([s, n]) => `<tr><td style="padding-left:34px">↳ ${s}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left">${s === 'Completed' ? 'Disposed by PFT but tracker still shows unresolved — verify' : s === 'Pending' ? 'Still open in Kapture too' : ''}</td></tr>`).join('\n')}
 </tbody></table></div>
 </section>
-${reopWowHtml}
 ${cspRca}
 ${rcaLedger}
-<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (IST).</div>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a resolution of ours that came back down (reopened_at), counted in the week it came back.</div>
 </div></body></html>`;
 
   const outPath = path.join(__dirname, '..', 'recap.html');

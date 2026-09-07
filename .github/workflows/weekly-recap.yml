@@ -25,6 +25,7 @@ jobs:
       - name: Build recap + DM Slack
         env:
           SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          METABASE_API_KEY: ${{ secrets.METABASE_API_KEY }}
         run: node scripts/weekly-recap.js
 
       - name: Commit recap.html
