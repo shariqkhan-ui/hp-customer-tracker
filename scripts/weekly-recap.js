@@ -19,6 +19,7 @@ const IST = 5.5 * 3600000;
 const SLACK_USER = 'U04TL31PC1Y'; // Shariq
 const DOC_URL = 'https://shariqkhan-ui.github.io/hp-customer-tracker/recap.html';
 // Field team's reopen-RCA sheet (CX/CSP remarks + last ping per reopened ticket)
+const TVCAM = require('../data-tvcam-rca.json');
 const RCA_SHEET_CSV = 'https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/export?format=csv&gid=0';
 
 function parseCSVText(text) {
@@ -627,6 +628,34 @@ ${['Nothing payable', 'Still owed to the customer'].map(g => {
 
 </section>`;
 
+  // ── TV / Camera RCA ───────────────────────────────────────────
+  // Bucketed for the meeting: issue type, how many customers and CSPs it hit,
+  // and what closed it. Full case-by-case report lives in tv-camera-rca.html.
+  const escT = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const tvN = TVCAM.length;
+  const tvB = {};
+  TVCAM.forEach(r => {
+    const e = tvB[r.bucket] || (tvB[r.bucket] = { n: 0, csps: new Set(), res: r.resolution, open: 0 });
+    e.n++; if (r.csp) e.csps.add(r.csp);
+    if (r.state === 'Open') e.open++;
+  });
+  const tvRows = Object.entries(tvB).sort((x, y) => y[1].n - x[1].n).map(([k, v]) =>
+    `<tr><td style="text-align:left;white-space:normal">${escT(k)}</td><td>${v.n}</td><td>${v.csps.size}</td>` +
+    `<td style="text-align:left;font-weight:400;white-space:normal">${escT(v.res)}</td>` +
+    `<td>${v.open ? '<span style="color:var(--bad);font-weight:700">' + v.open + ' open</span>' : 'closed'}</td></tr>`).join(NL);
+  const tvOurs = TVCAM.filter(r => !/Customer TV/.test(r.cause)).length;
+  const tvCsps = new Set(TVCAM.map(r => r.csp).filter(Boolean)).size;
+  const tvcamHtml = `<section>
+<h2>TV &amp; camera complaints — RCA</h2>
+<p class="sub">${tvN} customers across ${tvCsps} CSPs, taken end to end by the field team. <b>${tvOurs} of ${tvN} were faults in the network we run</b>, not the television — the TV is simply where the customer notices, being the device that is on every evening. Full case-by-case report: <a href="tv-camera-rca.html" style="color:var(--accent-ink)">tv-camera-rca.html</a>.</p>
+<div class="tablewrap"><table>
+<thead><tr><th style="text-align:left">Issue type</th><th>Customers</th><th>CSPs</th><th style="text-align:left">Resolution</th><th>Status</th></tr></thead>
+<tbody>
+${tvRows}
+</tbody></table></div>
+<p class="sub" style="margin-top:10px"><b>The finding that changes how we work:</b> all four device swaps were raised on the same symptom, the network name had vanished. Tested against the ping record, one unit was genuinely dead and one was online and broadcasting on both bands the day it was replaced; the other two predate the ping data. Band steering was never flagged on any of them. The fix is to read the ping record before authorising a swap, rather than treating a missing SSID as dead hardware.</p>
+</section>`;
+
   // ── Last meeting's action items ───────────────────────────────────────────
   // Live from the tracker's Action Items tab — nothing typed by hand.
   const escA = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
@@ -719,6 +748,7 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">A further ${S.map(x => x.intake).slice(0, 3).join(' / ')} cases (the three completed weeks) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
 </section>
+${tvcamHtml}
 ${refundFunnel}
 ${cspRca}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's FIRST_REOPENED_TIME (the tracker's own reopened_at field only catches a dashboard revert inside 24 hrs and misses about half of them). Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
