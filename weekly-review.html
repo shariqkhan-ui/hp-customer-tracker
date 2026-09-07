@@ -1,204 +1,391 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>48-Hour TAT — Weekly Metrics Recap</title>
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>High Pain Weekly Review</title>
+<meta name="description" content="The 48-hour TAT weekly review — action items, week-wise funnel, reopens, refunds and the CSPs behind the unresolved cases.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:wght@600;700&display=swap">
 <style>
-:root{--bg:#faf7f9;--surface:#fff;--surface2:#f4eef2;--ink:#241a21;--ink2:#5d4f58;--muted:#8a7a83;--border:#e6dce2;--accent-ink:#a30f66;--good:#1a7f37;--good-soft:#e6f4ea;--bad:#c2410c;--bad-soft:#ffe9dd;--head:#D9008D;--head2:#A3006A}
-*{box-sizing:border-box}body{background:var(--bg);color:var(--ink);font:16px/1.6 "Segoe UI",system-ui,sans-serif;margin:0;padding:0 20px 64px}
-.wrap{max-width:900px;margin:0 auto}header{padding:44px 0 6px}
-.eyebrow{font-size:12px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--accent-ink);margin:0 0 10px}
-h1{font-size:clamp(24px,5vw,34px);margin:0 0 10px;letter-spacing:-.02em}
-.meta{font-size:13px;color:var(--muted);margin-bottom:6px}
-.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-top:20px}
-.tile{background:var(--surface);border:1px solid var(--border);border-radius:10px;padding:15px 17px 12px}
-.tile .label{font-size:11.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
-.tile .value{font-size:31px;font-weight:750;margin-top:6px;font-variant-numeric:tabular-nums}
-.tile .note{font-size:12.5px;color:var(--ink2);margin-top:3px}
-section{margin-top:34px}h2{font-size:18px;margin:0 0 4px}.sub{color:var(--muted);font-size:13px;margin:0 0 14px}
-.tablewrap{overflow-x:auto;border-radius:10px;border:1px solid var(--border);background:var(--surface)}
-table{border-collapse:collapse;width:100%;font-size:14px;min-width:620px}
-th{background:var(--head);color:#fff;font-weight:700;padding:9px 14px;text-align:right;font-size:12px;white-space:nowrap}
-th:first-child{text-align:left}th.tot{background:var(--head2)}
-td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
-td:first-child{text-align:left;color:var(--ink);font-weight:600;white-space:normal}
-tr:last-child td{border-bottom:none}td.g{color:var(--good);font-weight:750}td.b{color:var(--bad);font-weight:750}td.tot{background:var(--surface2);font-weight:700}
-.notes{border-top:1px solid var(--border);margin-top:40px;padding-top:14px;font-size:12.5px;color:var(--muted)}
-</style></head><body><div class="wrap">
+:root{
+  --bg:#F7F3F6; --surface:#FFFFFF; --surface2:#F3EAF0; --raise:#FBF7FA;
+  --ink:#1E141B; --ink2:#574A52; --muted:#8B7B85; --border:#E7DAE2; --rule:#D9C6D2;
+  --accent:#C2007A; --accent-ink:#8E0059; --accent-soft:#FCE7F3;
+  --good:#1A7F37; --good-soft:#E4F3E9; --warn:#A75B00; --bad:#B23A0A; --bad-soft:#FCE6DC;
+}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]){
+    --bg:#150F14; --surface:#1E1720; --surface2:#271E29; --raise:#241C26;
+    --ink:#F5ECF2; --ink2:#C8B8C3; --muted:#95848F; --border:#382B36; --rule:#4A3A46;
+    --accent:#FF5FBE; --accent-ink:#FF92D3; --accent-soft:#3A1030;
+    --good:#5BD07F; --good-soft:#12301C; --warn:#E8A33D; --bad:#FF8757; --bad-soft:#3A1A0E;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#150F14; --surface:#1E1720; --surface2:#271E29; --raise:#241C26;
+  --ink:#F5ECF2; --ink2:#C8B8C3; --muted:#95848F; --border:#382B36; --rule:#4A3A46;
+  --accent:#FF5FBE; --accent-ink:#FF92D3; --accent-soft:#3A1030;
+  --good:#5BD07F; --good-soft:#12301C; --warn:#E8A33D; --bad:#FF8757; --bad-soft:#3A1A0E;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font:400 16px/1.62 "IBM Plex Sans",-apple-system,Segoe UI,system-ui,sans-serif;
+  padding:0 22px 88px}
+.wrap{max-width:1060px;margin:0 auto}
+a{color:var(--accent-ink)}
+header{padding:52px 0 8px;border-bottom:1px solid var(--rule)}
+.eyebrow{font:600 12px/1 "IBM Plex Mono",ui-monospace,monospace;letter-spacing:.16em;
+  text-transform:uppercase;color:var(--accent);margin:0 0 14px}
+h1{font:700 clamp(30px,5.2vw,46px)/1.08 "IBM Plex Serif",Georgia,serif;margin:0 0 12px;
+  letter-spacing:-.02em;text-wrap:balance}
+.dek{font-size:17px;color:var(--ink2);max-width:62ch;margin:0 0 20px}
+.stamp{font:500 12.5px/1.5 "IBM Plex Mono",ui-monospace,monospace;color:var(--muted);
+  padding-bottom:26px;display:flex;flex-wrap:wrap;gap:6px 20px}
+.tiles{display:grid;grid-template-columns:repeat(auto-fit,minmax(184px,1fr));gap:1px;
+  background:var(--border);border:1px solid var(--border);border-radius:12px;overflow:hidden;margin:26px 0 0}
+.tile{background:var(--surface);padding:16px 18px 15px}
+.tile .lb{font:600 11px/1.3 "IBM Plex Mono",monospace;letter-spacing:.09em;text-transform:uppercase;color:var(--muted)}
+.tile .vl{font:600 30px/1.15 "IBM Plex Mono",monospace;margin-top:7px;font-variant-numeric:tabular-nums;letter-spacing:-.02em}
+.tile .nt{font-size:12.5px;color:var(--ink2);margin-top:3px}
+.up{color:var(--good)} .down{color:var(--bad)}
+section{margin-top:54px;scroll-margin-top:20px}
+.sec-head{display:flex;align-items:baseline;gap:12px;border-bottom:1px solid var(--rule);padding-bottom:10px;margin-bottom:16px}
+.sec-no{font:600 12px/1 "IBM Plex Mono",monospace;color:var(--accent);letter-spacing:.12em;padding-top:4px}
+h2{font:700 clamp(21px,2.6vw,27px)/1.2 "IBM Plex Serif",Georgia,serif;margin:0;letter-spacing:-.015em}
+h3{font:600 17px/1.35 "IBM Plex Serif",Georgia,serif;margin:0 0 6px}
+h4{font:600 13px/1.3 "IBM Plex Mono",monospace;letter-spacing:.07em;text-transform:uppercase;
+  color:var(--muted);margin:30px 0 10px}
+.sub{color:var(--ink2);font-size:14.5px;margin:0 0 18px;max-width:78ch}
+.item{display:grid;grid-template-columns:44px 1fr;gap:16px;padding:18px 0;border-bottom:1px solid var(--border)}
+.item:last-of-type{border-bottom:0}
+.item-no{font:600 15px/1.4 "IBM Plex Mono",monospace;color:var(--muted);padding-top:2px}
+.item-body h3{margin-bottom:8px;text-wrap:balance}
+.item-meta{display:flex;flex-wrap:wrap;gap:8px 14px;align-items:center;font:500 12.5px/1 "IBM Plex Mono",monospace;color:var(--muted);margin-bottom:9px}
+.item-note{margin:0;color:var(--ink2);font-size:14.6px;max-width:74ch}
+.item-link{margin:8px 0 0;font-size:14px}
+.pill{display:inline-block;padding:3px 9px;border-radius:999px;font:600 11px/1.5 "IBM Plex Mono",monospace;
+  letter-spacing:.05em;text-transform:uppercase}
+.pill-done{background:var(--good-soft);color:var(--good)}
+.pill-open{background:var(--accent-soft);color:var(--accent-ink)}
+.pill-blocked{background:var(--bad-soft);color:var(--bad)}
+.tablewrap{overflow-x:auto;border:1px solid var(--border);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14.4px;min-width:640px}
+th{background:var(--surface2);color:var(--ink);text-align:right;padding:11px 14px;
+  font:600 12px/1.35 "IBM Plex Mono",monospace;letter-spacing:.04em;border-bottom:1px solid var(--rule);white-space:nowrap;vertical-align:bottom}
+th:first-child{text-align:left}
+th .ch{display:block}
+th .cd{display:block;font-weight:400;color:var(--muted);letter-spacing:0;font-size:11px;margin-top:3px}
+td{padding:9px 14px;border-bottom:1px solid var(--border);text-align:right;color:var(--ink2);
+  font-variant-numeric:tabular-nums;white-space:nowrap}
+td.lbl{text-align:left;color:var(--ink);white-space:normal}
+td.wrap{white-space:normal;text-align:left;min-width:150px}
+tr:last-child td{border-bottom:0}
+tr.head td{background:var(--raise);font-weight:600;color:var(--ink)}
+tr.step td.lbl{padding-left:32px;position:relative}
+tr.step td.lbl::before{content:"↳";position:absolute;left:14px;color:var(--muted)}
+td.mtd{background:var(--raise);color:var(--ink);font-weight:600}
+th:last-child{background:var(--accent-soft)}
+.note{display:block;font-size:12px;color:var(--muted);font-weight:400;margin-top:1px}
+.pv{display:inline-block}
+.mini{display:block;height:3px;border-radius:2px;background:var(--border);margin-top:5px;overflow:hidden}
+.mini-fill{display:block;height:100%;border-radius:2px}
+.mini-fill.g{background:var(--good)} .mini-fill.b{background:var(--accent)}
+.bad{color:var(--bad);font-weight:600}
+.pend{color:var(--muted)}
+.mono{font-family:"IBM Plex Mono",monospace;font-size:13px}
+.callout{border:1px solid var(--border);border-left:3px solid var(--accent);background:var(--surface);
+  border-radius:0 10px 10px 0;padding:15px 18px;margin:18px 0 0;font-size:14.6px;color:var(--ink2)}
+.callout b{color:var(--ink)}
+.playbook{list-style:none;counter-reset:pb;padding:0;margin:12px 0 0;display:grid;gap:1px;
+  background:var(--border);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.playbook li{counter-increment:pb;background:var(--surface);padding:14px 18px 14px 52px;position:relative;font-size:14.6px;color:var(--ink2)}
+.playbook li::before{content:counter(pb);position:absolute;left:18px;top:14px;
+  font:600 13px/1.6 "IBM Plex Mono",monospace;color:var(--accent)}
+.playbook b{color:var(--ink)}
+footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
+  font:400 13px/1.6 "IBM Plex Mono",monospace;color:var(--muted)}
+@media (max-width:640px){
+  body{padding:0 14px 60px}
+  .item{grid-template-columns:32px 1fr;gap:10px}
+}
+@media (prefers-reduced-motion:no-preference){a{transition:color .15s}}
+:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:3px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
 <header>
-<p class="eyebrow">HP Customer Tracker · 48-Hour TAT Flag</p>
-<h1>Weekly review — 48-hr TAT funnel</h1>
-<p class="meta">Generated 1 Sep 2026 · matured cases only (completed their full 48-hour window) · auto-refreshed every Monday</p>
-<div style="background:var(--good-soft);border:1px solid var(--good);border-radius:10px;padding:12px 16px;margin-top:14px;font-size:14.5px">
-🎯 <b>Target: 80% resolution within 48 hrs by end of August.</b>
-Currently at <b>70.2%</b> — <b style="color:var(--bad)">9.8 pp to go</b>.
-</div>
-<div class="tiles">
-<div class="tile"><div class="label">Resolution within 48 hrs</div><div class="value" style="color:var(--good)">70.2%</div><div class="note">2048 of 2918 matured · till date · <b>last week (24 Aug – 30 Aug): 73.8%</b> · target 80%</div></div>
-<div class="tile"><div class="label">Unresolved matured tickets</div><div class="value" style="color:var(--bad)">24.9%</div><div class="note">727 of 2918 matured still unresolved past 48 hrs · <b>last week: 21.6%</b></div></div>
-<div class="tile"><div class="label">Cases added since 29 Jul</div><div class="value">3,011</div><div class="note">avg <b>~86 tickets/day</b> · 2,918 matured · 93 in window · <b>last week: 716 added</b></div></div>
-<div class="tile"><div class="label">Share of all service tickets</div><div class="value">5.6%</div><div class="note"><b>2,764 tracked</b> of 49,385 service tickets since 29 Jul · 6.8% of the 40,645 internet complaints — only cases unresolved past 72 hrs enter the tracker</div></div>
-<div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending (&gt;48 hrs unresolved)</div><div class="value" style="color:var(--bad)">₹83,293</div><div class="note">510 breached open cases owe a pro-rata refund · <b>last week cohort: 98 (₹16,702)</b></div></div>
-<div class="tile" style="border-color:var(--good)"><div class="label">Refund done</div><div class="value" style="color:var(--good)">₹54,130</div><div class="note">217 of 727 breached refunded (29.8%) · <b>last week cohort: 49 (₹11,689)</b> · all-in incl. later-resolved: 285 (₹70,496)</div></div>
-<div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened % of resolved</div><div class="value" style="color:var(--accent-ink)">4.3%</div><div class="note"><b>96 reopens</b> of 2,247 cases resolved since 29 Jul · <b>last week: 14 reopens (2.7%)</b></div></div>
-<div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:var(--good)">+7.7 pp</div><div class="note">Resolved within 48 hrs: <b>66.1%</b> (17 Aug – 23 Aug) → <b>73.8%</b> (24 Aug – 30 Aug)</div></div>
-</div>
+  <p class="eyebrow">High Pain · 48-hour TAT</p>
+  <h1>Weekly Review — 31 Aug – 6 Sep</h1>
+  <p class="dek">Every case we took in, and what happened to it: the action items we closed, the week the cases matured in, who was left unresolved, and what we paid back.</p>
 </header>
-<section>
-<h2>Week before vs last week vs till date</h2>
-<p class="sub">Cohorts by the date the case entered the tracker. Recent cases still inside their 48-hour window are excluded from matured metrics.</p>
-<div class="tablewrap"><table>
-<thead><tr><th>Metric</th><th>Week before<br>(17 Aug – 23 Aug)</th><th>Last week<br>(24 Aug – 30 Aug)</th><th class="tot">Till date<br>(29 Jul – 1 Sep)</th></tr></thead>
-<tbody>
-<tr><td>Cases added</td><td>516</td><td>716</td><td class="tot">3,011</td></tr>
-<tr><td>Matured (completed 48-hr window)</td><td>516 (100.0%)</td><td>680 (95.0%)</td><td class="tot">2,918 (96.9%)</td></tr>
-<tr><td>Resolved ≤ 48 hrs (gross)</td><td>367 (71.1%)</td><td>516 (75.9%)</td><td class="tot">2,119 (72.6%)</td></tr>
-<tr><td>Reopened among those resolutions</td><td class="b">26 (7.1%)</td><td class="b">14 (2.7%)</td><td class="tot b">71 (3.4%)</td></tr>
-<tr><td>Resolved ≤ 48 hrs — <b>net of reopened</b></td><td class="g">341 (66.1%)</td><td class="g">502 (73.8%)</td><td class="tot g">2,048 (70.2%)</td></tr>
-<tr><td>Resolved late (after breaching)</td><td>16 (3.1%)</td><td>17 (2.5%)</td><td class="tot">72 (2.5%)</td></tr>
-<tr><td>Unresolved matured (breached, still open)</td><td class="b">133 (25.8%)</td><td class="b">147 (21.6%)</td><td class="tot b">727 (24.9%)</td></tr>
-<tr><td>Overall resolved (any time)</td><td>383 (74.2% of added)</td><td>558 (77.9% of added)</td><td class="tot">2247 (74.6% of added)</td></tr>
-<tr><td>Refund pending — cases</td><td>87 (65.4% of breached)</td><td>98 (66.7% of breached)</td><td class="tot">510 (70.2% of breached)</td></tr>
-<tr><td><b>Refund pending — pro-rata amount</b></td><td class="b">₹12,172</td><td class="b">₹16,702</td><td class="tot b">₹83,293</td></tr>
-<tr><td>Refund done — cases (of breached)</td><td>46 (34.6% of breached)</td><td>49 (33.3% of breached)</td><td class="tot">217 (29.8% of breached)</td></tr>
-<tr><td><b>Refund done — amount</b></td><td class="g">₹12,689</td><td class="g">₹11,689</td><td class="tot g">₹54,130</td></tr>
-</tbody></table></div>
+<div class="stamp">
+  <span>Generated 2026-09-07 17:29 IST</span>
+  <span>Cohort: cases added since 29 Jul (48-hr flag era)</span>
+  <span>Denominator: matured cases only</span>
+</div>
+
+<div class="tiles">
+  <div class="tile"><div class="lb">Matured last week</div><div class="vl">299</div><div class="nt">of 382 added 31 Aug – 6 Sep</div></div>
+  <div class="tile"><div class="lb">Resolved ≤ 48h (net)</div><div class="vl">59.9%</div><div class="nt down">▼ 15.0 pts vs Week −2</div></div>
+  <div class="tile"><div class="lb">Reopened</div><div class="vl">14.4%</div><div class="nt">30 of 209 resolutions came back</div></div>
+  <div class="tile"><div class="lb">Refund-eligible</div><div class="vl">63</div><div class="nt">still down, no ping since the complaint</div></div>
+  <div class="tile"><div class="lb">Paid back last week</div><div class="vl">₹2,126</div><div class="nt">14 customers · avg ₹152</div></div>
+</div>
+
+<section id="actions">
+  <div class="sec-head"><span class="sec-no">01</span><h2>Action items from the last review</h2></div>
+  <p class="sub">Taken one by one, in the order they were raised. Status is live from the tracker's Action Items tab — nothing here is typed by hand.</p>
+  
+      <article class="item">
+        <div class="item-no">01</div>
+        <div class="item-body">
+          <h3>Need to check the installation pictures captured during installation to deep-dive into the improper installation cases</h3>
+          <div class="item-meta"><span class="pill pill-done">Done</span>
+            <span>Shariq</span><span>due 2026-09-01</span></div>
+          <p class="item-note">There is no such evidence to validate poor installation, as in many cases, only a device photo is attached in the app.</p>
+          
+        </div>
+      </article>
+      <article class="item">
+        <div class="item-no">02</div>
+        <div class="item-body">
+          <h3>RCA on TV/Camera issues and a playbook for remote resolution.</h3>
+          <div class="item-meta"><span class="pill pill-done">Done</span>
+            <span>Shariq</span><span>due 2026-09-01</span></div>
+          <p class="item-note"><i>No closing note recorded — to be discussed.</i></p>
+          <p class="item-link"><a href="#tvcam">Read the full TV / Camera RCA below →</a></p>
+        </div>
+      </article>
+      <article class="item">
+        <div class="item-no">03</div>
+        <div class="item-body">
+          <h3>Refund Cases live status Tab into HP Tracker for Deepakshi</h3>
+          <div class="item-meta"><span class="pill pill-done">Done</span>
+            <span>Shariq</span><span>due 2026-09-01</span></div>
+          <p class="item-note">Live — Refund Action tab with auto Ping-up/Refund-Done/Amount-0 flags + 433 historical cases backfilled</p>
+          
+        </div>
+      </article>
+      <article class="item">
+        <div class="item-no">04</div>
+        <div class="item-body">
+          <h3>Last month’s end-of-week resolution % to validate the current high-resolution % thesis.</h3>
+          <div class="item-meta"><span class="pill pill-done">Done</span>
+            <span>Shariq</span><span>due 2026-09-01</span></div>
+          <p class="item-note">Validated: same-observation-point comparison shows last week genuinely best (gross 75.8% vs 69.6-73.2% for all prior weeks; reopens land within ~2 days so decay risk is small)</p>
+          
+        </div>
+      </article>
+      <article class="item">
+        <div class="item-no">05</div>
+        <div class="item-body">
+          <h3>WIOM-Net complaint cases need to be removed from the tracker, with new cases added on a daily basis.</h3>
+          <div class="item-meta"><span class="pill pill-done">Done</span>
+            <span>Shariq</span><span>due 2026-09-01</span></div>
+          <p class="item-note">Detailed RCA in the doc</p>
+          
+        </div>
+      </article>
 </section>
-<section>
-<h2>The complete funnel — case added → resolved ≤48h → unresolved &gt;48h → refund → closed (29 Jul – 1 Sep)</h2>
-<p class="sub">The end-to-end journey of every case received since 29 Jul. Each stage shows absolute + %, and each drop shows what happened.</p>
-<div class="tablewrap"><table>
-<thead><tr><th>Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead>
-<tbody>
-<tr><td><b>1. Case added</b></td><td><b>3,011</b></td><td><b>100%</b></td><td style="text-align:left">All cases entering the tracker since 29 Jul (~86/day)</td></tr>
-<tr><td style="padding-left:34px">↳ Still inside 48-hr window</td><td>93</td><td>3.1%</td><td style="text-align:left">Too fresh to judge — mature within 2 days</td></tr>
-<tr><td style="padding-left:34px">↳ Matured</td><td>2,918</td><td>96.9%</td><td style="text-align:left">Completed their full 48-hour window — base for the stages below</td></tr>
-<tr><td class="g"><b>2. Resolved within 48 hrs</b></td><td class="g"><b>2,048</b></td><td class="g"><b>70.2%</b></td><td style="text-align:left">Net of reopens: gross 2,119 (72.6%) − 71 later reopened</td></tr>
-<tr><td style="padding-left:34px">↳ Resolved late (after breaching)</td><td>72</td><td>2.5%</td><td style="text-align:left">Fixed, but only after the 48-hr promise was broken</td></tr>
-<tr><td class="b"><b>3. Unresolved after 48 hrs</b></td><td class="b"><b>727</b></td><td class="b"><b>24.9%</b></td><td style="text-align:left">Breached and still open — every one owes a pro-rata refund</td></tr>
-<tr><td style="padding-left:34px">↳ Pending since 2 – 4 days</td><td>32</td><td>4.4%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Pending since 4 – 7 days</td><td>69</td><td>9.5%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Pending since 7 – 14 days</td><td>149</td><td>20.5%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Pending since 14 – 21 days</td><td>160</td><td>22.0%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Pending since 21+ days</td><td>317</td><td>43.6%</td><td style="text-align:left"></td></tr>
-<tr><td><b>4. Refund</b></td><td><b>727</b></td><td><b>100% eligible</b></td><td style="text-align:left">Every breached case owes the customer a pro-rata refund</td></tr>
-<tr><td class="g" style="padding-left:34px">↳ Refund done</td><td class="g">217</td><td class="g">29.8%</td><td style="text-align:left">₹54,130 paid (Finance sheet / Cx Action)</td></tr>
-<tr><td class="b" style="padding-left:34px">↳ Refund pending</td><td class="b">510</td><td class="b">70.2%</td><td style="text-align:left">₹83,293 owed pro-rata</td></tr>
-<tr><td><b>5. Closed — Kapture final status</b></td><td><b>727</b></td><td><b>100%</b></td><td style="text-align:left">Where the breached tickets stand in Kapture</td></tr>
-<tr><td style="padding-left:34px">↳ Completed</td><td>602</td><td>82.8%</td><td style="text-align:left">Disposed by PFT but tracker still shows unresolved — verify</td></tr>
-<tr><td style="padding-left:34px">↳ Not yet synced</td><td>110</td><td>15.1%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Closed</td><td>9</td><td>1.2%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px">↳ Pending</td><td>6</td><td>0.8%</td><td style="text-align:left">Still open in Kapture too</td></tr>
-</tbody></table></div>
+
+<section id="tvcam">
+  <div class="sec-head"><span class="sec-no">01b</span><h2>Deep-dive — TV &amp; camera complaints</h2></div>
+  <p class="sub">The RCA behind action item on TV/Camera issues: 15 customers taken end to end by the field team. Read it in three passes — how many customers and with what symptom, what actually caused it, and what the remote playbook should therefore be.</p>
+
+  <h4>Pass 1 · How many customers, and what they reported</h4>
+  <div class="tablewrap"><table style="min-width:520px">
+    <thead><tr><th>Reported symptom</th><th>Customers</th><th>Share</th></tr></thead>
+    <tbody>
+      <tr class="head"><td class="lbl">All customers RCA'd</td><td>15</td><td>100%</td></tr>
+      <tr><td class="lbl wrap">SSID not visible</td><td>6</td><td>40.0%</td></tr><tr><td class="lbl wrap">Full outage</td><td>2</td><td>13.3%</td></tr><tr><td class="lbl wrap">Camera / DVR down</td><td>1</td><td>6.7%</td></tr><tr><td class="lbl wrap">Weak signal at TV</td><td>1</td><td>6.7%</td></tr><tr><td class="lbl wrap">TV will not join Wi-Fi</td><td>1</td><td>6.7%</td></tr><tr><td class="lbl wrap">Buffering</td><td>1</td><td>6.7%</td></tr><tr><td class="lbl wrap">Intermittent buffering</td><td>1</td><td>6.7%</td></tr><tr><td class="lbl wrap">App not opening</td><td>1</td><td>6.7%</td></tr><tr><td class="lbl wrap">TV loses Wi-Fi on restart</td><td>1</td><td>6.7%</td></tr>
+    </tbody></table></div>
+  <div class="callout">14 of the 15 arrive labelled as a <b>TV or camera fault</b> — but only 4 of them are a TV-side problem at all. The rest are ordinary access-network faults that the customer happened to notice on the TV first, because the TV is the thing they watch every evening.</div>
+
+  <h4>Pass 2 · What actually caused it</h4>
+  <div class="tablewrap"><table style="min-width:520px">
+    <thead><tr><th>Root cause</th><th>Cases</th><th>Share</th></tr></thead>
+    <tbody><tr><td class="lbl wrap">Faulty Wi-Fi device</td><td>4</td><td>26.7%<span class="mini"><span class="mini-fill b" style="width:26.7%"></span></span></td></tr><tr><td class="lbl wrap">SSID / WLAN configuration</td><td>2</td><td>13.3%<span class="mini"><span class="mini-fill b" style="width:13.3%"></span></span></td></tr><tr><td class="lbl wrap">ISP backend outage</td><td>2</td><td>13.3%<span class="mini"><span class="mini-fill b" style="width:13.3%"></span></span></td></tr><tr><td class="lbl wrap">Customer-premise equipment — not a network fault</td><td>2</td><td>13.3%<span class="mini"><span class="mini-fill b" style="width:13.3%"></span></span></td></tr><tr><td class="lbl wrap">Faulty LAN cabling (RJ45)</td><td>1</td><td>6.7%<span class="mini"><span class="mini-fill b" style="width:6.7%"></span></span></td></tr><tr><td class="lbl wrap">Coverage / distance</td><td>1</td><td>6.7%<span class="mini"><span class="mini-fill b" style="width:6.7%"></span></span></td></tr><tr><td class="lbl wrap">Band mismatch — TV has no 5 GHz</td><td>1</td><td>6.7%<span class="mini"><span class="mini-fill b" style="width:6.7%"></span></span></td></tr><tr><td class="lbl wrap">ISP-side speed shortfall</td><td>1</td><td>6.7%<span class="mini"><span class="mini-fill b" style="width:6.7%"></span></span></td></tr><tr><td class="lbl wrap">Optical power / line quality</td><td>1</td><td>6.7%<span class="mini"><span class="mini-fill b" style="width:6.7%"></span></span></td></tr></tbody></table></div>
+
+  <h4>Pass 3 · Where each case landed</h4>
+  <div class="tablewrap"><table style="min-width:520px">
+    <thead><tr><th>Outcome</th><th>Cases</th><th>Share</th></tr></thead>
+    <tbody><tr><td class="lbl wrap">Resolved</td><td>9</td><td>60.0%</td></tr><tr><td class="lbl wrap">No fault at our end</td><td>3</td><td>20.0%</td></tr><tr><td class="lbl wrap">Open</td><td>2</td><td>13.3%</td></tr><tr><td class="lbl wrap">Partly resolved</td><td>1</td><td>6.7%</td></tr></tbody></table></div>
+
+  <h4>The remote-resolution playbook this RCA argues for</h4>
+  <ol class="playbook">
+    <li><b>Ask what the customer can see, not what is broken.</b> “Is the Wi-Fi name showing in the TV's network list?” splits the 15 cases straight down the middle — SSID missing is a device or WLAN fault, SSID present is a speed, coverage or TV-side fault.</li>
+    <li><b>SSID not visible anywhere → treat as a dead Wi-Fi device.</b> Four of these ended in a device swap and a reset did not save any of them. Skip the reset loop, raise the replacement.</li>
+    <li><b>SSID visible on the phone but not the TV → rename the SSID from the WLAN settings.</b> Two cases cleared on that alone, remotely, with no visit.</li>
+    <li><b>TV joins nothing while the phone is fine → check the band.</b> Older TVs are 2.4 GHz only; confirm the model before booking a visit. One customer needed the TV shop, not us.</li>
+    <li><b>Buffering, not disconnection → read the line before dispatching.</b> Check ISP throughput and optical receive power first; −30 dBm is already out of range and no CSP visit will fix it.</li>
+    <li><b>Camera down but Wi-Fi up → suspect the LAN run to the DVR.</b> Where the DVR sits in a different shop, the RJ45 crimp is the first thing to test.</li>
+    <li><b>Close the “no fault at our end” cases explicitly.</b> Three of 15 were an uninstalled app, a repaired TV that forgets credentials, and an unsupported band. They must be dispositioned as customer-premise, or they age in the tracker as our breach.</li>
+  </ol>
+
+  <h4>Case ledger</h4>
+  <div class="tablewrap" style="max-height:520px;overflow:auto"><table style="min-width:1020px">
+    <thead><tr><th>Mobile</th><th>Device</th><th>Reported issue</th><th>Root cause</th><th>What we found</th><th>Action taken</th><th>Outcome</th></tr></thead>
+    <tbody><tr>
+      <td class="mono">9355443156</td><td class="mono">GX98428</td>
+      <td class="wrap">Wi-Fi connectivity / laptop not connecting</td><td class="wrap"><b>Faulty Wi-Fi device</b></td>
+      <td class="wrap">Laptop could not connect because the SSID was not visible on any device. Investigation traced it to the Wi-Fi device itself; the technical team replaced it and the network became visible.</td><td class="wrap">Device replaced by technical team</td>
+      <td><span class="pill pill-done">Resolved</span></td>
+    </tr><tr>
+      <td class="mono">9289457016</td><td class="mono">GX27204</td>
+      <td class="wrap">Wi-Fi network not visible on TV</td><td class="wrap"><b>SSID / WLAN configuration</b></td>
+      <td class="wrap">TV supports Wi-Fi but the SSID was not being displayed. Renaming the Wi-Fi made the network visible on the TV, but internet connectivity was still not working.</td><td class="wrap">Wi-Fi name changed in device settings</td>
+      <td><span class="pill pill-open">Partly resolved</span></td>
+    </tr><tr>
+      <td class="mono">7838199019</td><td class="mono">SY065918</td>
+      <td class="wrap">Camera not working</td><td class="wrap"><b>Faulty LAN cabling (RJ45)</b></td>
+      <td class="wrap">Wi-Fi device and DVR sit at two nearby premises joined by a LAN run. The RJ45 connector on that cable was faulty, breaking connectivity between camera and DVR.</td><td class="wrap">Faulty RJ45 connector identified</td>
+      <td><span class="pill pill-done">Resolved</span></td>
+    </tr><tr>
+      <td class="mono">9318310141</td><td class="mono">SY048096</td>
+      <td class="wrap">TV not working</td><td class="wrap"><b>Faulty Wi-Fi device</b></td>
+      <td class="wrap">SSID was not appearing on the TV — only the 4G network showed. The CSP replaced the Wi-Fi device and the customer confirmed the TV works.</td><td class="wrap">CSP replaced the Wi-Fi device</td>
+      <td><span class="pill pill-done">Resolved</span></td>
+    </tr><tr>
+      <td class="mono">9580840030</td><td class="mono">GX52551</td>
+      <td class="wrap">TV not working</td><td class="wrap"><b>Faulty Wi-Fi device</b></td>
+      <td class="wrap">SSID was not appearing on the TV — only the 4G network showed. After the CSP replaced the device the network became visible and the TV worked. Customer declined a further site visit.</td><td class="wrap">CSP replaced the Wi-Fi device</td>
+      <td><span class="pill pill-done">Resolved</span></td>
+    </tr><tr>
+      <td class="mono">8800884497</td><td class="mono">SY043299</td>
+      <td class="wrap">Others | TV/Camera issue</td><td class="wrap"><b>Faulty Wi-Fi device</b></td>
+      <td class="wrap">SSID was not visible on any device at the premises and stayed hidden after a device reset. The CSP replaced the Wi-Fi device and the network came back.</td><td class="wrap">CSP replaced the Wi-Fi device</td>
+      <td><span class="pill pill-done">Resolved</span></td>
+    </tr><tr>
+      <td class="mono">9899350634</td><td class="mono">SY17925</td>
+      <td class="wrap">Others | TV/Camera issue</td><td class="wrap"><b>Coverage / distance</b></td>
+      <td class="wrap">The TV near the Wi-Fi device works fine. A second TV roughly 80 feet away sees very low signal strength, so it drops and does not work reliably.</td><td class="wrap">Not resolved — needs extender or repositioning</td>
+      <td><span class="pill pill-blocked">Open</span></td>
+    </tr><tr>
+      <td class="mono">9625434977</td><td class="mono">SY052744</td>
+      <td class="wrap">TV not working</td><td class="wrap"><b>Band mismatch — TV has no 5 GHz</b></td>
+      <td class="wrap">Customer was trying to join the 5 GHz network on a TV that does not support 5 GHz. The TV service shop confirmed the model is 2.4 GHz only.</td><td class="wrap">Explained; confirmed by TV service centre</td>
+      <td><span class="pill pill-open">No fault at our end</span></td>
+    </tr><tr>
+      <td class="mono">9871117839</td><td class="mono">SY4246</td>
+      <td class="wrap">TV buffering</td><td class="wrap"><b>ISP-side speed shortfall</b></td>
+      <td class="wrap">Technical team visit found the required speed was not coming from the ISP side. The ISP was informed and the speed was corrected.</td><td class="wrap">ISP informed; speed corrected</td>
+      <td><span class="pill pill-done">Resolved</span></td>
+    </tr><tr>
+      <td class="mono">7042510572</td><td class="mono">SY053447</td>
+      <td class="wrap">TV buffering</td><td class="wrap"><b>Optical power / line quality</b></td>
+      <td class="wrap">Working at the time of the check but buffering occasionally. Optical receive power measured around -30 dBm — high attenuation, enough to make the link unstable.</td><td class="wrap">Not resolved — optical level needs correction</td>
+      <td><span class="pill pill-blocked">Open</span></td>
+    </tr><tr>
+      <td class="mono">9811648260</td><td class="mono">GX120288</td>
+      <td class="wrap">Internet not working on TV and mobile</td><td class="wrap"><b>ISP backend outage</b></td>
+      <td class="wrap">Neither TV nor mobile had internet. Per the CSP it was an ISP backend outage; nothing wrong with the customer device or local network.</td><td class="wrap">Restored with the ISP outage</td>
+      <td><span class="pill pill-done">Resolved</span></td>
+    </tr><tr>
+      <td class="mono">8882333533</td><td class="mono">SY4169</td>
+      <td class="wrap">Internet not working on TV and mobile</td><td class="wrap"><b>ISP backend outage</b></td>
+      <td class="wrap">Neither TV nor mobile had internet. Per the CSP it was an ISP backend outage; no issue on the customer device or local network.</td><td class="wrap">Restored with the ISP outage</td>
+      <td><span class="pill pill-done">Resolved</span></td>
+    </tr><tr>
+      <td class="mono">9990314409</td><td class="mono">GX90644</td>
+      <td class="wrap">Internet disconnecting + SSID not visible on TV</td><td class="wrap"><b>SSID / WLAN configuration</b></td>
+      <td class="wrap">Connection kept dropping and the SSID was not appearing on the TV. Changing the Wi-Fi name through the manual WLAN settings brought the network back on the TV.</td><td class="wrap">Wi-Fi renamed via manual WLAN settings</td>
+      <td><span class="pill pill-done">Resolved</span></td>
+    </tr><tr>
+      <td class="mono">9999220373</td><td class="mono">SY32903</td>
+      <td class="wrap">Internet not working on TV and mobile</td><td class="wrap"><b>Customer-premise equipment — not a network fault</b></td>
+      <td class="wrap">The YouTube app had been uninstalled from the TV, so the customer assumed an internet problem. Wi-Fi and internet were working normally.</td><td class="wrap">Explained; app to be reinstalled</td>
+      <td><span class="pill pill-open">No fault at our end</span></td>
+    </tr><tr>
+      <td class="mono">9354979586</td><td class="mono">SY060692</td>
+      <td class="wrap">Internet not working on TV and mobile</td><td class="wrap"><b>Customer-premise equipment — not a network fault</b></td>
+      <td class="wrap">The TV had been away for repair. Since it came back it does not retain the Wi-Fi credentials across a power cycle, so it has to be reconnected each time — which the customer reported as an internet fault.</td><td class="wrap">Explained; TV does not retain credentials after repair</td>
+      <td><span class="pill pill-open">No fault at our end</span></td>
+    </tr></tbody></table></div>
 </section>
-<section>
-<h2>Reopened % — week on week</h2>
-<p class="sub">Reopens counted among each week's gross ≤48-hr resolutions (cohort by the week the case was added). * = current week, cohort not fully matured.</p>
-<div class="tablewrap"><table>
-<thead><tr><th>Metric</th><th>29 Jul – 2 Aug</th><th>3 Aug – 9 Aug</th><th>10 Aug – 16 Aug</th><th>17 Aug – 23 Aug</th><th>24 Aug – 30 Aug*</th><th>31 Aug – 6 Sep*</th></tr></thead>
-<tbody>
-<tr><td>Resolved ≤ 48 hrs (gross)</td><td>316</td><td>434</td><td>486</td><td>367</td><td>516</td><td>-</td></tr>
-<tr><td>Reopened among those</td><td>-</td><td class="b">2</td><td class="b">29</td><td class="b">26</td><td class="b">14</td><td>-</td></tr>
-<tr><td><b>Reopened %</b></td><td class="b"><b>0.0%</b></td><td class="b"><b>0.5%</b></td><td class="b"><b>6.0%</b></td><td class="b"><b>7.1%</b></td><td class="b"><b>2.7%</b></td><td class="b"><b>—</b></td></tr>
-<tr><td>Net resolution %</td><td class="g">69.6%</td><td class="g">71.5%</td><td class="g">68.8%</td><td class="g">66.1%</td><td class="g">73.8%</td><td class="g">—</td></tr>
-</tbody></table></div>
+
+<section id="funnel">
+  <div class="sec-head"><span class="sec-no">02</span><h2>The week-wise funnel</h2></div>
+  <p class="sub">Cases are grouped by the week they were <b>added</b> to the tracker, and only counted once they have completed a full 48 hours. Each drop below the top line has its own row, so the question “where did the rest go?” is answered on the page.</p>
+  <div class="tablewrap"><table style="min-width:760px">
+    <thead><tr><th>Metric</th><th><span class="ch">Week −3</span><span class="cd">17 Aug – 23 Aug</span></th><th><span class="ch">Week −2</span><span class="cd">24 Aug – 30 Aug</span></th><th><span class="ch">Week −1</span><span class="cd">31 Aug – 6 Sep</span></th><th><span class="ch">MTD</span><span class="cd">1 Sep – 7 Sep</span></th></tr></thead>
+    <tbody>
+      <tr class="head"><td class="lbl">Cases added</td><td>506</td><td>701</td><td>382</td><td class="mtd">429</td></tr>
+      <tr class="head"><td class="lbl">Matured — past 48 hrs since being added<span class="note">the denominator for every % below</span></td><td>506</td><td>701</td><td>299</td><td class="mtd">256</td></tr>
+      <tr class="step"><td class="lbl">Still inside the 48-hr window<span class="note">not yet judged</span></td><td>–</td><td>–</td><td>83</td><td class="mtd">173</td></tr>
+      <tr class="head"><td class="lbl">Resolved within 48 hrs — gross<span class="note">ping restored or closed by the CSP</span></td><td><span class="pv">72.5%</span><span class="mini"><span class="mini-fill g" style="width:72.5%"></span></span></td><td><span class="pv">77.3%</span><span class="mini"><span class="mini-fill g" style="width:77.3%"></span></span></td><td><span class="pv">69.9%</span><span class="mini"><span class="mini-fill g" style="width:69.9%"></span></span></td><td class="mtd"><span class="pv">68.8%</span><span class="mini"><span class="mini-fill g" style="width:68.8%"></span></span></td></tr>
+      <tr class="step"><td class="lbl">Resolved, count</td><td>367</td><td>542</td><td>209</td><td class="mtd">176</td></tr>
+      <tr class="step"><td class="lbl">Reopened out of those resolutions<span class="note">came back down after being marked resolved</span></td><td>26 <span class="note">7.1%</span></td><td>17 <span class="note">3.1%</span></td><td>30 <span class="note">14.4%</span></td><td class="mtd">26 <span class="note">14.8%</span></td></tr>
+      <tr class="head"><td class="lbl">Resolved within 48 hrs — net of reopened<span class="note">the number we hold ourselves to</span></td><td><span class="pv">67.4%</span><span class="mini"><span class="mini-fill g" style="width:67.4%"></span></span></td><td><span class="pv">74.9%</span><span class="mini"><span class="mini-fill g" style="width:74.9%"></span></span></td><td><span class="pv">59.9%</span><span class="mini"><span class="mini-fill g" style="width:59.9%"></span></span></td><td class="mtd"><span class="pv">58.6%</span><span class="mini"><span class="mini-fill g" style="width:58.6%"></span></span></td></tr>
+      <tr class="step"><td class="lbl">Resolved late — after the 48-hr mark</td><td>22</td><td>25</td><td>9</td><td class="mtd">7</td></tr>
+      <tr class="head"><td class="lbl">Unresolved at maturity<span class="note">breached — customer still down at 48 hrs</span></td><td><span class="pv">23.1%</span><span class="mini"><span class="mini-fill b" style="width:23.1%"></span></span></td><td><span class="pv">19.1%</span><span class="mini"><span class="mini-fill b" style="width:19.1%"></span></span></td><td><span class="pv">27.1%</span><span class="mini"><span class="mini-fill b" style="width:27.1%"></span></span></td><td class="mtd"><span class="pv">28.5%</span><span class="mini"><span class="mini-fill b" style="width:28.5%"></span></span></td></tr>
+      <tr class="step"><td class="lbl">Unresolved, count</td><td>117</td><td>134</td><td>81</td><td class="mtd">73</td></tr>
+      <tr class="step"><td class="lbl">… line came back later (ping seen)<span class="note">recovered after the breach — no refund owed</span></td><td>34</td><td>57</td><td>18</td><td class="mtd">18</td></tr>
+      <tr class="head"><td class="lbl">Refund-eligible — no ping since the complaint<span class="note">router never came back up</span></td><td><b>83</b> <span class="note">16.4% of matured</span></td><td><b>77</b> <span class="note">11.0% of matured</span></td><td><b>63</b> <span class="note">21.1% of matured</span></td><td class="mtd"><b>55</b> <span class="note">21.5% of matured</span></td></tr>
+      <tr class="step"><td class="lbl">Customers actually paid</td><td>56</td><td>58</td><td>14</td><td class="mtd">12</td></tr>
+      <tr class="head"><td class="lbl">Average refund per customer</td><td>₹276</td><td>₹255</td><td>₹152</td><td class="mtd">₹168</td></tr>
+      <tr class="head"><td class="lbl">Total refunded to customers</td><td>₹15,448</td><td>₹14,798</td><td>₹2,126</td><td class="mtd">₹2,018</td></tr>
+      <tr class="head"><td class="lbl">CSPs behind the unresolved cases<span class="note">distinct CSPs with at least one breach</span></td><td>86</td><td>97</td><td>67</td><td class="mtd">60</td></tr>
+    </tbody></table></div>
+  <div class="callout">Week −1 and MTD are still settling: cases added in the last two days have not finished their 48-hr window, and the refund actions for that week are entered later in the following week. Read them as directional; Week −2 and Week −3 are final.</div>
 </section>
-<section>
-<h2>CSP ticket breach &amp; resolution status — top 10</h2>
-<p class="sub">Top 10 CSPs by breached (unresolved past 48 hrs) cases, worst breach rate first. Pending reason &amp; current status maintained by the ground team in the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit" style="color:var(--accent-ink)">CSP RCA tab</a>. <b>Tab has no entries yet — team to fill CSP | Pending Reason | Current Status.</b></p>
-<div class="tablewrap"><table style="min-width:900px">
-<thead><tr><th>CSP</th><th>Breached</th><th>Total cases</th><th>Breach rate</th><th style="text-align:left">Pending reason</th><th style="text-align:left">Current status</th></tr></thead>
-<tbody>
-<tr><td>Mauli I Net Pvt Ltd</td><td>9</td><td>9</td><td class="b">100%</td><td style="text-align:left;white-space:normal">CSP denied to work with Wiom.</td><td style="text-align:left;white-space:normal">Account-related issues are still pending to resolve.</td></tr>
-<tr><td>XPRESS NET SOLUTION-TILAK NAGAR</td><td>16</td><td>19</td><td class="b">84%</td><td style="text-align:left;white-space:normal">Partnership broken; area divided.</td><td style="text-align:left;white-space:normal">Resolving only in his area.</td></tr>
-<tr><td>Shri Ram Pankaj Cable Net</td><td>8</td><td>12</td><td class="b">67%</td><td style="text-align:left;white-space:normal">—</td><td style="text-align:left;white-space:normal">—</td></tr>
-<tr><td>TECHFIBER</td><td>15</td><td>24</td><td class="b">63%</td><td style="text-align:left;white-space:normal">CSP closed one area due to locality issues.</td><td style="text-align:left;white-space:normal">Resolving in limited area.</td></tr>
-<tr><td>Bachchu Cable Network</td><td>8</td><td>13</td><td class="b">62%</td><td style="text-align:left;white-space:normal">—</td><td style="text-align:left;white-space:normal">—</td></tr>
-<tr><td>BITFIBER PRIVATE LIMITED</td><td>11</td><td>24</td><td>46%</td><td style="text-align:left;white-space:normal">Operational issues.</td><td style="text-align:left;white-space:normal">CSP not responding.</td></tr>
-<tr><td>Paramhans Broadband Services</td><td>12</td><td>27</td><td>44%</td><td style="text-align:left;white-space:normal">Kawad Yatra (seasonal disruption).</td><td style="text-align:left;white-space:normal">Resolving infrequently.</td></tr>
-<tr><td>Xstream Boom Band</td><td>16</td><td>41</td><td>39%</td><td style="text-align:left;white-space:normal">CSP sold window.</td><td style="text-align:left;white-space:normal">CSP not responding; resolving infrequently.</td></tr>
-<tr><td>SmartFiber Internet Pvt Ltd</td><td>28</td><td>72</td><td>39%</td><td style="text-align:left;white-space:normal">OLT changed &amp; fiber cut.</td><td style="text-align:left;white-space:normal">Resolving one by one, but not visiting customer end.</td></tr>
-<tr><td>Net World Infovision</td><td>31</td><td>94</td><td>33%</td><td style="text-align:left;white-space:normal">CSP changed the server, so issues occurred but they are not responding on calls.</td><td style="text-align:left;white-space:normal">Resolving one by one through visits &amp; cases shared via WhatsApp.</td></tr>
-<tr><td class="tot"><b>Top 10 together</b></td><td class="tot b"><b>154</b></td><td class="tot">335</td><td class="tot"><b>21.2% of breached</b></td><td class="tot" colspan="2"></td></tr>
-</tbody></table></div>
+
+<section id="reopened">
+  <div class="sec-head"><span class="sec-no">03</span><h2>The reopened cases</h2></div>
+  <p class="sub">91 cases across 17 Aug – 6 Sep were marked resolved and came back. This is the number that turns a good gross resolution rate into a worse net one, so the reason for each reopen matters more than the count.</p>
+  <div class="tiles" style="margin:0 0 18px">
+    <div class="tile"><div class="lb">Reopened in window</div><div class="vl">91</div><div class="nt">17 Aug – 6 Sep</div></div>
+    <div class="tile"><div class="lb">Confirmed closed by PFT</div><div class="vl">63.7%</div><div class="nt">58 disposed in Kapture</div></div>
+    <div class="tile"><div class="lb">Still down today</div><div class="vl">11</div><div class="nt">reopened and not resolved since</div></div>
+  </div>
+  <div class="tablewrap"><table style="min-width:520px">
+    <thead><tr><th>Remark the case carried when it reopened</th><th>Cases</th><th>Share</th></tr></thead>
+    <tbody>
+      <tr class="head"><td class="lbl">All reopened cases</td><td>91</td><td>100%</td></tr>
+      <tr><td class="lbl wrap">Resolved by Old CSP</td><td>80</td><td>87.9%<span class="mini"><span class="mini-fill b" style="width:87.9%"></span></span></td></tr><tr><td class="lbl wrap">No Overlapping CSP/Refund</td><td>4</td><td>4.4%<span class="mini"><span class="mini-fill b" style="width:4.4%"></span></span></td></tr><tr><td class="lbl wrap">OLD CSP is working to resolve complaint</td><td>2</td><td>2.2%<span class="mini"><span class="mini-fill b" style="width:2.2%"></span></span></td></tr><tr><td class="lbl wrap">Customer not happy with Wiom service/refund — chose another operator</td><td>2</td><td>2.2%<span class="mini"><span class="mini-fill b" style="width:2.2%"></span></span></td></tr><tr><td class="lbl wrap">Cx not contactable/Reachable</td><td>1</td><td>1.1%<span class="mini"><span class="mini-fill b" style="width:1.1%"></span></span></td></tr><tr><td class="lbl wrap">Cx Plan Expired</td><td>1</td><td>1.1%<span class="mini"><span class="mini-fill b" style="width:1.1%"></span></span></td></tr><tr><td class="lbl wrap">CSP Not Responding</td><td>1</td><td>1.1%<span class="mini"><span class="mini-fill b" style="width:1.1%"></span></span></td></tr>
+    </tbody></table></div>
+  <div class="callout">The dominant remark is <b>“Resolved by Old CSP”</b> — the case was closed on the CSP's word rather than on a confirmed ping, and the line went down again. Every reopen with that remark is a closure-quality problem, not a network problem.</div>
 </section>
-<section>
-<h2>Reopened cases — RCA (30 cases)</h2>
-<p class="sub">The field team's reopen RCA, straight from the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit?gid=0" style="color:var(--accent-ink)">Reopen RCA sheet</a> — refreshed automatically every Monday.</p>
-<div class="tablewrap" style="margin-bottom:14px"><table>
-<thead><tr><th>RCA bucket</th><th>Cases</th><th>%</th><th style="text-align:left">Side</th></tr></thead>
-<tbody>
-<tr><td><b>Total reopened cases in RCA</b></td><td><b>30</b></td><td><b>100%</b></td><td style="text-align:left"></td></tr>
-<tr><td style="white-space:normal">(CX remark not filled)</td><td>9</td><td>30.0%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td style="white-space:normal">CX Faces Issue After Sometime</td><td>7</td><td>23.3%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td style="white-space:normal">CX is Not Responding</td><td>3</td><td>10.0%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td style="white-space:normal">CX Not Reopned</td><td>2</td><td>6.7%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td style="white-space:normal">Archived CX</td><td>2</td><td>6.7%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td style="white-space:normal">Ticket closed without resolution</td><td>2</td><td>6.7%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td style="white-space:normal">CX Number Switched Off</td><td>1</td><td>3.3%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td style="white-space:normal">Wiom Net User</td><td>1</td><td>3.3%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td style="white-space:normal">CX Reopened</td><td>1</td><td>3.3%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td style="white-space:normal">CX Plan Expired</td><td>1</td><td>3.3%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td style="white-space:normal">Refund received</td><td>1</td><td>3.3%</td><td style="text-align:left">Customer-side read</td></tr>
-<tr><td><i>CSP-side reasons (where filled)</i></td><td></td><td></td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px;white-space:normal">↳ Wrongly Closed by CSP</td><td>8</td><td>26.7%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px;white-space:normal">↳ Archived CX</td><td>2</td><td>6.7%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px;white-space:normal">↳ Wiom Net User</td><td>1</td><td>3.3%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px;white-space:normal">↳ Fiber Cut OutSide at CX Home,</td><td>1</td><td>3.3%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px;white-space:normal">↳ New address not feasible for csp shifting</td><td>1</td><td>3.3%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px;white-space:normal">↳ CX was unavailable at home</td><td>1</td><td>3.3%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px;white-space:normal">↳ CSP Installed his own Device</td><td>1</td><td>3.3%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px;white-space:normal">↳ CSP was unaware abouth the TT, he sent someone after NQT highlighted the issue</td><td>1</td><td>3.3%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px;white-space:normal">↳ Device Faulty</td><td>1</td><td>3.3%</td><td style="text-align:left"></td></tr>
-<tr><td style="padding-left:34px;white-space:normal">↳ Tciket not showing in CSP App</td><td>1</td><td>3.3%</td><td style="text-align:left"></td></tr>
-</tbody></table></div>
-<div class="tablewrap" style="max-height:480px;overflow:auto"><table style="min-width:900px">
-<thead><tr><th>Ticket No</th><th>Mobile</th><th>CSP</th><th style="text-align:left">CX Remarks</th><th style="text-align:left">CSP Remarks</th><th style="text-align:left">Ground Remarks</th><th>Last Ping Time</th></tr></thead>
-<tbody>
-<tr><td>786177620106</td><td>7428770382</td><td>XD Network</td><td style="white-space:normal">CX Not Reopned</td><td style="white-space:normal">—</td><td style="white-space:normal">No Overlapping CSP/Refund</td><td>Removed</td></tr>
-<tr><td>786163498323</td><td>9654820595</td><td>TECHFIBER</td><td style="white-space:normal">CX Faces Issue After Sometime</td><td style="white-space:normal">Wrongly Closed by CSP</td><td style="white-space:normal">No Overlapping CSP/Refund</td><td>168 Days</td></tr>
-<tr><td>7786026943451</td><td>7291928209_ARCHIVED</td><td>Lion Vision Network</td><td style="white-space:normal">Archived CX</td><td style="white-space:normal">Archived CX</td><td style="white-space:normal">No Overlapping CSP/Refund</td><td>Removed</td></tr>
-<tr><td>786029117678</td><td>9970075720</td><td>Saipooja Network (2)</td><td style="white-space:normal">CX Faces Issue After Sometime</td><td style="white-space:normal">Wrongly Closed by CSP</td><td style="white-space:normal">Resolved by Old CSP</td><td>1 Minute</td></tr>
-<tr><td>786029564636</td><td>8700960163</td><td>Nexgen Network</td><td style="white-space:normal">CX Faces Issue After Sometime</td><td style="white-space:normal">Wrongly Closed by CSP</td><td style="white-space:normal">Resolved by Old CSP</td><td>1 Minute</td></tr>
-<tr><td>786046045650</td><td>8882995848</td><td>Batra Cable TV Network</td><td style="white-space:normal">CX Number Switched Off</td><td style="white-space:normal">—</td><td style="white-space:normal">Resolved by Old CSP</td><td>1 Minute</td></tr>
-<tr><td>786069621866</td><td>8218853504</td><td>7R Network Solutions</td><td style="white-space:normal">CX is Not Responding</td><td style="white-space:normal">—</td><td style="white-space:normal">Resolved by Old CSP</td><td>1 Minute</td></tr>
-<tr><td>7785987484438</td><td>8860623522</td><td>SK Internet</td><td style="white-space:normal">Wiom Net User</td><td style="white-space:normal">Wiom Net User</td><td style="white-space:normal">Resolved by Old CSP</td><td>Removed</td></tr>
-<tr><td>785994013413</td><td>8810514564</td><td>TECHFIBER</td><td style="white-space:normal">CX is Not Responding</td><td style="white-space:normal">—</td><td style="white-space:normal">No Overlapping CSP/Refund</td><td>12 Days</td></tr>
-<tr><td>7785828618327</td><td>9654044410</td><td>INDIANET BROADBAND</td><td style="white-space:normal">CX Faces Issue After Sometime</td><td style="white-space:normal">Wrongly Closed by CSP</td><td style="white-space:normal">Resolved by Old CSP</td><td>1 Minute</td></tr>
-<tr><td>7785824360404</td><td>8745877612</td><td>Net World Infovision</td><td style="white-space:normal">CX is Not Responding</td><td style="white-space:normal">Fiber Cut OutSide at CX Home,</td><td style="white-space:normal">Resolved by Old CSP</td><td>1 Minute</td></tr>
-<tr><td>785939284575</td><td>8076917965</td><td>Parcha Fiber Broadband &amp; Cable Network</td><td style="white-space:normal">CX Reopened</td><td style="white-space:normal">New address not feasible for csp shifting</td><td style="white-space:normal">No Overlapping CSP/Refund</td><td>10 Days</td></tr>
-<tr><td>7785901142050</td><td>8810546939</td><td>SmartFiber Internet Pvt Ltd</td><td style="white-space:normal">CX Plan Expired</td><td style="white-space:normal">—</td><td style="white-space:normal">No Overlapping CSP/Refund</td><td>13 Days</td></tr>
-<tr><td>785572739239</td><td>8979079168</td><td>Shri Ram Pankaj Cable Net</td><td style="white-space:normal">—</td><td style="white-space:normal">—</td><td style="white-space:normal">No Overlapping CSP/Refund</td><td>Removed</td></tr>
-<tr><td>772457606370</td><td>9818103106</td><td>JMK Internet Service</td><td style="white-space:normal">—</td><td style="white-space:normal">—</td><td style="white-space:normal">Migration not possible/Refund</td><td>—</td></tr>
-<tr><td>772462925138</td><td>9640137932</td><td>Shalu Cable Network</td><td style="white-space:normal">—</td><td style="white-space:normal">—</td><td style="white-space:normal">Cx not contactable/Reachable</td><td>—</td></tr>
-<tr><td>772464231905</td><td>8882121637</td><td>Shalu Cable Network</td><td style="white-space:normal">—</td><td style="white-space:normal">—</td><td style="white-space:normal">Resolved by Old CSP</td><td>—</td></tr>
-<tr><td>772464541667</td><td>7289991943</td><td>INSPIRE INFRATECH PVT.LTD. WEST PUNJABI BAGH</td><td style="white-space:normal">—</td><td style="white-space:normal">—</td><td style="white-space:normal">Migration not possible/Refund</td><td>—</td></tr>
-<tr><td>772254381159</td><td>9372678181</td><td>Rudra Enterprises - Malad East</td><td style="white-space:normal">—</td><td style="white-space:normal">—</td><td style="white-space:normal">Migration not possible/Refund</td><td>—</td></tr>
-<tr><td>771939130425</td><td>8850077979</td><td>G Square Internet</td><td style="white-space:normal">—</td><td style="white-space:normal">—</td><td style="white-space:normal">Migrated</td><td>—</td></tr>
-<tr><td>786200624719</td><td>8920138397</td><td>TECHFIBER</td><td style="white-space:normal">CX Faces Issue After Sometime</td><td style="white-space:normal">Wrongly Closed by CSP</td><td style="white-space:normal">CSP Not Responding</td><td>12 Days</td></tr>
-<tr><td>787137738459</td><td>9718625695</td><td>Bachchu Cable Network</td><td style="white-space:normal">Refund received</td><td style="white-space:normal">CX was unavailable at home</td><td style="white-space:normal">OLD CSP is working to resolve complaint</td><td>10 Days</td></tr>
-<tr><td>8787069910856</td><td>7838730024</td><td>MOHD TAHIR</td><td style="white-space:normal">—</td><td style="white-space:normal">CSP Installed his own Device</td><td style="white-space:normal">No Overlapping CSP/Refund</td><td>—</td></tr>
-<tr><td>786955128946</td><td>9004869894</td><td>Shree Samarth Krupa Cable Vision Broadband Service</td><td style="white-space:normal">Ticket closed without resolution</td><td style="white-space:normal">Wrongly Closed by CSP</td><td style="white-space:normal">No Overlapping CSP/Refund</td><td>—</td></tr>
-<tr><td>786724621111</td><td>8796527550</td><td>FUTURE NET SERVICES</td><td style="white-space:normal">CX Faces Issue After Sometime</td><td style="white-space:normal">Wrongly Closed by CSP</td><td style="white-space:normal">Resolved by Old CSP</td><td>—</td></tr>
-<tr><td>786799473254</td><td>9650261886_ARCHIVED</td><td>Stream Broadband</td><td style="white-space:normal">Archived CX</td><td style="white-space:normal">Archived CX</td><td style="white-space:normal">Device not associated / disconnected</td><td>—</td></tr>
-<tr><td>787280814013</td><td>9320249391</td><td>Skynet</td><td style="white-space:normal">CX Not Reopned</td><td style="white-space:normal">CSP was unaware abouth the TT, he sent someone after NQT highlighted the issue</td><td style="white-space:normal">Resolved by Old CSP</td><td>—</td></tr>
-<tr><td>787826061652</td><td>8287629432</td><td>SAI KIRPA INTERNET</td><td style="white-space:normal">CX Faces Issue After Sometime</td><td style="white-space:normal">Device Faulty</td><td style="white-space:normal">OLD CSP is working to resolve complaint</td><td>>18 hrs</td></tr>
-<tr><td>787635247826</td><td>8743025833</td><td>JMK Internet Service</td><td style="white-space:normal">—</td><td style="white-space:normal">Tciket not showing in CSP App</td><td style="white-space:normal">OLD CSP is working to resolve complaint</td><td>>6 Days</td></tr>
-<tr><td>787383244848</td><td>9899834082</td><td>MAKS Network</td><td style="white-space:normal">Ticket closed without resolution</td><td style="white-space:normal">Wrongly Closed by CSP</td><td style="white-space:normal">CSP Not Responding</td><td>1 Minute</td></tr>
-</tbody></table></div>
+
+<section id="csps">
+  <div class="sec-head"><span class="sec-no">04</span><h2>The CSPs behind the unresolved cases</h2></div>
+  <p class="sub">332 unresolved cases across 17 Aug – 6 Sep sit with 202 distinct CSPs. The top 15 below carry 27.7% of them. Breach rate is that CSP's unresolved cases as a share of everything they received in the window.</p>
+  <div class="tablewrap"><table style="min-width:880px">
+    <thead><tr><th>CSP</th><th><span class="ch">Week −3</span><span class="cd">17 Aug – 23 Aug</span></th><th><span class="ch">Week −2</span><span class="cd">24 Aug – 30 Aug</span></th><th><span class="ch">Week −1</span><span class="cd">31 Aug – 6 Sep</span></th><th>Total</th><th>Cases received</th><th>Breach rate</th><th>Refund-eligible</th><th>Calls at PTL</th></tr></thead>
+    <tbody><tr><td class="lbl wrap">SmartFiber Internet Pvt Ltd</td><td>5</td><td>11</td><td>3</td><td class="mtd"><b>19</b></td><td>64</td><td class="">30%</td><td>11</td><td class="pend">—</td></tr><tr><td class="lbl wrap">BITFIBER PRIVATE LIMITED</td><td>4</td><td>3</td><td>1</td><td class="mtd"><b>8</b></td><td>12</td><td class="bad">67%</td><td>6</td><td class="pend">—</td></tr><tr><td class="lbl wrap">Bachchu Cable Network</td><td>5</td><td>2</td><td>–</td><td class="mtd"><b>7</b></td><td>7</td><td class="bad">100%</td><td>7</td><td class="pend">—</td></tr><tr><td class="lbl wrap">Paramhans Broadband Services</td><td>1</td><td>5</td><td>–</td><td class="mtd"><b>6</b></td><td>17</td><td class="">35%</td><td>5</td><td class="pend">—</td></tr><tr><td class="lbl wrap">Xstream Boom Band</td><td>3</td><td>3</td><td>–</td><td class="mtd"><b>6</b></td><td>23</td><td class="">26%</td><td>5</td><td class="pend">—</td></tr><tr><td class="lbl wrap">Elixir Fibernet</td><td>1</td><td>1</td><td>4</td><td class="mtd"><b>6</b></td><td>33</td><td class="">18%</td><td>6</td><td class="pend">—</td></tr><tr><td class="lbl wrap">DOTNET</td><td>3</td><td>1</td><td>1</td><td class="mtd"><b>5</b></td><td>9</td><td class="bad">56%</td><td>3</td><td class="pend">—</td></tr><tr><td class="lbl wrap">XPRESS NET SOLUTION-TILAK NAGAR</td><td>4</td><td>1</td><td>–</td><td class="mtd"><b>5</b></td><td>7</td><td class="bad">71%</td><td>5</td><td class="pend">—</td></tr><tr><td class="lbl wrap">Together Communication</td><td>3</td><td>1</td><td>1</td><td class="mtd"><b>5</b></td><td>5</td><td class="bad">100%</td><td>5</td><td class="pend">—</td></tr><tr><td class="lbl wrap">RDN Broadband</td><td>5</td><td>–</td><td>–</td><td class="mtd"><b>5</b></td><td>6</td><td class="bad">83%</td><td>4</td><td class="pend">—</td></tr><tr><td class="lbl wrap">WEFIBER internet solutions</td><td>–</td><td>2</td><td>2</td><td class="mtd"><b>4</b></td><td>8</td><td class="bad">50%</td><td>3</td><td class="pend">—</td></tr><tr><td class="lbl wrap">Air Net</td><td>–</td><td>2</td><td>2</td><td class="mtd"><b>4</b></td><td>10</td><td class="">40%</td><td>2</td><td class="pend">—</td></tr><tr><td class="lbl wrap">Net World Infovision</td><td>1</td><td>3</td><td>–</td><td class="mtd"><b>4</b></td><td>19</td><td class="">21%</td><td>2</td><td class="pend">—</td></tr><tr><td class="lbl wrap">Jai Shakti Cable TV Network</td><td>–</td><td>4</td><td>–</td><td class="mtd"><b>4</b></td><td>5</td><td class="bad">80%</td><td>4</td><td class="pend">—</td></tr><tr><td class="lbl wrap">SBN INTERNET SERVICES</td><td>–</td><td>3</td><td>1</td><td class="mtd"><b>4</b></td><td>5</td><td class="bad">80%</td><td>4</td><td class="pend">—</td></tr>
+      <tr class="head"><td class="lbl">Top 15 together</td><td>35</td><td>42</td><td>15</td><td class="mtd">92</td><td>230</td><td>27.7% of all unresolved</td><td>72</td><td class="pend">—</td></tr>
+    </tbody></table></div>
+  <div class="callout"><b>Calls at PTL is not wired yet.</b> The tracker holds no call data — the count of calls raised against each CSP's pending issues has to come from the PTL system. Point us at that source (a sheet, a Metabase card, or an export) and the column fills automatically every week.</div>
 </section>
-<section>
-<h2>Beyond 72 hrs — other categories (weekly quantum)</h2>
-<p class="sub">Cohort analysis: all service tickets created 15 – 21 Aug (fully matured) that went past 72 hrs — absolute and % of that category's weekly volume. Internet (tracked here) shown for scale. Router Pickup, Disconnect/Discontinue and Booking Status excluded (churn / pre-install flows).</p>
-<div class="tablewrap"><table>
-<thead><tr><th>Category</th><th>Week's tickets</th><th>Still open &gt;72h</th><th>Resolved late (&gt;72h)</th><th>Total beyond 72h</th></tr></thead>
-<tbody>
-<tr><td class="g"><b>Internet (tracked in HP tracker)</b></td><td>10,350</td><td>118 (1.1%)</td><td>265 (2.6%)</td><td class="g"><b>383 (3.7%)</b></td></tr>
-<tr><td><b>Primary — Existing Customer (undispositioned)</b></td><td>313</td><td>13 (4.2%)</td><td>17 (5.4%)</td><td><b>30 (9.6%)</b></td></tr>
-<tr><td><b>Shifting Request — new address</b></td><td>50</td><td>1 (2.0%)</td><td>17 (34.0%)</td><td><b>18 (36.0%)</b></td></tr>
-<tr><td><b>Router Issue &amp; Replacement</b></td><td>49</td><td>0 (0.0%)</td><td>9 (18.4%)</td><td><b>9 (18.4%)</b></td></tr>
-<tr><td><b>Recharge expired (service issue)</b></td><td>71</td><td>2 (2.8%)</td><td>5 (7.0%)</td><td><b>7 (9.9%)</b></td></tr>
-<tr><td><b>Improper installation</b></td><td>13</td><td>2 (15.4%)</td><td>4 (30.8%)</td><td><b>6 (46.2%)</b></td></tr>
-<tr><td>16 further categories (≤4 each)</td><td>—</td><td>16</td><td>15</td><td><b>31</b></td></tr>
-<tr><td class="tot"><b>Total OTHER categories (non-internet)</b></td><td class="tot">—</td><td class="tot">34</td><td class="tot">67</td><td class="tot b"><b>~101 / week ≈ 26% of the internet pool</b></td></tr>
-</tbody></table></div>
+
+<section id="whynorefund">
+  <div class="sec-head"><span class="sec-no">05</span><h2>Why the no-ping unresolved cases were not refunded</h2></div>
+  <p class="sub">223 cases across 17 Aug – 6 Sep breached 48 hours, never pinged again, and are therefore owed a refund. Two readings: what the ground says is blocking the fix, and what the refund desk has recorded against the case.</p>
+
+  <h4>What the ground reported</h4>
+  <div class="tablewrap"><table style="min-width:520px">
+    <thead><tr><th>Ground remark</th><th>Cases</th><th>Share</th></tr></thead>
+    <tbody>
+      <tr class="head"><td class="lbl">Refund-eligible cases</td><td>223</td><td>100%</td></tr>
+      <tr><td class="lbl wrap">CSP Not Responding</td><td>76</td><td>34.1%<span class="mini"><span class="mini-fill b" style="width:34.1%"></span></span></td></tr><tr><td class="lbl wrap">CSP denied to resolve this ticket</td><td>40</td><td>17.9%<span class="mini"><span class="mini-fill b" style="width:17.9%"></span></span></td></tr><tr><td class="lbl wrap">No Overlapping CSP/Refund</td><td>36</td><td>16.1%<span class="mini"><span class="mini-fill b" style="width:16.1%"></span></span></td></tr><tr><td class="lbl wrap">Cx not contactable/Reachable</td><td>13</td><td>5.8%<span class="mini"><span class="mini-fill b" style="width:5.8%"></span></span></td></tr><tr><td class="lbl wrap">Migration not possible/Refund</td><td>11</td><td>4.9%<span class="mini"><span class="mini-fill b" style="width:4.9%"></span></span></td></tr><tr><td class="lbl wrap">Device not associated / disconnected</td><td>9</td><td>4.0%<span class="mini"><span class="mini-fill b" style="width:4.0%"></span></span></td></tr><tr><td class="lbl wrap">Cx Plan Expired</td><td>8</td><td>3.6%<span class="mini"><span class="mini-fill b" style="width:3.6%"></span></span></td></tr><tr><td class="lbl wrap">CSP denied to work with Wiom</td><td>8</td><td>3.6%<span class="mini"><span class="mini-fill b" style="width:3.6%"></span></span></td></tr><tr><td class="lbl wrap">OLD CSP is working to resolve complaint</td><td>7</td><td>3.1%<span class="mini"><span class="mini-fill b" style="width:3.1%"></span></span></td></tr><tr><td class="lbl wrap">CSP has no router to replace / inventory not available</td><td>7</td><td>3.1%<span class="mini"><span class="mini-fill b" style="width:3.1%"></span></span></td></tr><tr><td class="lbl wrap">CSP installed his own device</td><td>4</td><td>1.8%<span class="mini"><span class="mini-fill b" style="width:1.8%"></span></span></td></tr><tr><td class="lbl wrap">Customer not happy with Wiom service/refund — chose another operator</td><td>4</td><td>1.8%<span class="mini"><span class="mini-fill b" style="width:1.8%"></span></span></td></tr>
+    </tbody></table></div>
+
+  <h4>What the refund desk recorded</h4>
+  <div class="tablewrap"><table style="min-width:520px">
+    <thead><tr><th>Refund action</th><th>Cases</th><th>Share</th></tr></thead>
+    <tbody><tr><td class="lbl wrap">Refund Pending — no action set yet</td><td>140</td><td>62.8%</td></tr><tr><td class="lbl wrap">Cx DNP 3</td><td>26</td><td>11.7%</td></tr><tr><td class="lbl wrap">Amount 0 — refund not possible</td><td>18</td><td>8.1%</td></tr><tr><td class="lbl wrap">Ping up</td><td>8</td><td>3.6%</td></tr><tr><td class="lbl wrap">Duplicate ticket</td><td>7</td><td>3.1%</td></tr><tr><td class="lbl wrap">PFT process miss</td><td>7</td><td>3.1%</td></tr><tr><td class="lbl wrap">120 hr not crossed</td><td>7</td><td>3.1%</td></tr><tr><td class="lbl wrap">EXIT partner — refund by Kapil</td><td>3</td><td>1.3%</td></tr><tr><td class="lbl wrap">CSP resolved — removed from PFT list</td><td>3</td><td>1.3%</td></tr><tr><td class="lbl wrap">Refund not required</td><td>2</td><td>0.9%</td></tr><tr><td class="lbl wrap">Amount &lt;10 — refund not possible</td><td>1</td><td>0.4%</td></tr><tr><td class="lbl wrap">Refund Done</td><td>1</td><td>0.4%</td></tr></tbody></table></div>
+  <div class="callout">Two different blockers are mixed in here. <b>CSP not responding</b> and <b>CSP denied to resolve</b> are supply-side — the customer is owed the refund and the CSP owes us an answer. <b>Cx DNP</b> and <b>plan expired</b> are demand-side — the money cannot be moved until the customer picks up. They need separate escalation paths, not one queue.</div>
 </section>
-<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (IST).</div>
-</div></body></html>
+
+<footer>
+  High Pain Customer Tracker · generated by <span class="mono">scripts/weekly-review.js</span> from live Firebase data.<br>
+  Resolution, reopen and refund definitions match the tracker exactly — a case counts as resolved only when its ping is restored or the CSP closure is confirmed.
+</footer>
+
+</div>
+</body>
+</html>
