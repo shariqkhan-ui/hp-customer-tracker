@@ -47,6 +47,37 @@ const normName = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 // never tagged the call), so the usable reason is the Kapture PTL ticket the
 // call raised — DISPOSITION_FOLDER_LEVEL_2, deduped to the latest snapshot
 // per ticket. Keyed to the CSP by CUSTOMER_CODE = partner account id.
+// Kapture is the system of record for reopens. The tracker's reopened_at is
+// only stamped when someone reverts a resolution remark IN THE DASHBOARD
+// within 24 hours, so a ticket reopened in Kapture never reaches it — it
+// catches roughly half the real reopens. This pulls FIRST_REOPENED_TIME for
+// every ticket reopened since launch, so the rate can be measured properly.
+async function kaptureReopens(fromISO) {
+  const key = process.env.METABASE_API_KEY;
+  if (!key) { console.log('METABASE_API_KEY not set — reopens fall back to the tracker field only.'); return null; }
+  const map = {};
+  try {
+    for (let off = 0; off < 12000; off += 1800) {
+      const sql = `SELECT KAPTURE_TICKET_ID, TO_CHAR(FIRST_REOPENED_TIME,'YYYY-MM-DD') AS d
+        FROM PROD_DB.PUBLIC.SERVICE_TICKET_MODEL
+        WHERE FIRST_REOPENED_TIME IS NOT NULL AND FIRST_REOPENED_TIME >= '${fromISO}'
+        ORDER BY KAPTURE_TICKET_ID LIMIT 1800 OFFSET ${off}`;
+      const r = await fetch(METABASE + '/api/dataset', {
+        method: 'POST',
+        headers: { 'x-api-key': key, 'content-type': 'application/json' },
+        body: JSON.stringify({ database: 113, type: 'native', native: { query: sql } }),
+      }).then(x => x.json());
+      if (!r.data || !r.data.rows) throw new Error(JSON.stringify(r.error || r).slice(0, 200));
+      r.data.rows.forEach(([t, d]) => { const k = String(t || '').replace(/\D/g, ''); if (k) map[k] = d; });
+      if (r.data.rows.length < 1800) break;
+    }
+    console.log('Kapture reopen records:', Object.keys(map).length);
+    return map;
+  } catch (e) {
+    console.error('Kapture reopen query failed (non-fatal):', e.message);
+    return null;
+  }
+}
 async function ptlReasonsByPartner(from, to) {
   const key = process.env.METABASE_API_KEY;
   if (!key) return null;
@@ -233,6 +264,19 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   periods.forEach(pp => { pp.to = Math.min(pp.to, CUT); pp.label = fmtD(pp.from) + ' – ' + fmtD(pp.to - 1); });
   const LASTCOL = periods.length - 1;
   const ptl = await ptlCallsByPartner(periods);
+  const kReop = await kaptureReopens('2026-07-29');
+  // A reopen counts when the ticket came back AFTER we marked it resolved.
+  // A Kapture reopen dated on or before our resolution is usually why the case
+  // reached this tracker in the first place, not a failure of our fix.
+  const dayOf = ms => new Date(Number(ms) + IST).toISOString().slice(0, 10);
+  const reopenedAfter = c => {
+    if (Number(c.reopened_at) > 0) return true;            // dashboard-stamped
+    if (!kReop) return false;
+    const d = kReop[dig(c.ticket_no)];
+    if (!d) return false;
+    const rt = Number(c.remarks_updated_at) || 0;
+    return rt > 0 && d > dayOf(rt);
+  };
   const ptlWhy = await ptlReasonsByPartner(LAUNCH, CUT);
   era = era.filter(c => startTs(c) < CUT);
 
@@ -251,7 +295,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     const matured = list.filter(isMatured);
     const m = matured.length;
     // NET of reopened: resolutions later reopened don't count
-    const w48 = matured.filter(c => resolvedWithin48(c) === true && !isReop(c)).length;
+    const w48 = matured.filter(c => resolvedWithin48(c) === true && !reopenedAfter(c)).length;
     const w48g = matured.filter(c => resolvedWithin48(c) === true).length; // gross
     const unresM = matured.filter(c => getStatus(c) === 'Unresolved').length;
     const late = matured.filter(c => getStatus(c) !== 'Unresolved' && resolvedWithin48(c) !== true).length;
@@ -617,7 +661,7 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 <div class="tile"><div class="label">Cases added since 29 Jul</div><div class="value">${sTD.n.toLocaleString('en-IN')}</div><div class="note">avg <b>~${avgPerDay} tickets/day</b> · ${sTD.m.toLocaleString('en-IN')} matured · ${(sTD.n - sTD.m).toLocaleString('en-IN')} in window · <b>last week: ${sLW.n} added</b></div></div>
 <div class="tile" style="border-color:var(--bad)"><div class="label">Still owed to customers</div><div class="value" style="color:var(--bad)">${inr(grp['Still owed to the customer'] ? grp['Still owed to the customer'].amt : 0)}</div><div class="note"><b>${grp['Still owed to the customer'] ? grp['Still owed to the customer'].n : 0} eligible cases</b> not yet paid &middot; see the refund funnel below</div></div>
 <div class="tile" style="border-color:var(--good)"><div class="label">Refunded to eligible customers</div><div class="value" style="color:var(--good)">${inr(sumA(eligPaid))}</div><div class="note"><b>${eligPaid.length} of ${E} refund-eligible</b> (${pct(eligPaid.length, E)}) &middot; <b>last week: ${sLW.eligPaidN} (${inr(sLW.eligPaidAmt)})</b> &middot; all refunds incl. cases since recovered: ${isDoneAll.length} (${inr(sumA(isDoneAll))})</div></div>
-<div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened cases</div><div class="value" style="color:var(--accent-ink)">${reopensAllTime}</div><div class="note"><b>${reopensAllTime} in the tracker all-time</b> (matches the dashboard's Reopened &lt; 24 Hrs card) &middot; ${reopens.length} of them since the 29 Jul launch &middot; ${sTD.w48g - sTD.w48} of those were within-48hr resolutions that came back &mdash; the number the table below nets off &middot; <b>last week: ${sLW.w48g - sLW.w48}</b></div></div>
+<div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened cases</div><div class="value" style="color:var(--accent-ink)">${reopensAllTime}</div><div class="note"><b>${reopensAllTime} in the tracker all-time</b> stamped in the dashboard (its Reopened &lt; 24 Hrs card) &middot; that field only catches a revert made in the dashboard within 24 hrs, so the table below uses <b>Kapture's own reopen record</b> instead: ${sTD.w48g - sTD.w48} of our within-48hr resolutions came back after we closed them &middot; <b>last week: ${sLW.w48g - sLW.w48}</b></div></div>
 <div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Resolved within 48 hrs: <b>${pct(sWB.w48, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.w48, sLW.m)}</b> (${lwLabel})</div></div>
 </div>
 </header>
@@ -645,7 +689,7 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 </section>
 ${refundFunnel}
 ${cspRca}
-<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a resolution of ours that came back down (reopened_at), counted in the week it came back.</div>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's FIRST_REOPENED_TIME (the tracker's own reopened_at field only catches a dashboard revert inside 24 hrs and misses about half of them). Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div></body></html>`;
 
   const outPath = path.join(__dirname, '..', 'recap.html');
