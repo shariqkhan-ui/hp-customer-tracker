@@ -137,10 +137,11 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
 
 (async () => {
   const NOW = Date.now();
-  const [casesRaw, sheet, sheetMob] = await Promise.all([
+  const [casesRaw, sheet, sheetMob, aiRaw] = await Promise.all([
     fetch(FIREBASE_DB + '/cases.json').then(r => r.json()),
     fetch(FIREBASE_DB + '/refund_sheet.json').then(r => r.json()).catch(() => ({})),
     fetch(FIREBASE_DB + '/refund_sheet_mob.json').then(r => r.json()).catch(() => ({})),
+    fetch(FIREBASE_DB + '/cases/__action_items__.json').then(r => r.json()).catch(() => ({})),
   ]);
   const dig = v => String(v || '').replace(/\D/g, '');
   // Finance-sheet match by Kapture ticket OR the customer's registered number
@@ -400,6 +401,28 @@ ${top.map(c => {
   const lwLabel = periods[2].key + ' (' + periods[2].label + ')';
   const tdLabel = '29 Jul – ' + cutLabel;
 
+  // ── Last meeting's action items ───────────────────────────────────────────
+  // Live from the tracker's Action Items tab — nothing typed by hand.
+  const escA = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  const aiItems = Object.entries(aiRaw || {}).filter(([, v]) => v && v.item)
+    .sort((a, b) => (a[1].created_at || 0) - (b[1].created_at || 0));
+  const aiHtml = `<section>
+<h2>Action items from the last meeting</h2>
+<p class="sub">Taken one by one, in the order they were raised. Status is live from the tracker's Action Items tab.</p>
+<div class="tablewrap"><table>
+<thead><tr><th style="width:26px">#</th><th style="text-align:left">Action item</th><th>Owner</th><th>Due</th><th>Status</th><th style="text-align:left">Where it landed</th></tr></thead>
+<tbody>
+${aiItems.length ? aiItems.map(([, v], i) =>
+  `<tr><td style="text-align:left;color:var(--muted);font-weight:400">${i + 1}</td>` +
+  `<td style="text-align:left;white-space:normal">${escA(v.item)}</td>` +
+  `<td style="font-weight:400">${escA(v.owner) || '—'}</td>` +
+  `<td style="font-weight:400">${escA(v.due) || '—'}</td>` +
+  `<td class="${v.status === 'Done' ? 'g' : 'b'}">${escA(v.status || 'Open')}</td>` +
+  `<td style="text-align:left;white-space:normal;font-weight:400">${escA(v.notes) || '<i style="color:var(--muted)">no closing note yet</i>'}</td></tr>`
+).join(String.fromCharCode(10)) : '<tr><td colspan="6" style="text-align:left">No action items recorded for this cycle.</td></tr>'}
+</tbody></table></div>
+</section>`;
+
   // ── HTML doc ──
   const row = (label, f, cls) =>
     `<tr><td>${label}</td>` + S.map((st, i) =>
@@ -448,6 +471,7 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 <div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Resolved within 48 hrs: <b>${pct(sWB.w48, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.w48, sLW.m)}</b> (${lwLabel})</div></div>
 </div>
 </header>
+${aiHtml}
 <section>
 <h2>Week-wise numbers</h2>
 <p class="sub">Weeks are the tracker's own buckets (1-7 / 8-14 / 15-21 / 22-end), cohorted by the date the case entered the tracker, so every row answers the same question: of the cases received in this week, what happened. Reopened is read the same way — of this week's own within-48hr resolutions, the ones that later came back down. Cases received after ${cutLabel} are excluded, and every percentage is over matured cases only — those that completed their full 48-hour window.</p>
