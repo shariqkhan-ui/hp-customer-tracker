@@ -641,15 +641,14 @@ ${['Nothing payable', 'Still owed to the customer'].map(g => {
   });
   const tvRows = Object.entries(tvB).sort((x, y) => y[1].n - x[1].n).map(([k, v]) =>
     `<tr><td style="text-align:left;white-space:normal">${escT(k)}</td><td>${v.n}</td><td>${v.csps.size}</td>` +
-    `<td style="text-align:left;font-weight:400;white-space:normal">${escT(v.res)}</td>` +
-    `<td>${v.open ? '<span style="color:var(--bad);font-weight:700">' + v.open + ' open</span>' : 'closed'}</td></tr>`).join(NL);
+    `<td style="text-align:left;font-weight:400;white-space:normal">${escT(v.res)}</td></tr>`).join(NL);
   const tvOurs = TVCAM.filter(r => !/Customer TV/.test(r.cause)).length;
   const tvCsps = new Set(TVCAM.map(r => r.csp).filter(Boolean)).size;
   const tvcamHtml = `<section>
 <h2>TV &amp; camera complaints — RCA</h2>
 <p class="sub">${tvN} customers across ${tvCsps} CSPs, taken end to end by the field team. <b>${tvOurs} of ${tvN} were faults in the network we run</b>, not the television — the TV is simply where the customer notices, being the device that is on every evening. Full case-by-case report: <a href="tv-camera-rca.html" style="color:var(--accent-ink)">tv-camera-rca.html</a>.</p>
 <div class="tablewrap"><table>
-<thead><tr><th style="text-align:left">Issue type</th><th>Customers</th><th>CSPs</th><th style="text-align:left">Resolution</th><th>Status</th></tr></thead>
+<thead><tr><th style="text-align:left">Issue type</th><th>Customers</th><th>CSPs</th><th style="text-align:left">Resolution</th></tr></thead>
 <tbody>
 ${tvRows}
 </tbody></table></div>
