@@ -474,6 +474,19 @@ ${top.map(c => {
     t.n++; t.amt += amtRA(c);
   });
   const E = eligAll.length;
+  // "120 hr not crossed" is the refund desk's own waiting period, not the 48-hr
+  // one — so it can legitimately sit inside a matured-cases funnel. It is only
+  // valid while the case really is under 120 hrs, so count the ones that have
+  // since aged past it and say so on the row.
+  const hrsOld = c => (NOW - clockTs(c)) / 3600000;
+  const stale120 = eligAll.filter(c => trim(c.refund_action) === '120 hr not crossed' && hrsOld(c) > 120);
+  const oldest120 = stale120.length ? Math.round(Math.max(...stale120.map(hrsOld))) : 0;
+  const subNote = k => {
+    if (k !== '120 hr not crossed') return '';
+    const n = eligAll.filter(c => trim(c.refund_action) === '120 hr not crossed').length;
+    if (!stale120.length) return 'The desk waits 120 hrs before paying — these are still inside that window';
+    return `<b>Flag is stale</b> — ${stale120.length} of ${n} are now past 120 hrs (oldest ${oldest120} hrs). The desk's 120-hr wait is a separate clock from the 48-hr promise, but these have long since crossed it`;
+  };
   // Refunds also went to cases that are no longer in the eligible bucket —
   // they recovered after the breach. Named so the totals row reconciles.
   const isDone = c => !!sheetEntry(c) || trim(c.cx_action) === 'Refund Done' || trim(c.refund_action) === 'Refund Done';
@@ -498,7 +511,7 @@ ${BUCKETS.map(([g, , cls]) => {
   if (!t) return '';
   return `<tr><td class="${cls}" style="padding-left:20px"><b>${g}</b></td><td class="${cls}"><b>${t.n.toLocaleString('en-IN')}</b></td><td class="${cls}"><b>${pct(t.n, E)}</b></td><td>${inr(t.amt)}</td><td></td></tr>` + NL +
     Object.entries(t.sub).sort((x, y) => y[1].n - x[1].n).map(([k, v]) =>
-      `<tr><td style="padding-left:52px;font-weight:400">${escR(k)}</td><td>${v.n.toLocaleString('en-IN')}</td><td>${pct(v.n, E)}</td><td>${inr(v.amt)}</td><td></td></tr>`).join(NL);
+      `<tr><td style="padding-left:52px;font-weight:400">${escR(k)}</td><td>${v.n.toLocaleString('en-IN')}</td><td>${pct(v.n, E)}</td><td>${inr(v.amt)}</td><td style="text-align:left;font-weight:400">${subNote(k)}</td></tr>`).join(NL);
 }).join(NL)}
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">The week-wise table's <b>Customers refunded (${doneAll.length.toLocaleString('en-IN')})</b> is larger than the settled count here because ${doneOutside.length} of those refunds went to cases that had already come back up or been resolved by the time they were paid (${inr(doneOutsideAmt)}). Amounts are the tracker's pro-rata figure, or the Finance sheet's where that is the only record.</p>
