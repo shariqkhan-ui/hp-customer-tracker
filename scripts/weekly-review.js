@@ -164,7 +164,7 @@ const bar = (v, good) => {
   // The review reads settled cases only, so a Sunday/Monday arrival that has
   // not been worked yet never drags a week's numbers down.
   const istMidnight = istMs(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate());
-  const CUT = istMidnight - (istNow.getUTCDay() % 7) * 86400000; // Sunday 00:00 IST = end of Saturday
+  const CUT = istMidnight; // start of today — cases received up to yesterday
   const cutLabel = fmtD(CUT - 1);
   function sliceOf(ts) {
     const d = new Date(ts + IST);
@@ -183,9 +183,10 @@ const bar = (v, good) => {
     if (!slices.some(x => x.id === s.id)) slices.push(s);
   }
   const done = slices.filter(s => s.to <= CUT).slice(-3);
-  const mStart = istMs(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
+  // The 4th column is the CURRENT week slice so far — not month-to-date.
+  const cur = sliceOf(NOW);
   const periods = done.concat([
-    { key: 'MTD', from: mStart, to: CUT },
+    { key: cur.key, from: cur.from, to: CUT },
     { key: 'Since launch', from: LAUNCH, to: CUT },
   ]);
   periods.forEach(p => { p.to = Math.min(p.to, CUT); p.label = fmtD(p.from) + ' – ' + fmtD(p.to - 1); });
@@ -531,7 +532,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
       ${row('CSPs contributing to the unresolved cases', s => s.csps, { head: true })}
     </tbody></table></div>
   <div class="callout"><b>Since 29 Jul, holistically:</b> ${SL.n.toLocaleString('en-IN')} cases taken in, ${SL.m.toLocaleString('en-IN')} of them matured. ${pct(SL.net, SL.m)} were put right inside 48 hours net of reopens; ${pct(SL.unres, SL.m)} breached, and ${SL.elig.toLocaleString('en-IN')} of those never pinged again and are owed money. ${inr(SL.paidAmt)} has gone back to ${SL.paidN} customers, an average of ${SL.paidN ? inr(SL.paidAmt / SL.paidN) : '—'} each. ${SL.csps} distinct CSPs have carried at least one breach.</div>
-  <div class="callout">${periods[0].key}, ${periods[1].key} and ${periods[2].key} are complete weeks and final. <b>MTD runs 1 – ${cutLabel} only</b> — the current week slice is still open and its refund actions are entered later, so read that column as directional.</div>
+  <div class="callout">${periods[0].key}, ${periods[1].key} and ${periods[2].key} are complete weeks and final. <b>${periods[3].key} runs ${periods[3].label} only</b> — that week slice is still open and its refund actions are entered later, so read that column as directional.</div>
 </section>
 
 <section id="reopened">

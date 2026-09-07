@@ -161,7 +161,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const istNow = new Date(NOW + IST);
   const istMs = (y, m, day) => Date.UTC(y, m, day) - IST;
   const istMidnight = istMs(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate());
-  const CUT = istMidnight - (istNow.getUTCDay() % 7) * 86400000;
+  const CUT = istMidnight; // start of today — cases received up to yesterday
   const cutLabel = fmtD(CUT - 1);
   function sliceOf(ts) {
     const d = new Date(ts + IST);
@@ -178,13 +178,15 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     if (!allSlices.some(x => x.id === sl.id)) allSlices.push(sl);
   }
   const doneSlices = allSlices.filter(x => x.to <= CUT).slice(-3);
-  const mStart = istMs(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
+  // The 4th column is the CURRENT week slice so far — not month-to-date.
+  const cur = sliceOf(NOW);
   const periods = doneSlices.concat([
-    { key: 'MTD', from: mStart, to: CUT },
+    { key: cur.key, from: cur.from, to: CUT },
     { key: 'Since launch', from: LAUNCH, to: CUT },
   ]);
   periods.forEach(pp => { pp.to = Math.min(pp.to, CUT); pp.label = fmtD(pp.from) + ' – ' + fmtD(pp.to - 1); });
   const LASTCOL = periods.length - 1;
+  const ptl = await ptlCallsByPartner(periods);
   era = era.filter(c => startTs(c) < CUT);
 
   // A reopen is a case WE marked resolved that came back down (reopened_at).
@@ -349,16 +351,17 @@ ${ledgerRows}
     const anyRca = Object.keys(rcaByCsp).length > 0;
     cspRca = `<section>
 <h2>CSP ticket breach &amp; resolution status — top 10</h2>
-<p class="sub">Top 10 CSPs by breached (unresolved past 48 hrs) cases, worst breach rate first. Pending reason &amp; current status maintained by the ground team in the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit" style="color:var(--accent-ink)">CSP RCA tab</a>.${anyRca ? '' : ' <b>Tab has no entries yet — team to fill CSP | Pending Reason | Current Status.</b>'}</p>
+<p class="sub">Top 10 CSPs by breached (unresolved past 48 hrs) cases, worst breach rate first. Calls at PTL = that CSP's calls on the PartnerSupportQueue since 29 Jul. Pending reason &amp; current status maintained by the ground team in the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit" style="color:var(--accent-ink)">CSP RCA tab</a>.${anyRca ? '' : ' <b>Tab has no entries yet — team to fill CSP | Pending Reason | Current Status.</b>'}</p>
 <div class="tablewrap"><table style="min-width:900px">
-<thead><tr><th>CSP</th><th>Breached</th><th>Total cases</th><th>Breach rate</th><th style="text-align:left">Pending reason</th><th style="text-align:left">Current status</th></tr></thead>
+<thead><tr><th>CSP</th><th>Breached</th><th>Total cases</th><th>Breach rate</th><th>Calls at PTL</th><th style="text-align:left">Pending reason</th><th style="text-align:left">Current status</th></tr></thead>
 <tbody>
 ${top.map(c => {
   const e = rcaByCsp[normName(c.p)] || {};
   const rate = Math.round(c.n / c.t * 100);
-  return `<tr><td>${c.p.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td><td>${c.n}</td><td>${c.t}</td><td${rate >= 50 ? ' class="b"' : ''}>${rate}%</td><td style="text-align:left;white-space:normal">${(e.reason || '—').replace(/</g, '&lt;')}</td><td style="text-align:left;white-space:normal">${(e.status || '—').replace(/</g, '&lt;')}</td></tr>`;
+  const calls = ptl && ptl[normName(c.p)] ? ptl[normName(c.p)][LASTCOL] : null;
+  return `<tr><td>${c.p.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td><td>${c.n}</td><td>${c.t}</td><td${rate >= 50 ? ' class="b"' : ''}>${rate}%</td><td>${calls == null ? '—' : calls.toLocaleString('en-IN')}</td><td style="text-align:left;white-space:normal">${(e.reason || '—').replace(/</g, '&lt;')}</td><td style="text-align:left;white-space:normal">${(e.status || '—').replace(/</g, '&lt;')}</td></tr>`;
 }).join('\n')}
-<tr><td class="tot"><b>Top 10 together</b></td><td class="tot b"><b>${top.reduce((a, c) => a + c.n, 0)}</b></td><td class="tot">${top.reduce((a, c) => a + c.t, 0)}</td><td class="tot"><b>${pct(top.reduce((a, c) => a + c.n, 0), breached.length)} of breached</b></td><td class="tot" colspan="2"></td></tr>
+<tr><td class="tot"><b>Top 10 together</b></td><td class="tot b"><b>${top.reduce((a, c) => a + c.n, 0)}</b></td><td class="tot">${top.reduce((a, c) => a + c.t, 0)}</td><td class="tot"><b>${pct(top.reduce((a, c) => a + c.n, 0), breached.length)} of breached</b></td><td class="tot"><b>${ptl ? top.reduce((a, c) => a + (ptl[normName(c.p)] ? ptl[normName(c.p)][LASTCOL] : 0), 0).toLocaleString('en-IN') : '—'}</b></td><td class="tot" colspan="2"></td></tr>
 </tbody></table></div>
 </section>`;
   } catch (e) {
@@ -376,7 +379,6 @@ ${top.map(c => {
   }
   const S = periods.map(pp => Object.assign(stats(inRange(pp)), reopStats(pp)));
 
-  const ptl = await ptlCallsByPartner(periods);
   // Calls placed at PTL, in each period, by the CSPs that left cases unresolved
   // in that same period — the pairing the review asks for.
   const ptlRow = periods.map((pp, i) => {
@@ -471,7 +473,6 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps)}
 <p class="sub" style="margin-top:10px">Calls at PTL = Ameyo calls on the PartnerSupportQueue placed by those CSPs' registered numbers, same attribution as Metabase card 12025.${ptlRow[LASTCOL] ? ` Matched ${ptlRow[LASTCOL].matched} of the ${ptlRow[LASTCOL].csps} CSPs since launch.` : ''}<br>A further ${S.map(x => x.intake).slice(0, 3).join(' / ')} cases (Week −3 / −2 / −1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
 </section>
 ${cspRca}
-${rcaLedger}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a resolution of ours that came back down (reopened_at), counted in the week it came back.</div>
 </div></body></html>`;
 
