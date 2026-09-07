@@ -81,7 +81,17 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
   ]);
   const dig = v => String(v || '').replace(/\D/g, '');
   const sheetEntry = c => (sheet && sheet[dig(c.ticket_no)]) || (sheetMob && sheetMob[dig(c.mobile).slice(-10)]) || null;
-  const isReop = c => Number(c.reopened_at) > 0 || String(c.source) === 'reopened-cron';
+  // A REOPEN is a case WE marked resolved that came back down — the tracker
+  // stamps reopened_at when a true-resolution remark is reverted. It is NOT
+  // source='reopened-cron': that is an intake label meaning Kapture already
+  // showed the ticket as reopened when we pulled it in, so the case arrives
+  // reopened rather than reopening on our watch. Counting the two together
+  // inflated the rate ~7x (14.4% vs 2.1% for the week of 31 Aug).
+  const reopTs = c => Number(c.reopened_at) || 0;
+  const isReop = c => reopTs(c) > 0;
+  const cameInAsReopen = c => String(c.source) === 'reopened-cron';
+  const RES_REMARKS = ['resolved by old partner', 'resolved by old csp'];
+  const isResRemark = c => RES_REMARKS.includes(trim(c.remarks).toLowerCase()) || trim(c.migration_date) !== '';
   const isDone = c => !!sheetEntry(c) || trim(c.cx_action) === 'Refund Done' || trim(c.refund_action) === 'Refund Done';
   const amtOf = c => {
     const a = Number(c.refund_amount);
@@ -124,7 +134,16 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
       csps: new Set(unres.map(c => trim(c.partner) || '(unknown)')).size,
     };
   }
-  const S = periods.map(p => stats(inRange(p)));
+  // Reopens are an EVENT, so they are counted in the week the reopen happened
+  // and measured against the resolutions marked in that same week — not
+  // against the week the case was originally added.
+  function reopStats(p) {
+    const inWeek = era.filter(c => { const r = reopTs(c); return r >= p.from && r < p.to; });
+    const resMarked = era.filter(c => { const rt = Number(c.remarks_updated_at) || 0; return rt >= p.from && rt < p.to && isResRemark(c); });
+    const intake = era.filter(c => { const t = startTs(c); return t >= p.from && t < p.to && cameInAsReopen(c); });
+    return { reopWeek: inWeek.length, resWeek: resMarked.length, intake: intake.length };
+  }
+  const S = periods.map((p, i) => Object.assign(stats(inRange(p)), reopStats(p)));
 
   // ── Three-week review window: every detail section reads off this ─────────
   const winFrom = thisMon - 21 * 86400000;
@@ -133,7 +152,10 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
   const winMatured = win.filter(c => (NOW - startTs(c)) >= LIM);
   const winUnres = winMatured.filter(c => getStatus(c) === 'Unresolved');
   const winElig = winUnres.filter(c => !pingedAfter(c));
-  const reopened = win.filter(isReop);
+  // Scoped by WHEN the case reopened, not when it was added.
+  const reopened = era.filter(c => { const r = reopTs(c); return r >= winFrom && r < thisMon; });
+  const intakeReop = win.filter(cameInAsReopen);
+  const resInWin = era.filter(c => { const rt = Number(c.remarks_updated_at) || 0; return rt >= winFrom && rt < thisMon && isResRemark(c); });
 
   const countBy = (list, fn) => {
     const m = {};
@@ -353,7 +375,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
 <div class="tiles">
   <div class="tile"><div class="lb">Matured last week</div><div class="vl">${lastW.m}</div><div class="nt">of ${lastW.n} added ${periods[2].label}</div></div>
   <div class="tile"><div class="lb">Resolved ≤ 48h (net)</div><div class="vl">${pct(lastW.net, lastW.m)}</div><div class="nt ${deltaNet >= 0 ? 'up' : 'down'}">${deltaNet >= 0 ? '▲' : '▼'} ${Math.abs(deltaNet).toFixed(1)} pts vs Week −2</div></div>
-  <div class="tile"><div class="lb">Reopened</div><div class="vl">${pct(lastW.reop, lastW.gross)}</div><div class="nt">${lastW.reop} of ${lastW.gross} resolutions came back</div></div>
+  <div class="tile"><div class="lb">Reopened in the week</div><div class="vl">${pct(lastW.reopWeek, lastW.resWeek)}</div><div class="nt">${lastW.reopWeek} of ${lastW.resWeek} resolutions came back down</div></div>
   <div class="tile"><div class="lb">Refund-eligible</div><div class="vl">${lastW.elig}</div><div class="nt">still down, no ping since the complaint</div></div>
   <div class="tile"><div class="lb">Paid back last week</div><div class="vl">${inr(lastW.paidAmt)}</div><div class="nt">${lastW.paidN} customers · avg ${lastW.paidN ? inr(lastW.paidAmt / lastW.paidN) : '—'}</div></div>
 </div>
@@ -415,7 +437,9 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
       ${row('Still inside the 48-hr window', s => s.growing || '–', { step: true, note: 'not yet judged' })}
       ${row('Resolved within 48 hrs — gross', (s, i) => pctCell(s.gross, s.m, true) + '', { head: true, note: 'ping restored or closed by the CSP' })}
       ${row('Resolved, count', s => s.gross, { step: true })}
-      ${row('Reopened out of those resolutions', s => `${s.reop} <span class="note">${pct(s.reop, s.gross)}</span>`, { step: true, note: 'came back down after being marked resolved' })}
+      ${row('Reopened during the week', s => `<b>${s.reopWeek}</b> <span class="note">${pct(s.reopWeek, s.resWeek)} of ${s.resWeek} resolutions marked this week</span>`, { head: true, note: 'a case we had marked resolved that came back down, counted in the week it came back' })}
+      ${row('… of them, from this week&rsquo;s own ≤48-hr resolutions', s => s.reop || '–', { step: true, note: 'the only ones that change this week&rsquo;s net number' })}
+      ${row('Arrived already reopened in Kapture', s => s.intake || '–', { step: true, note: 'intake label — the ticket was a reopen before we ever saw it, so it is not our reopen' })}
       ${row('Resolved within 48 hrs — net of reopened', s => pctCell(s.net, s.m, true), { head: true, note: 'the number we hold ourselves to' })}
       ${row('Resolved late — after the 48-hr mark', s => s.late || '–', { step: true })}
       ${row('Unresolved at maturity', s => pctCell(s.unres, s.m, false), { head: true, note: 'breached — customer still down at 48 hrs' })}
@@ -432,11 +456,12 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
 
 <section id="reopened">
   <div class="sec-head"><span class="sec-no">03</span><h2>The reopened cases</h2></div>
-  <p class="sub">${reopened.length} cases across ${winLabel} were marked resolved and came back. This is the number that turns a good gross resolution rate into a worse net one, so the reason for each reopen matters more than the count.</p>
+  <p class="sub">${reopened.length} cases came back down across ${winLabel} — a case we had marked resolved that went down again — against ${resInWin.length} resolutions marked in the same window, a reopen rate of ${pct(reopened.length, resInWin.length)}. Counted by the day the case reopened, not the day it was first logged.</p>
   <div class="tiles" style="margin:0 0 18px">
-    <div class="tile"><div class="lb">Reopened in window</div><div class="vl">${reopened.length}</div><div class="nt">${winLabel}</div></div>
+    <div class="tile"><div class="lb">Reopened in window</div><div class="vl">${reopened.length}</div><div class="nt">${pct(reopened.length, resInWin.length)} of ${resInWin.length} resolutions</div></div>
     <div class="tile"><div class="lb">Confirmed closed by PFT</div><div class="vl">${pct(reopPft, reopened.length)}</div><div class="nt">${reopPft} disposed in Kapture</div></div>
     <div class="tile"><div class="lb">Still down today</div><div class="vl">${reopStillDown}</div><div class="nt">reopened and not resolved since</div></div>
+    <div class="tile"><div class="lb">Arrived already reopened</div><div class="vl">${intakeReop.length}</div><div class="nt">Kapture reopens pulled in by the cron — counted separately, not as our reopens</div></div>
   </div>
   <div class="tablewrap"><table style="min-width:520px">
     <thead><tr><th>Remark the case carried when it reopened</th><th>Cases</th><th>Share</th></tr></thead>
