@@ -78,6 +78,48 @@ async function kaptureReopens(fromISO) {
     return null;
   }
 }
+// Open vs closed on those tickets, counted over ALL of them — the reasons
+// query below is capped at three rows per CSP and must never be summed for
+// totals.
+async function ptlStatusByPartner(from, to) {
+  const key = process.env.METABASE_API_KEY;
+  if (!key) return null;
+  const d = t => new Date(t + IST).toISOString().slice(0, 10);
+  const sql = `WITH pb AS (
+    SELECT DISTINCT partner_account_id, partner_name FROM hierarchy_base WHERE dedup_flag = 1
+  ), t AS (
+    SELECT REGEXP_REPLACE(CAST(CUSTOMER_CODE AS STRING), '\.0$', '') AS acct, TRIM(STATUS) AS status,
+           TO_DATE(CREATED_DATE, 'DD/MM/YYYY') AS cd
+    FROM PROD_DB.PUBLIC.KAPTURE_PARTNER_TICKETS_REPORT
+    WHERE TO_DATE(CREATED_DATE, 'DD/MM/YYYY') >= '${d(from)}'
+      AND TO_DATE(CREATED_DATE, 'DD/MM/YYYY') <  '${d(to)}'
+    QUALIFY ROW_NUMBER() OVER (PARTITION BY TICKET_NO ORDER BY INGESTED_AT DESC) = 1
+  )
+  SELECT pb.partner_name,
+         COUNT_IF(t.status ILIKE 'Pending') AS open_n,
+         COUNT_IF(t.status ILIKE 'Complete') AS closed_n,
+         MAX(CASE WHEN t.status ILIKE 'Pending' THEN DATEDIFF(day, t.cd, CURRENT_DATE) END) AS oldest_open
+  FROM t JOIN pb ON CAST(pb.partner_account_id AS STRING) = t.acct
+  GROUP BY 1`;
+  try {
+    const r = await fetch(METABASE + '/api/dataset', {
+      method: 'POST',
+      headers: { 'x-api-key': key, 'content-type': 'application/json' },
+      body: JSON.stringify({ database: 113, type: 'native', native: { query: sql } }),
+    }).then(x => x.json());
+    if (!r.data || !r.data.rows) throw new Error(JSON.stringify(r.error || r).slice(0, 200));
+    const map = {};
+    r.data.rows.forEach(([name, o, c, oldest]) => {
+      const k = normName(name);
+      if (k) map[k] = { open: Number(o) || 0, closed: Number(c) || 0, oldest: Number(oldest) || 0 };
+    });
+    console.log('PTL ticket status fetched for', Object.keys(map).length, 'CSPs');
+    return map;
+  } catch (e) {
+    console.error('PTL status query failed (non-fatal):', e.message);
+    return null;
+  }
+}
 async function ptlReasonsByPartner(from, to) {
   const key = process.env.METABASE_API_KEY;
   if (!key) return null;
@@ -93,8 +135,7 @@ async function ptlReasonsByPartner(from, to) {
       AND TO_DATE(CREATED_DATE, 'DD/MM/YYYY') <  '${d(to)}'
     QUALIFY ROW_NUMBER() OVER (PARTITION BY TICKET_NO ORDER BY INGESTED_AT DESC) = 1
   )
-  SELECT pb.partner_name, COALESCE(t.reason, 'Not categorised') AS reason, COUNT(*) AS n,
-         COUNT_IF(t.status ILIKE 'Pending') AS open_n, COUNT_IF(t.status ILIKE 'Complete') AS closed_n
+  SELECT pb.partner_name, COALESCE(t.reason, 'Not categorised') AS reason, COUNT(*) AS n
   FROM t JOIN pb ON CAST(pb.partner_account_id AS STRING) = t.acct
   GROUP BY 1, 2
   QUALIFY ROW_NUMBER() OVER (PARTITION BY pb.partner_name ORDER BY COUNT(*) DESC) <= 3`;
@@ -106,10 +147,10 @@ async function ptlReasonsByPartner(from, to) {
     }).then(x => x.json());
     if (!r.data || !r.data.rows) throw new Error(JSON.stringify(r.error || r).slice(0, 200));
     const map = {};
-    r.data.rows.forEach(([name, reason, n, openN, closedN]) => {
+    r.data.rows.forEach(([name, reason, n]) => {
       const k = normName(name);
       if (!k) return;
-      (map[k] = map[k] || []).push({ reason, n: Number(n) || 0, open: Number(openN) || 0, closed: Number(closedN) || 0 });
+      (map[k] = map[k] || []).push({ reason, n: Number(n) || 0 });
     });
     Object.values(map).forEach(v => v.sort((a, b) => b.n - a.n));
     console.log('PTL ticket reasons fetched for', Object.keys(map).length, 'CSPs');
@@ -278,6 +319,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     return rt > 0 && d > dayOf(rt);
   };
   const ptlWhy = await ptlReasonsByPartner(LAUNCH, CUT);
+  const ptlSt = await ptlStatusByPartner(LAUNCH, CUT);
   era = era.filter(c => startTs(c) < CUT);
 
   // A reopen is a case WE marked resolved that came back down (reopened_at).
@@ -463,10 +505,10 @@ ${top.map(c => {
   const rate = Math.round(c.n / c.t * 100);
   const calls = ptl && ptl[normName(c.p)] ? ptl[normName(c.p)][LASTCOL] : null;
   return `<tr><td>${c.p.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td><td>${c.n}</td><td>${c.t}</td><td${rate >= 50 ? ' class="b"' : ''}>${rate}%</td><td>${calls == null ? '—' : calls.toLocaleString('en-IN')}</td><td>${(() => {
-    const w = ptlWhy && ptlWhy[normName(c.p)];
-    if (!w || !w.length) return '—';
-    const o = w.reduce((a, x) => a + x.open, 0), cl = w.reduce((a, x) => a + x.closed, 0);
-    return `<span class="${o ? 'b' : ''}">${o}</span> / ${cl}`;
+    const st = ptlSt && ptlSt[normName(c.p)];
+    if (!st) return '—';
+    return `<span class="${st.open ? 'b' : ''}">${st.open}</span> / ${st.closed}` +
+      (st.open ? `<br><span style="font-size:11px;color:var(--muted)">oldest ${st.oldest}d</span>` : '');
   })()}</td><td style="text-align:left;white-space:normal;font-weight:400">${(() => {
     const w = ptlWhy && ptlWhy[normName(c.p)];
     if (!w || !w.length) return '—';
