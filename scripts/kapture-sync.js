@@ -241,6 +241,7 @@ async function syncRefundSheet() {
 // (tracker mobile ≠ registered mobile for some customers). No active paid
 // plan at complaint (lapsed/churned/free) → 0.
 let _openMobiles;
+let _purged;
 const TAT_LAUNCH_MS = Date.parse('2026-07-29T00:00:00+05:30');
 
 async function computeProRataAmounts(apiKey) {
@@ -440,6 +441,10 @@ async function syncLastPing(apiKey) {
 // team also moves tickets there AFTER they enter the tracker. This sweep
 // removes any tracked flag-era case whose Kapture queue is now Wiom Net
 // (house accounts — per Shariq, they must not live in the tracker at all).
+async function tombstone(digits, reason) {
+  try { await fbPut('/purged_tickets/' + String(digits).replace(/D/g, ''), { reason, at: Date.now() }); } catch (e) {}
+}
+
 async function purgeWiomNetQueue(apiKey) {
   const all = await fbGet('/cases') || {};
   const entries = Object.entries(all).filter(([k, c]) => {
@@ -463,6 +468,7 @@ async function purgeWiomNetQueue(apiKey) {
       const d = String(r.KAPTURE_TICKET_ID || '').trim();
       for (const key of (byDig[d] || [])) {
         await fbPut('/cases/' + key, null);
+        await tombstone(d, 'wiom-net-queue');
         purged++;
         log(`Wiom Net purge: removed ticket=${d} (moved into Wiom Net queue after intake).`);
       }
@@ -485,6 +491,7 @@ async function purgeWiomNetQueue(apiKey) {
       const d = String(r.TK || '').trim();
       for (const key of (byDig[d] || [])) {
         await fbPut('/cases/' + key, null);
+        await tombstone(d, 'wifi-flow');
         purged++;
         log(`Wiom Net purge: removed ticket=${d} (free-WiFi app flow, no stm row).`);
       }
@@ -506,6 +513,7 @@ async function purgeWiomNetQueue(apiKey) {
       const m = mobOf(c);
       if (m.length !== 10 || inHub.has(m)) continue;
       await fbPut('/cases/' + key, null);
+      await tombstone(String(c.ticket_no).replace(/\D/g, ''), 'not-in-wiom-hub');
       purged++;
       log(`Wiom Net purge: removed ticket=${c.ticket_no} (no CSP + mobile ${m} not in Wiom Hub).`);
     }
@@ -631,10 +639,21 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     } catch (e) { _openMobiles = null; log('WARN: duplicate guard unavailable — ' + e.message); }
   }
 
+  // Tombstones: tickets the Wiom Net purge removed must never re-enter —
+  // live-open re-added purged tickets within one cycle before this existed.
+  if (_purged === undefined) {
+    try {
+      const p = await fbGet('/purged_tickets') || {};
+      _purged = new Set(Object.keys(p));
+      log(`Tombstones loaded: ${_purged.size} purged ticket(s) barred from re-entry.`);
+    } catch (e) { _purged = new Set(); }
+  }
+
   let added = 0, skipped = 0, enriched = 0, dupSkipped = 0;
   for (const t of uniq) {
     const ticketId = String(t.KAPTURE_TICKET_ID || '').trim();
     if (!ticketId) continue;
+    if (_purged.has(ticketId.replace(/\D/g, ''))) { continue; }  // purged as Wiom Net — never re-add
     const tMob = String(t.CUSTOMER_MOBILE || '').replace(/\D/g, '').slice(-10);
     if (_openMobiles && tMob.length === 10 && _openMobiles.has(tMob)) {
       const key0 = ticketKey(ticketId);
