@@ -470,26 +470,6 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps)}
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">Calls at PTL = Ameyo calls on the PartnerSupportQueue placed by those CSPs' registered numbers, same attribution as Metabase card 12025.${ptlRow[LASTCOL] ? ` Matched ${ptlRow[LASTCOL].matched} of the ${ptlRow[LASTCOL].csps} CSPs since launch.` : ''}<br>A further ${S.map(x => x.intake).slice(0, 3).join(' / ')} cases (Week −3 / −2 / −1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
 </section>
-<section>
-<h2>The complete funnel — case added → resolved ≤48h → unresolved &gt;48h → refund → closed (${tdLabel})</h2>
-<p class="sub">The end-to-end journey of every case received since 29 Jul. Each stage shows absolute + %, and each drop shows what happened.</p>
-<div class="tablewrap"><table>
-<thead><tr><th>Stage</th><th>Cases</th><th>%</th><th style="text-align:left">What happened</th></tr></thead>
-<tbody>
-<tr><td><b>1. Case added</b></td><td><b>${sTD.n.toLocaleString('en-IN')}</b></td><td><b>100%</b></td><td style="text-align:left">All cases entering the tracker since 29 Jul (~${avgPerDay}/day)</td></tr>
-<tr><td style="padding-left:34px">↳ Still inside 48-hr window</td><td>${(sTD.n - sTD.m).toLocaleString('en-IN')}</td><td>${pct(sTD.n - sTD.m, sTD.n)}</td><td style="text-align:left">Too fresh to judge — mature within 2 days</td></tr>
-<tr><td style="padding-left:34px">↳ Matured</td><td>${sTD.m.toLocaleString('en-IN')}</td><td>${pct(sTD.m, sTD.n)}</td><td style="text-align:left">Completed their full 48-hour window — base for the stages below</td></tr>
-<tr><td class="g"><b>2. Resolved within 48 hrs</b></td><td class="g"><b>${sTD.w48.toLocaleString('en-IN')}</b></td><td class="g"><b>${pct(sTD.w48, sTD.m)}</b></td><td style="text-align:left">Net of reopens: gross ${sTD.w48g.toLocaleString('en-IN')} (${pct(sTD.w48g, sTD.m)}) − ${(sTD.w48g - sTD.w48)} later reopened</td></tr>
-<tr><td style="padding-left:34px">↳ Resolved late (after breaching)</td><td>${sTD.late}</td><td>${pct(sTD.late, sTD.m)}</td><td style="text-align:left">Fixed, but only after the 48-hr promise was broken</td></tr>
-<tr><td class="b"><b>3. Unresolved after 48 hrs</b></td><td class="b"><b>${breached.length}</b></td><td class="b"><b>${pct(breached.length, sTD.m)}</b></td><td style="text-align:left">Breached and still open — every one owes a pro-rata refund</td></tr>
-${ageing.map(([r, n]) => `<tr><td style="padding-left:34px">↳ Pending since ${r}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left"></td></tr>`).join('\n')}
-<tr><td><b>4. Refund</b></td><td><b>${breached.length}</b></td><td><b>100% eligible</b></td><td style="text-align:left">Every breached case owes the customer a pro-rata refund</td></tr>
-<tr><td class="g" style="padding-left:34px">↳ Refund done</td><td class="g">${breachedDone.length}</td><td class="g">${pct(breachedDone.length, breached.length)}</td><td style="text-align:left">${inr(breachedDoneAmt)} paid (Finance sheet / Cx Action)</td></tr>
-<tr><td class="b" style="padding-left:34px">↳ Refund pending</td><td class="b">${breachedPend.length}</td><td class="b">${pct(breachedPend.length, breached.length)}</td><td style="text-align:left">${inr(breachedPendAmt)} owed pro-rata</td></tr>
-<tr><td><b>5. Closed — Kapture final status</b></td><td><b>${breached.length}</b></td><td><b>100%</b></td><td style="text-align:left">Where the breached tickets stand in Kapture</td></tr>
-${closure.map(([s, n]) => `<tr><td style="padding-left:34px">↳ ${s}</td><td>${n}</td><td>${pct(n, breached.length)}</td><td style="text-align:left">${s === 'Completed' ? 'Disposed by PFT but tracker still shows unresolved — verify' : s === 'Pending' ? 'Still open in Kapture too' : ''}</td></tr>`).join('\n')}
-</tbody></table></div>
-</section>
 ${cspRca}
 ${rcaLedger}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a resolution of ours that came back down (reopened_at), counted in the week it came back.</div>
