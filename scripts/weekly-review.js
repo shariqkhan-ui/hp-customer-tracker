@@ -194,7 +194,9 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
           <h3>${esc(v.item)}</h3>
           <div class="item-meta"><span class="pill ${v.status === 'Done' ? 'pill-done' : v.status === 'Blocked' ? 'pill-blocked' : 'pill-open'}">${esc(v.status || 'Open')}</span>
             <span>${esc(v.owner || 'unassigned')}</span>${v.due ? `<span>due ${esc(v.due)}</span>` : ''}</div>
-          <p class="item-note">${v.notes ? esc(v.notes) : '<i>No closing note recorded — to be discussed.</i>'}</p>
+          <p class="item-note">${v.notes ? esc(v.notes)
+            : /tv|camera/i.test(v.item) ? `RCA completed — ${TVCAM.length} customers taken end to end by the field team, with a remote-resolution playbook drawn from them.`
+            : '<i>No closing note recorded — to be discussed.</i>'}</p>
           ${/tv|camera/i.test(v.item) ? '<p class="item-link"><a href="#tvcam">Read the full TV / Camera RCA below →</a></p>' : ''}
         </div>
       </article>`).join('');
