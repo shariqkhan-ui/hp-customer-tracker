@@ -9,9 +9,11 @@
  *   4. the CSPs behind the unresolved cases
  *   5. why the no-ping unresolved cases have not been refunded
  *
- * Weeks are Monday-anchored IST; Week -1 is the just-finished Mon–Sun week.
- * Every percentage uses MATURED cases only (the case has completed its full
- * 48-hr window), so a part-grown week is never compared with a finished one.
+ * Weeks are the tracker's OWN buckets (weekSliceOf in index.html): calendar
+ * slices 1-7 / 8-14 / 15-21 / 22-end. The three most recently COMPLETED slices
+ * are the week columns, then month-to-date, then the whole era since 29 Jul.
+ * Intake is cut off at the end of the most recent Saturday, and every
+ * percentage uses MATURED cases only (the case finished its full 48-hr window).
  *
  * Writes weekly-review.html in the repo root (served on GitHub Pages).
  */
@@ -52,12 +54,23 @@ function getStatus(c) {
   if (['internet supply down', 'recharge done but no internet'].some(s => sc.includes(s)) && PING.some(k => g.includes(k))) return 'Ping Up';
   return 'Unresolved';
 }
+// Two clocks, exactly as the dashboard has them.
+// rowStartTsAny (index.html:2259) buckets a case into a week: added_at, then
+// the Case Added On date, and only then owner_assigned_at.
 function startTs(c) {
   let t = Number(c.added_at) || 0;
   if (!t) { const d = parseDate(c.case_added_on); t = d ? d.getTime() : 0; }
   if (!t) t = Number(c.owner_assigned_at) || 0;
   return t;
 }
+// caseStartTs (index.html:2926) runs the 48-hr clock: added_at OR
+// owner_assigned_at, then the date — and it is zero before the 29 Jul launch.
+function clockTs(c) {
+  let t = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+  if (!t) { const d = parseDate(c.case_added_on); t = d ? d.getTime() : 0; }
+  return t >= LAUNCH ? t : 0;
+}
+const isMatured = c => { const t = clockTs(c); return t > 0 && (NOW - t) >= LIM; };
 function resolvedWithin48(c) {
   if (getStatus(c) === 'Unresolved') return false;
   const s = startTs(c), rt = Number(c.remarks_updated_at) || 0;
@@ -104,26 +117,54 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
   // and the case is refund-eligible.
   const pingedAfter = c => Number(c.last_ping_at) > 0 && Number(c.last_ping_at) > startTs(c);
 
-  const era = Object.entries(casesRaw).filter(([k]) => !k.startsWith('__')).map(([, c]) => c)
+  let era = Object.entries(casesRaw).filter(([k]) => !k.startsWith('__')).map(([, c]) => c)
     .filter(c => c && c.ticket_no && startTs(c) >= LAUNCH);
 
-  // ── Periods: Monday-anchored IST weeks + month-to-date ────────────────────
+  // ── Periods: the tracker's OWN week buckets ───────────────────────────────
+  // index.html weekSliceOf() cuts each calendar month into 1-7 / 8-14 / 15-21 /
+  // 22-end and labels them "Aug W3 (15-21)". The Week filter, the Cases-tab
+  // weekly table and every Reports column use those slices, so this doc has to
+  // as well — Monday-anchored weeks would silently show a different set of
+  // cases than the dashboard the review is run against.
   const istNow = new Date(NOW + IST);
-  const d0 = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate()) - IST;
-  const thisMon = d0 - ((istNow.getUTCDay() + 6) % 7) * 86400000;
-  const mStart = Date.UTC(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1) - IST;
-  const wk = i => ({ key: 'Week −' + i, from: thisMon - i * 7 * 86400000, to: thisMon - (i - 1) * 7 * 86400000 });
-  // Three finished-ish weeks, the month so far, and the whole flag era since
-  // the 29 Jul launch — the last column is what the programme has done overall.
-  const periods = [wk(3), wk(2), wk(1),
-    { key: 'MTD', from: mStart, to: NOW },
-    { key: 'Since launch', from: LAUNCH, to: NOW }];
-  periods.forEach(p => { p.label = fmtD(p.from) + ' – ' + fmtD(Math.min(p.to, NOW) - 1); });
+  const istMs = (y, m, day) => Date.UTC(y, m, day) - IST;
+  // Intake cut-off: nothing received after the most recent Saturday counts.
+  // The review reads settled cases only, so a Sunday/Monday arrival that has
+  // not been worked yet never drags a week's numbers down.
+  const istMidnight = istMs(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate());
+  const CUT = istMidnight - (istNow.getUTCDay() % 7) * 86400000; // Sunday 00:00 IST = end of Saturday
+  const cutLabel = fmtD(CUT - 1);
+  function sliceOf(ts) {
+    const d = new Date(ts + IST);
+    const y = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate();
+    const lastDay = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+    const ranges = [[1, 7], [8, 14], [15, 21], [22, lastDay]];
+    let wi = 4, a = 22, b = lastDay;
+    for (let i = 0; i < 4; i++) { if (day >= ranges[i][0] && day <= ranges[i][1]) { wi = i + 1; a = ranges[i][0]; b = ranges[i][1]; break; } }
+    return { id: y * 10000 + m * 100 + wi, key: MN[m] + ' W' + wi, from: istMs(y, m, a), to: istMs(y, m, b + 1) };
+  }
+  // Every slice touched since launch, newest last; the last three COMPLETED
+  // ones are Week −3 / −2 / −1, then the month so far, then the whole era.
+  const slices = [];
+  for (let t = LAUNCH; t < NOW; t += 86400000) {
+    const s = sliceOf(t);
+    if (!slices.some(x => x.id === s.id)) slices.push(s);
+  }
+  const done = slices.filter(s => s.to <= CUT).slice(-3);
+  const mStart = istMs(istNow.getUTCFullYear(), istNow.getUTCMonth(), 1);
+  const periods = done.concat([
+    { key: 'MTD', from: mStart, to: CUT },
+    { key: 'Since launch', from: LAUNCH, to: CUT },
+  ]);
+  periods.forEach(p => { p.to = Math.min(p.to, CUT); p.label = fmtD(p.from) + ' – ' + fmtD(p.to - 1); });
   const LASTCOL = periods.length - 1;
+  const winFrom = done[0].from, winTo = done[done.length - 1].to;
+  // Nothing received after Saturday enters the review at all.
+  era = era.filter(c => startTs(c) < CUT);
   const inRange = r => era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to; });
 
   function stats(list) {
-    const matured = list.filter(c => (NOW - startTs(c)) >= LIM);
+    const matured = list.filter(isMatured);
     const gross = matured.filter(c => resolvedWithin48(c) === true);
     const reop = gross.filter(isReop);
     const late = matured.filter(c => getStatus(c) !== 'Unresolved' && resolvedWithin48(c) !== true);
@@ -151,16 +192,15 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
   const S = periods.map((p, i) => Object.assign(stats(inRange(p)), reopStats(p)));
 
   // ── Three-week review window: every detail section reads off this ─────────
-  const winFrom = thisMon - 21 * 86400000;
-  const win = era.filter(c => { const t = startTs(c); return t >= winFrom && t < thisMon; });
-  const winLabel = fmtD(winFrom) + ' – ' + fmtD(thisMon - 1);
-  const winMatured = win.filter(c => (NOW - startTs(c)) >= LIM);
+  const win = era.filter(c => { const t = startTs(c); return t >= winFrom && t < winTo; });
+  const winLabel = fmtD(winFrom) + ' – ' + fmtD(winTo - 1);
+  const winMatured = win.filter(isMatured);
   const winUnres = winMatured.filter(c => getStatus(c) === 'Unresolved');
   const winElig = winUnres.filter(c => !pingedAfter(c));
   // Scoped by WHEN the case reopened, not when it was added.
-  const reopened = era.filter(c => { const r = reopTs(c); return r >= winFrom && r < thisMon; });
+  const reopened = era.filter(c => { const r = reopTs(c); return r >= winFrom && r < winTo; });
   const intakeReop = win.filter(cameInAsReopen);
-  const resInWin = era.filter(c => { const rt = Number(c.remarks_updated_at) || 0; return rt >= winFrom && rt < thisMon && isResRemark(c); });
+  const resInWin = era.filter(c => { const rt = Number(c.remarks_updated_at) || 0; return rt >= winFrom && rt < winTo && isResRemark(c); });
 
   const countBy = (list, fn) => {
     const m = {};
@@ -178,7 +218,7 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
   win.forEach(c => { const p = trim(c.partner) || '(unknown)'; cspTot[p] = (cspTot[p] || 0) + 1; });
   winUnres.forEach(c => {
     const p = trim(c.partner) || '(unknown)', t = startTs(c);
-    const wi = t >= thisMon - 7 * 86400000 ? 1 : t >= thisMon - 14 * 86400000 ? 2 : 3;
+    const wi = t >= done[2].from ? 1 : t >= done[1].from ? 2 : 3;
     const e = (cspWk[p] = cspWk[p] || { 1: 0, 2: 0, 3: 0, all: 0 });
     e[wi]++; e.all++;
     if (!pingedAfter(c)) cspElig[p] = (cspElig[p] || 0) + 1;
@@ -368,21 +408,22 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
 
 <header>
   <p class="eyebrow">High Pain · 48-hour TAT</p>
-  <h1>Weekly Review — ${periods[2].label}</h1>
+  <h1>Weekly Review — cases to ${cutLabel}</h1>
   <p class="dek">Every case we took in, and what happened to it: the action items we closed, the week the cases matured in, who was left unresolved, and what we paid back.</p>
 </header>
 <div class="stamp">
   <span>Generated ${new Date(NOW + IST).toISOString().slice(0, 16).replace('T', ' ')} IST</span>
-  <span>Cohort: cases added since 29 Jul (48-hr flag era)</span>
-  <span>Denominator: matured cases only</span>
+  <span>Cases received up to ${cutLabel} (Saturday cut-off)</span>
+  <span>Matured cases only — each completed its full 48-hr window</span>
+  <span>Weeks = tracker slices 1-7 / 8-14 / 15-21 / 22-end</span>
 </div>
 
 <div class="tiles">
-  <div class="tile"><div class="lb">Matured last week</div><div class="vl">${lastW.m}</div><div class="nt">of ${lastW.n} added ${periods[2].label}</div></div>
-  <div class="tile"><div class="lb">Resolved ≤ 48h (net)</div><div class="vl">${pct(lastW.net, lastW.m)}</div><div class="nt ${deltaNet >= 0 ? 'up' : 'down'}">${deltaNet >= 0 ? '▲' : '▼'} ${Math.abs(deltaNet).toFixed(1)} pts vs Week −2</div></div>
+  <div class="tile"><div class="lb">Matured · ${periods[2].key}</div><div class="vl">${lastW.m}</div><div class="nt">of ${lastW.n} received ${periods[2].label}</div></div>
+  <div class="tile"><div class="lb">Resolved ≤ 48h (net)</div><div class="vl">${pct(lastW.net, lastW.m)}</div><div class="nt ${deltaNet >= 0 ? 'up' : 'down'}">${deltaNet >= 0 ? '▲' : '▼'} ${Math.abs(deltaNet).toFixed(1)} pts vs ${periods[1].key}</div></div>
   <div class="tile"><div class="lb">Reopened in the week</div><div class="vl">${pct(lastW.reopWeek, lastW.resWeek)}</div><div class="nt">${lastW.reopWeek} of ${lastW.resWeek} resolutions came back down</div></div>
   <div class="tile"><div class="lb">Refund-eligible</div><div class="vl">${lastW.elig}</div><div class="nt">still down, no ping since the complaint</div></div>
-  <div class="tile"><div class="lb">Paid back last week</div><div class="vl">${inr(lastW.paidAmt)}</div><div class="nt">${lastW.paidN} customers · avg ${lastW.paidN ? inr(lastW.paidAmt / lastW.paidN) : '—'}</div></div>
+  <div class="tile"><div class="lb">Paid back · ${periods[2].key}</div><div class="vl">${inr(lastW.paidAmt)}</div><div class="nt">${lastW.paidN} customers · avg ${lastW.paidN ? inr(lastW.paidAmt / lastW.paidN) : '—'}</div></div>
 </div>
 
 <section id="actions">
@@ -433,7 +474,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
 
 <section id="funnel">
   <div class="sec-head"><span class="sec-no">02</span><h2>The week-wise funnel</h2></div>
-  <p class="sub">Cases are grouped by the week they were <b>added</b> to the tracker, and only counted once they have completed a full 48 hours. Each drop below the top line has its own row, so the question “where did the rest go?” is answered on the page. The last column is the whole flag era since the 29 Jul launch — the programme's holistic number, not a week.</p>
+  <p class="sub">Cases are grouped by the week they were <b>added</b>, using the tracker's own week slices (1–7 / 8–14 / 15–21 / 22–end) so every column holds exactly the cases the dashboard's Week filter would show. Nothing received after ${cutLabel} is counted, and a case only counts once it has completed a full 48 hours. Each drop below the top line has its own row, so the question “where did the rest go?” is answered on the page. The last column is the whole flag era since the 29 Jul launch — the programme's holistic number, not a week.</p>
   <div class="tablewrap"><table style="min-width:940px">
     <thead><tr><th>Metric</th>${cols}</tr></thead>
     <tbody>
@@ -442,8 +483,8 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
       ${row('Still inside the 48-hr window', s => s.growing || '–', { step: true, note: 'not yet judged' })}
       ${row('Resolved within 48 hrs — gross', (s, i) => pctCell(s.gross, s.m, true) + '', { head: true, note: 'ping restored or closed by the CSP' })}
       ${row('Resolved, count', s => s.gross, { step: true })}
-      ${row('Reopened during the week', s => `<b>${s.reopWeek}</b> <span class="note">${pct(s.reopWeek, s.resWeek)} of ${s.resWeek} resolutions marked this week</span>`, { head: true, note: 'a case we had marked resolved that came back down, counted in the week it came back' })}
-      ${row('… of them, from this week&rsquo;s own ≤48-hr resolutions', s => s.reop || '–', { step: true, note: 'the only ones that change this week&rsquo;s net number' })}
+      ${row('Reopened during the period', s => `<b>${s.reopWeek}</b> <span class="note">${pct(s.reopWeek, s.resWeek)} of ${s.resWeek} resolutions marked in it</span>`, { head: true, note: 'a case we had marked resolved that came back down, counted when it came back' })}
+      ${row('… of them, from this period&rsquo;s own ≤48-hr resolutions', s => s.reop || '–', { step: true, note: 'the only ones that change this period&rsquo;s net number' })}
       ${row('Arrived already reopened in Kapture', s => s.intake || '–', { step: true, note: 'intake label — the ticket was a reopen before we ever saw it, so it is not our reopen' })}
       ${row('Resolved within 48 hrs — net of reopened', s => pctCell(s.net, s.m, true), { head: true, note: 'the number we hold ourselves to' })}
       ${row('Resolved late — after the 48-hr mark', s => s.late || '–', { step: true })}
@@ -457,7 +498,7 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
       ${row('CSPs behind the unresolved cases', s => s.csps, { head: true, note: 'distinct CSPs with at least one breach' })}
     </tbody></table></div>
   <div class="callout"><b>Since 29 Jul, holistically:</b> ${SL.n.toLocaleString('en-IN')} cases taken in, ${SL.m.toLocaleString('en-IN')} of them matured. ${pct(SL.net, SL.m)} were put right inside 48 hours net of reopens; ${pct(SL.unres, SL.m)} breached, and ${SL.elig.toLocaleString('en-IN')} of those never pinged again and are owed money. ${inr(SL.paidAmt)} has gone back to ${SL.paidN} customers, an average of ${SL.paidN ? inr(SL.paidAmt / SL.paidN) : '—'} each. ${SL.csps} distinct CSPs have carried at least one breach.</div>
-  <div class="callout">Week −1 and MTD are still settling: cases added in the last two days have not finished their 48-hr window, and the refund actions for that week are entered later in the following week. Read them as directional; Week −2 and Week −3 are final.</div>
+  <div class="callout">${periods[0].key}, ${periods[1].key} and ${periods[2].key} are complete weeks and final. <b>MTD runs 1 – ${cutLabel} only</b> — the current week slice is still open and its refund actions are entered later, so read that column as directional.</div>
 </section>
 
 <section id="reopened">
