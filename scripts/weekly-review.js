@@ -31,6 +31,22 @@ const OUT = path.join(__dirname, '..', 'weekly-review.html');
 // (1XibbJM2El4tXNdYIc9_qLrq57o63NSJwlXN954FYk_U) — kept as a repo file
 // because that sheet is not link-readable, so the cron cannot fetch it.
 const TVCAM = require('../data-tvcam-rca.json');
+// Field team's reopen RCA sheet — the reason each reopened case came back.
+const RCA_CSV = 'https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/export?format=csv&gid=0';
+function parseCSVText(text) {
+  const rows = []; let row = [], f = '', q = false;
+  const NL = String.fromCharCode(10), CR = String.fromCharCode(13);
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ',') { row.push(f); f = ''; }
+    else if (c === NL) { if (f.endsWith(CR)) f = f.slice(0, -1); row.push(f); rows.push(row); row = []; f = ''; }
+    else f += c;
+  }
+  if (f || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
 
 const MON = { jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5, jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11 };
 function parseDate(s) {
@@ -84,6 +100,10 @@ const fmtD = ts => { const d = new Date(ts + IST); return d.getUTCDate() + ' ' +
 const inr = v => '₹' + Math.round(Number(v) || 0).toLocaleString('en-IN');
 const pct = (a, b) => (b ? (a / b * 100).toFixed(1) + '%' : '—');
 const pctN = (a, b) => (b ? a / b * 100 : 0);
+const bar = (v, good) => {
+  const w = Math.max(0, Math.min(100, v));
+  return `<span class="mini"><span class="mini-fill ${good ? 'g' : 'b'}" style="width:${w.toFixed(1)}%"></span></span>`;
+};
 
 (async () => {
   const [casesRaw, sheet, sheetMob, aiRaw] = await Promise.all([
@@ -92,6 +112,18 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
     fetch(FIREBASE_DB + '/refund_sheet_mob.json').then(r => r.json()).catch(() => ({})),
     fetch(FIREBASE_DB + '/cases/__action_items__.json').then(r => r.json()).catch(() => ({})),
   ]);
+  // Reopen reasons, keyed by ticket. Sheet failure must never kill the doc.
+  const rcaByTicket = {};
+  try {
+    const sh = parseCSVText(await fetch(RCA_CSV, { redirect: 'follow' }).then(r => r.text()));
+    const H = sh[0].map(h => h.trim().toLowerCase());
+    const col = n => H.findIndex(h => h === n);
+    const iT = col('ticket no'), iCx = col('cx remarks'), iCsp = col('csp remarks'), iP = col('last ping time');
+    sh.slice(1).forEach(r => {
+      const t = String(r[iT] || '').replace(/\D/g, '');
+      if (t) rcaByTicket[t] = { cx: trim(r[iCx]), csp: trim(r[iCsp]), ping: trim(r[iP]) };
+    });
+  } catch (e) { console.error('reopen RCA sheet unreadable (non-fatal):', e.message); }
   const dig = v => String(v || '').replace(/\D/g, '');
   const sheetEntry = c => (sheet && sheet[dig(c.ticket_no)]) || (sheetMob && sheetMob[dig(c.mobile).slice(-10)]) || null;
   // A REOPEN is a case WE marked resolved that came back down — the tracker
@@ -213,6 +245,20 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
   const eligReasons = countBy(winElig, c => trim(c.remarks));
   const eligActions = countBy(winElig, c => trim(c.refund_action) || 'Refund Pending — no action set yet');
 
+  // ── Working queues for the functional review ─────────────────────────────
+  // A functional meeting works the actual list, not the headline. Ageing runs
+  // from the day the case was added, matching the tracker's Refund Action tab.
+  const kLink = t => t ? `<a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${esc(t)}?query=${esc(t)}" target="_blank" rel="noopener">${esc(t)}</a>` : '—';
+  const reopLedger = reopened.slice().sort((a, b) => reopTs(b) - reopTs(a)).map(c => {
+    const r = rcaByTicket[dig(c.ticket_no)] || {};
+    return `<tr><td class="mono">${kLink(trim(c.ticket_no))}</td>` +
+      `<td class="wrap">${esc(trim(c.partner) || '—')}</td><td>${fmtD(reopTs(c))}</td>` +
+      `<td class="wrap">${esc(r.cx || '—')}</td><td class="wrap">${esc(r.csp || '—')}</td>` +
+      `<td class="wrap">${esc(trim(c.remarks) || '—')}</td>` +
+      `<td><span class="pill ${getStatus(c) === 'Unresolved' ? 'pill-blocked' : 'pill-done'}">${getStatus(c)}</span></td></tr>`;
+  }).join('');
+  const reopWithRca = reopened.filter(c => rcaByTicket[dig(c.ticket_no)]).length;
+
   // CSPs behind the unresolved cases, split by week
   const cspTot = {}, cspWk = {}, cspElig = {};
   win.forEach(c => { const p = trim(c.partner) || '(unknown)'; cspTot[p] = (cspTot[p] || 0) + 1; });
@@ -244,10 +290,6 @@ const pctN = (a, b) => (b ? a / b * 100 : 0);
     const cls = [opt.cls || '', opt.step ? 'step' : '', opt.head ? 'head' : ''].filter(Boolean).join(' ');
     return `<tr class="${cls}"><td class="lbl">${label}${opt.note ? `<span class="note">${opt.note}</span>` : ''}</td>` +
       S.map((s, i) => `<td${i === LASTCOL ? ' class="mtd"' : ''}>${fn(s, i)}</td>`).join('') + '</tr>';
-  };
-  const bar = (v, good) => {
-    const w = Math.max(0, Math.min(100, v));
-    return `<span class="mini"><span class="mini-fill ${good ? 'g' : 'b'}" style="width:${w.toFixed(1)}%"></span></span>`;
   };
   const pctCell = (a, b, good) => `<span class="pv">${pct(a, b)}</span>${bar(pctN(a, b), good)}`;
 
@@ -385,6 +427,10 @@ th:last-child{background:var(--accent-soft)}
 .bad{color:var(--bad);font-weight:600}
 .pend{color:var(--muted)}
 .mono{font-family:"IBM Plex Mono",monospace;font-size:13px}
+.queue table{font-size:13px}
+.queue td{padding:7px 12px}
+.queue td.wrap{min-width:130px}
+.count{font:600 12px/1 "IBM Plex Mono",monospace;color:var(--muted);margin:0 0 8px}
 .callout{border:1px solid var(--border);border-left:3px solid var(--accent);background:var(--surface);
   border-radius:0 10px 10px 0;padding:15px 18px;margin:18px 0 0;font-size:14.6px;color:var(--ink2)}
 .callout b{color:var(--ink)}
@@ -407,23 +453,15 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
   const bodyInner = `<div class="wrap">
 
 <header>
-  <p class="eyebrow">High Pain · 48-hour TAT</p>
-  <h1>Weekly Review — cases to ${cutLabel}</h1>
-  <p class="dek">Every case we took in, and what happened to it: the action items we closed, the week the cases matured in, who was left unresolved, and what we paid back.</p>
+  <p class="eyebrow">High Pain · 48-hour TAT · functional review</p>
+  <h1>Functional Review — cases to ${cutLabel}</h1>
+  <p class="dek">The working pack for the weekly functional meeting: last week's action items one by one, the funnel week by week, and then the actual open lists — the reopens to chase, the CSPs to chase, and the refund queue with ticket numbers, ageing and blocking reason.</p>
 </header>
 <div class="stamp">
   <span>Generated ${new Date(NOW + IST).toISOString().slice(0, 16).replace('T', ' ')} IST</span>
   <span>Cases received up to ${cutLabel} (Saturday cut-off)</span>
   <span>Matured cases only — each completed its full 48-hr window</span>
   <span>Weeks = tracker slices 1-7 / 8-14 / 15-21 / 22-end</span>
-</div>
-
-<div class="tiles">
-  <div class="tile"><div class="lb">Matured · ${periods[2].key}</div><div class="vl">${lastW.m}</div><div class="nt">of ${lastW.n} received ${periods[2].label}</div></div>
-  <div class="tile"><div class="lb">Resolved ≤ 48h (net)</div><div class="vl">${pct(lastW.net, lastW.m)}</div><div class="nt ${deltaNet >= 0 ? 'up' : 'down'}">${deltaNet >= 0 ? '▲' : '▼'} ${Math.abs(deltaNet).toFixed(1)} pts vs ${periods[1].key}</div></div>
-  <div class="tile"><div class="lb">Reopened in the week</div><div class="vl">${pct(lastW.reopWeek, lastW.resWeek)}</div><div class="nt">${lastW.reopWeek} of ${lastW.resWeek} resolutions came back down</div></div>
-  <div class="tile"><div class="lb">Refund-eligible</div><div class="vl">${lastW.elig}</div><div class="nt">still down, no ping since the complaint</div></div>
-  <div class="tile"><div class="lb">Paid back · ${periods[2].key}</div><div class="vl">${inr(lastW.paidAmt)}</div><div class="nt">${lastW.paidN} customers · avg ${lastW.paidN ? inr(lastW.paidAmt / lastW.paidN) : '—'}</div></div>
 </div>
 
 <section id="actions">
@@ -478,24 +516,19 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
   <div class="tablewrap"><table style="min-width:940px">
     <thead><tr><th>Metric</th>${cols}</tr></thead>
     <tbody>
-      ${row('Cases added', s => s.n, { head: true })}
+      ${row('Cases received', s => s.n, { head: true })}
       ${row('Matured — past 48 hrs since being added', s => s.m, { head: true, note: 'the denominator for every % below' })}
-      ${row('Still inside the 48-hr window', s => s.growing || '–', { step: true, note: 'not yet judged' })}
-      ${row('Resolved within 48 hrs — gross', (s, i) => pctCell(s.gross, s.m, true) + '', { head: true, note: 'ping restored or closed by the CSP' })}
+      ${row('Resolved within 48 hrs', s => pctCell(s.gross, s.m, true), { head: true })}
       ${row('Resolved, count', s => s.gross, { step: true })}
-      ${row('Reopened during the period', s => `<b>${s.reopWeek}</b> <span class="note">${pct(s.reopWeek, s.resWeek)} of ${s.resWeek} resolutions marked in it</span>`, { head: true, note: 'a case we had marked resolved that came back down, counted when it came back' })}
-      ${row('… of them, from this period&rsquo;s own ≤48-hr resolutions', s => s.reop || '–', { step: true, note: 'the only ones that change this period&rsquo;s net number' })}
-      ${row('Arrived already reopened in Kapture', s => s.intake || '–', { step: true, note: 'intake label — the ticket was a reopen before we ever saw it, so it is not our reopen' })}
-      ${row('Resolved within 48 hrs — net of reopened', s => pctCell(s.net, s.m, true), { head: true, note: 'the number we hold ourselves to' })}
-      ${row('Resolved late — after the 48-hr mark', s => s.late || '–', { step: true })}
-      ${row('Unresolved at maturity', s => pctCell(s.unres, s.m, false), { head: true, note: 'breached — customer still down at 48 hrs' })}
+      ${row('Reopened', s => `<b>${pct(s.reopWeek, s.resWeek)}</b>`, { head: true, note: 'cases we had marked resolved that came back down, counted in the week they came back' })}
+      ${row('Reopened, count', s => `${s.reopWeek} of ${s.resWeek} resolutions`, { step: true })}
+      ${row('Resolved within 48 hrs — net of reopened', s => pctCell(s.net, s.m, true), { head: true })}
+      ${row('Unresolved', s => pctCell(s.unres, s.m, false), { head: true, note: 'still down when the 48 hrs ran out' })}
       ${row('Unresolved, count', s => s.unres, { step: true })}
-      ${row('… line came back later (ping seen)', s => s.pinged || '–', { step: true, note: 'recovered after the breach — no refund owed' })}
-      ${row('Refund-eligible — no ping since the complaint', s => `<b>${s.elig}</b> <span class="note">${pct(s.elig, s.m)} of matured</span>`, { head: true, note: 'router never came back up' })}
-      ${row('Customers actually paid', s => s.paidN || '–', { step: true })}
-      ${row('Average refund per customer', s => (s.paidN ? inr(s.paidAmt / s.paidN) : '–'), { head: true })}
-      ${row('Total refunded to customers', s => inr(s.paidAmt), { head: true })}
-      ${row('CSPs behind the unresolved cases', s => s.csps, { head: true, note: 'distinct CSPs with at least one breach' })}
+      ${row('Unresolved and eligible for refund', s => `<b>${s.elig}</b> <span class="note">${pct(s.elig, s.m)} of matured</span>`, { head: true, note: 'no ping since the complaint — the line never came back' })}
+      ${row('Average amount paid to a customer', s => (s.paidN ? inr(s.paidAmt / s.paidN) : '–'), { head: true, note: 'across the customers actually refunded' })}
+      ${row('Total amount refunded to customers', s => inr(s.paidAmt), { head: true })}
+      ${row('CSPs contributing to the unresolved cases', s => s.csps, { head: true })}
     </tbody></table></div>
   <div class="callout"><b>Since 29 Jul, holistically:</b> ${SL.n.toLocaleString('en-IN')} cases taken in, ${SL.m.toLocaleString('en-IN')} of them matured. ${pct(SL.net, SL.m)} were put right inside 48 hours net of reopens; ${pct(SL.unres, SL.m)} breached, and ${SL.elig.toLocaleString('en-IN')} of those never pinged again and are owed money. ${inr(SL.paidAmt)} has gone back to ${SL.paidN} customers, an average of ${SL.paidN ? inr(SL.paidAmt / SL.paidN) : '—'} each. ${SL.csps} distinct CSPs have carried at least one breach.</div>
   <div class="callout">${periods[0].key}, ${periods[1].key} and ${periods[2].key} are complete weeks and final. <b>MTD runs 1 – ${cutLabel} only</b> — the current week slice is still open and its refund actions are entered later, so read that column as directional.</div>
@@ -503,19 +536,18 @@ footer{margin-top:60px;padding-top:18px;border-top:1px solid var(--rule);
 
 <section id="reopened">
   <div class="sec-head"><span class="sec-no">03</span><h2>The reopened cases</h2></div>
-  <p class="sub">${reopened.length} cases came back down across ${winLabel} — a case we had marked resolved that went down again — against ${resInWin.length} resolutions marked in the same window, a reopen rate of ${pct(reopened.length, resInWin.length)}. Counted by the day the case reopened, not the day it was first logged.</p>
-  <div class="tiles" style="margin:0 0 18px">
-    <div class="tile"><div class="lb">Reopened in window</div><div class="vl">${reopened.length}</div><div class="nt">${pct(reopened.length, resInWin.length)} of ${resInWin.length} resolutions</div></div>
-    <div class="tile"><div class="lb">Confirmed closed by PFT</div><div class="vl">${pct(reopPft, reopened.length)}</div><div class="nt">${reopPft} disposed in Kapture</div></div>
-    <div class="tile"><div class="lb">Still down today</div><div class="vl">${reopStillDown}</div><div class="nt">reopened and not resolved since</div></div>
-    <div class="tile"><div class="lb">Arrived already reopened</div><div class="vl">${intakeReop.length}</div><div class="nt">Kapture reopens pulled in by the cron — counted separately, not as our reopens</div></div>
-  </div>
+  <p class="sub">${reopened.length} cases came back down across ${winLabel}, against ${resInWin.length} resolutions marked in the same window — a reopen rate of ${pct(reopened.length, resInWin.length)}. Counted by the day the case reopened. A further ${intakeReop.length} cases arrived already reopened in Kapture; those are an intake label, not our reopens, and are excluded.</p>
   <div class="tablewrap"><table style="min-width:520px">
     <thead><tr><th>Remark the case carried when it reopened</th><th>Cases</th><th>Share</th></tr></thead>
     <tbody>
       <tr class="head"><td class="lbl">All reopened cases</td><td>${reopened.length}</td><td>100%</td></tr>
       ${reopRows}
     </tbody></table></div>
+  <h4>Why each one came back</h4>
+  <p class="count">${reopened.length} cases · reasons from the field team's reopen RCA sheet (${reopWithRca} matched)</p>
+  <div class="tablewrap queue" style="max-height:460px;overflow:auto"><table style="min-width:900px">
+    <thead><tr><th>Ticket</th><th>CSP</th><th>Reopened</th><th>CX reason</th><th>CSP reason</th><th>Remark on the case</th><th>Status now</th></tr></thead>
+    <tbody>${reopLedger || '<tr><td colspan="7" class="lbl">No reopens in this window.</td></tr>'}</tbody></table></div>
   <div class="callout">The dominant remark is <b>“Resolved by Old CSP”</b> — the case was closed on the CSP's word rather than on a confirmed ping, and the line went down again. Every reopen with that remark is a closure-quality problem, not a network problem.</div>
 </section>
 
