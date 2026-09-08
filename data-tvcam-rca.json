@@ -28,7 +28,7 @@
   "rca": "Same fault: a 2.4 GHz-only TV losing the signal intermittently. Splitting the Wi-Fi names per band in the manual WLAN settings held the connection. The customer traced the onset to the network appearing as one name.",
   "reported": true,
   "csp": "North Delhi Broadband Services",
-  "bucket": "TV kept losing the Wi-Fi network",
+  "bucket": "TV could not see the 2.4 GHz network",
   "resolution": "Gave the 2.4 and 5 GHz bands separate names in the WLAN settings"
  },
  {
@@ -60,8 +60,8 @@
   "verdict": "Not a device failure",
   "evidence": "Router was online throughout: 276 pings/day, only 12 missed, and clients connected on BOTH 2.4 GHz and 5 GHz every day including the complaint day. It was broadcasting Sumit9090, Sumit9090_5G and the Wiom Net SSID on 23 Jul. Band-steering flag never set. The swap changed the SSID configuration, not failed hardware.",
   "csp": "N D Network Solution",
-  "bucket": "TV kept losing the Wi-Fi network",
-  "resolution": "Wi-Fi box replaced, which reset the network names — a rename would likely have done it"
+  "bucket": "Wi-Fi network name kept resetting",
+  "resolution": "Wi-Fi box replaced, which reset the network names"
  },
  {
   "mob": "9580840030",
@@ -77,8 +77,8 @@
   "verdict": "Cannot be verified",
   "evidence": "Complaint dates from 20 Apr; the hourly ping table only starts 24 Jun, so there is no evidence either way.",
   "csp": "FUTURE NET SERVICES",
-  "bucket": "TV kept losing the Wi-Fi network",
-  "resolution": "Wi-Fi box replaced, which reset the network names — a rename would likely have done it"
+  "bucket": "Wi-Fi network name kept resetting",
+  "resolution": "Wi-Fi box replaced, which reset the network names"
  },
  {
   "mob": "8800884497",
@@ -199,7 +199,7 @@
   "rca": "The TV only supports 2.4 GHz. That signal kept vanishing on its own and the customer had to power-cycle four or five times to get it back. Separating the Wi-Fi names per band in the manual WLAN settings stopped it dropping. The customer said the trouble began when the network started showing as a single name.",
   "reported": true,
   "csp": "Jai It Service",
-  "bucket": "TV kept losing the Wi-Fi network",
+  "bucket": "TV could not see the 2.4 GHz network",
   "resolution": "Gave the 2.4 and 5 GHz bands separate names in the WLAN settings"
  },
  {
