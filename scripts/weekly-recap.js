@@ -653,7 +653,7 @@ ${['Nothing payable', 'Still owed to the customer'].map(g => {
 <tbody>
 ${tvRows}
 </tbody></table></div>
-<p class="sub" style="margin-top:10px"><b>The finding that changes how we work:</b> all four device swaps were raised on the same symptom, the network name had vanished. Tested against the ping record, one unit was genuinely dead and one was online and broadcasting on both bands the day it was replaced; the other two predate the ping data. Band steering was never flagged on any of them. The fix is to read the ping record before authorising a swap, rather than treating a missing SSID as dead hardware.</p>
+<p class="sub" style="margin-top:10px"><b>The finding that changes how we work:</b> the biggest single category is a 2.4 GHz-only television that keeps losing the network while the rest of the house stays online. Two of those four were fixed remotely by giving the 2.4 and 5 GHz bands separate names; the other two got the Wi-Fi box replaced, which achieved the same thing only because a new unit comes up with fresh names. Genuine dead hardware accounts for two cases, both of which showed no network name on any device. Checking the ping record before authorising a swap separates the two in seconds.</p>
 </section>`;
 
   // ── Last meeting's action items ───────────────────────────────────────────

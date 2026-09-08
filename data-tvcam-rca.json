@@ -8,7 +8,7 @@
   "cause": "Faulty Wi-Fi device",
   "fix": "Device replaced by technical team",
   "state": "Resolved",
-  "rca": "Laptop could not connect because the SSID was not visible on any device. Investigation traced it to the Wi-Fi device itself; the technical team replaced it and the network became visible.",
+  "rca": "The network name showed on no device at all — not the laptop, not any phone — and a reset did not bring it back. The CSP changed the box and it returned.",
   "reported": true,
   "verdict": "Consistent with a device failure",
   "evidence": "No ping data at all until 22 Aug, two days after the complaint, then normal reporting. The unit only appears once it was replaced.",
@@ -22,14 +22,14 @@
   "addr": "C Block 146, Second Floor",
   "issue": "Wi-Fi network not visible on TV",
   "symptom": "SSID not visible",
-  "cause": "SSID visibility / TV compatibility",
+  "cause": "2.4 GHz network kept dropping off the TV",
   "fix": "SSID renamed; internet still down. Separate SSID for the TV to be configured and tested",
-  "state": "Open",
-  "rca": "TV supports Wi-Fi but the SSID was not being displayed. Renaming the Wi-Fi made the network visible on the TV, but internet connectivity was still not working.",
+  "state": "Resolved",
+  "rca": "Same fault: a 2.4 GHz-only TV losing the signal intermittently. Splitting the Wi-Fi names per band in the manual WLAN settings held the connection. The customer traced the onset to the network appearing as one name.",
   "reported": true,
   "csp": "North Delhi Broadband Services",
-  "bucket": "TV could not find the Wi-Fi network — internet working elsewhere",
-  "resolution": "Wi-Fi network name changed over the phone — no visit needed"
+  "bucket": "TV kept losing the Wi-Fi network",
+  "resolution": "Gave the 2.4 and 5 GHz bands separate names in the WLAN settings — remote, no visit"
  },
  {
   "mob": "7838199019",
@@ -37,14 +37,14 @@
   "addr": "J-1st-5/135, Sangam Vihar",
   "issue": "Camera not working",
   "symptom": "Camera / DVR down",
-  "cause": "Faulty LAN cabling (RJ45)",
+  "cause": "Loose cable connector to the camera recorder",
   "fix": "Faulty RJ45 connector to be replaced or re-terminated",
-  "state": "Open",
-  "rca": "Wi-Fi device and DVR sit at two nearby premises joined by a LAN run. The RJ45 connector on that cable was faulty, breaking connectivity between camera and DVR.",
+  "state": "Resolved",
+  "rca": "The camera worked when the connection was first installed and stopped a few days after the Wi-Fi box was changed. The recorder sits in a shop 30 m from the router on a LAN cable; its RJ45 connector was loose. Re-fitting it properly brought the camera back.",
   "reported": true,
   "csp": "Shri balaji internet",
-  "bucket": "Camera cable was faulty",
-  "resolution": "Cable connector needs to be redone"
+  "bucket": "Camera cable connector was loose",
+  "resolution": "Connector re-fitted properly — camera came back"
  },
  {
   "mob": "9318310141",
@@ -52,7 +52,7 @@
   "addr": "E-2/137, Gali No. 5, Sonia Vihar",
   "issue": "TV not working",
   "symptom": "SSID not visible",
-  "cause": "SSID visibility / TV compatibility",
+  "cause": "2.4 GHz network kept dropping off the TV",
   "fix": "CSP replaced the Wi-Fi device",
   "state": "Resolved",
   "rca": "SSID was not appearing on the TV — only the 4G network showed. The CSP replaced the Wi-Fi device and the customer confirmed the TV works.",
@@ -60,8 +60,8 @@
   "verdict": "Not a device failure",
   "evidence": "Router was online throughout: 276 pings/day, only 12 missed, and clients connected on BOTH 2.4 GHz and 5 GHz every day including the complaint day. It was broadcasting Sumit9090, Sumit9090_5G and the Wiom Net SSID on 23 Jul. Band-steering flag never set. The swap changed the SSID configuration, not failed hardware.",
   "csp": "N D Network Solution",
-  "bucket": "TV could not find the Wi-Fi network — internet working elsewhere",
-  "resolution": "Wi-Fi box replaced, which reset the network name — a rename would likely have done it"
+  "bucket": "TV kept losing the Wi-Fi network",
+  "resolution": "Wi-Fi box replaced, which reset the network names — a rename would likely have done it"
  },
  {
   "mob": "9580840030",
@@ -69,7 +69,7 @@
   "addr": "Global Homes-2, UG05, Sector 73, Noida",
   "issue": "TV not working",
   "symptom": "SSID not visible",
-  "cause": "SSID visibility / TV compatibility",
+  "cause": "2.4 GHz network kept dropping off the TV",
   "fix": "CSP replaced the Wi-Fi device; customer declined the follow-up site visit",
   "state": "Resolved",
   "rca": "SSID was not appearing on the TV — only the 4G network showed. After the CSP replaced the device the network became visible and the TV worked. Customer declined a further site visit.",
@@ -77,8 +77,8 @@
   "verdict": "Cannot be verified",
   "evidence": "Complaint dates from 20 Apr; the hourly ping table only starts 24 Jun, so there is no evidence either way.",
   "csp": "FUTURE NET SERVICES",
-  "bucket": "TV could not find the Wi-Fi network — internet working elsewhere",
-  "resolution": "Wi-Fi box replaced, which reset the network name — a rename would likely have done it"
+  "bucket": "TV kept losing the Wi-Fi network",
+  "resolution": "Wi-Fi box replaced, which reset the network names — a rename would likely have done it"
  },
  {
   "mob": "8800884497",
@@ -89,7 +89,7 @@
   "cause": "Faulty Wi-Fi device",
   "fix": "CSP replaced the Wi-Fi device",
   "state": "Resolved",
-  "rca": "SSID was not visible on any device at the premises and stayed hidden after a device reset. The CSP replaced the Wi-Fi device and the network came back.",
+  "rca": "No Wi-Fi signal showing on the TV or on any phone at the premises. The CSP changed the box and there has been no issue since.",
   "reported": true,
   "verdict": "Cannot be verified",
   "evidence": "Complaint dates from 9 Jun; the hourly ping table only starts 24 Jun, so there is no evidence either way.",
@@ -106,11 +106,11 @@
   "cause": "Coverage / distance",
   "fix": "Customer advised to shift the Wi-Fi device closer for coverage at the second TV",
   "state": "Open",
-  "rca": "The TV near the Wi-Fi device works fine. A second TV roughly 80 feet away sees very low signal strength, so it drops and does not work reliably.",
+  "rca": "The TV beside the Wi-Fi box works fine. A second TV sits 30 m away and the signal does not carry that far, so it runs poorly. The customer was advised to move the box to a central position.",
   "reported": true,
   "csp": "SA Communication",
   "bucket": "TV too far from the Wi-Fi box",
-  "resolution": "Wi-Fi box needs to move closer to the TV"
+  "resolution": "Customer advised to move the Wi-Fi box to a central spot"
  },
  {
   "mob": "9625434977",
@@ -166,7 +166,7 @@
   "cause": "ISP backend outage",
   "fix": "ISP backend outage cleared; nothing found at the premises",
   "state": "Resolved",
-  "rca": "Neither TV nor mobile had internet. Per the CSP it was an ISP backend outage; nothing wrong with the customer device or local network.",
+  "rca": "At the time of the complaint the customer had not checked the phone, which was also offline. The ISP had a full network outage on the CSP side; it cleared a while later.",
   "reported": true,
   "csp": "SAP IT Solution",
   "bucket": "Internet was down at the provider’s end",
@@ -181,7 +181,7 @@
   "cause": "ISP backend outage",
   "fix": "ISP backend outage cleared; nothing found at the premises",
   "state": "Resolved",
-  "rca": "Neither TV nor mobile had internet. Per the CSP it was an ISP backend outage; no issue on the customer device or local network.",
+  "rca": "At the time of the complaint the customer had not checked the phone, which was also offline. The ISP had a full network outage on the CSP side; it cleared a while later.",
   "reported": true,
   "csp": "SAP IT Solution",
   "bucket": "Internet was down at the provider’s end",
@@ -193,14 +193,14 @@
   "addr": "Z-72, Gali No. 5, Prem Nagar Second",
   "issue": "Internet disconnecting + SSID not visible on TV",
   "symptom": "SSID not visible",
-  "cause": "SSID visibility / TV compatibility",
+  "cause": "2.4 GHz network kept dropping off the TV",
   "fix": "Wi-Fi renamed via manual WLAN settings; SSID became visible on the TV",
   "state": "Resolved",
-  "rca": "Connection kept dropping and the SSID was not appearing on the TV. Changing the Wi-Fi name through the manual WLAN settings brought the network back on the TV.",
+  "rca": "The TV only supports 2.4 GHz. That signal kept vanishing on its own and the customer had to power-cycle four or five times to get it back. Separating the Wi-Fi names per band in the manual WLAN settings stopped it dropping. The customer said the trouble began when the network started showing as a single name.",
   "reported": true,
   "csp": "Jai It Service",
-  "bucket": "TV could not find the Wi-Fi network — internet working elsewhere",
-  "resolution": "Wi-Fi network name changed over the phone — no visit needed"
+  "bucket": "TV kept losing the Wi-Fi network",
+  "resolution": "Gave the 2.4 and 5 GHz bands separate names in the WLAN settings — remote, no visit"
  },
  {
   "mob": "9999220373",
@@ -211,11 +211,11 @@
   "cause": "Customer TV / application",
   "fix": "Identified as a TV application issue, not connectivity; customer informed",
   "state": "No fault at our end",
-  "rca": "The YouTube app had been uninstalled from the TV, so the customer assumed an internet problem. Wi-Fi and internet were working normally.",
+  "rca": "YouTube would not play on the TV while the internet worked on the phone. The YouTube app had been uninstalled from the TV. A TV technician checked it and the problem went away.",
   "reported": true,
   "csp": "DA fibernet",
   "bucket": "The TV itself, not the connection",
-  "resolution": "Explained to the customer — nothing to fix on our side"
+  "resolution": "TV technician reinstalled the app — nothing to fix on our side"
  },
  {
   "mob": "9354979586",
@@ -226,10 +226,10 @@
   "cause": "Customer TV / application",
   "fix": "Confirmed as a TV settings issue after repair, not the Wi-Fi link",
   "state": "No fault at our end",
-  "rca": "The TV had been away for repair. Since it came back it does not retain the Wi-Fi credentials across a power cycle, so it has to be reconnected each time — which the customer reported as an internet fault.",
+  "rca": "After the TV came back from repair it had to be reconnected to Wi-Fi every time it was switched off, so the customer reported it as an internet fault. A TV technician visited and corrected the TV settings.",
   "reported": true,
   "csp": "Shri vishnu Broadband services",
   "bucket": "The TV itself, not the connection",
-  "resolution": "Explained to the customer — nothing to fix on our side"
+  "resolution": "TV technician corrected the TV settings — nothing to fix on our side"
  }
 ]
