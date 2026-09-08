@@ -609,7 +609,7 @@ ${top.map(c => {
   // CSP by CSP with the actual ticket numbers and that CSP's PTL activity
   // beside them - so an escalation can be raised straight off the row.
   const CSP_SIDE = /^CSP |CSP has no router|CSP installed|CSP denied|CSP Not Responding|Device not associated/i;
-  const blocked = eligAll.filter(c => CSP_SIDE.test(trim(c.remarks)));
+  const blocked = unresAll.filter(c => CSP_SIDE.test(trim(c.remarks)));
   const blkGrp = {};
   blocked.forEach(c => {
     const k = (trim(c.partner) || '(unknown)') + '\u0000' + trim(c.remarks);
@@ -642,7 +642,7 @@ ${top.map(c => {
   });
   const cspBlockHtml = `<section>
 <h2>Why the CSP is not resolving — case by case</h2>
-<p class="sub">${blocked.length} of the ${E} refund-eligible cases carry a ground remark that points at the CSP. Grouped by CSP and reason, with the ticket numbers and each CSP's PTL activity beside them. Ticket ages are days since the case was added; anything past 14 days is flagged.</p>
+<p class="sub">${blocked.length} of the ${unresAll.length} unresolved cases carry a ground remark that points at the CSP. Grouped by CSP and reason, with the ticket numbers and each CSP's PTL activity beside them. Ticket ages are days since the case was added; anything past 14 days is flagged.</p>
 <div class="tablewrap"><table style="min-width:560px;margin-bottom:16px">
 <thead><tr><th style="text-align:left">Reason the ground gave</th><th>Cases</th><th>CSPs</th><th>%</th></tr></thead>
 <tbody>
