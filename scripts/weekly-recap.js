@@ -777,8 +777,8 @@ ${top.map(c => {
         `<td style="text-align:left;white-space:normal;font-weight:400">${reasonTxt}</td>` +
         `<td>${calls == null ? '\u2014' : calls}</td>` +
         `<td>${stx ? `<span class="${stx.open ? 'b' : ''}">${stx.open}</span> / ${stx.closed}` : '\u2014'}</td>` +
-        `<td>${cspPay && cspPay[nk] && cspPay[nk].cyc[0] ? inr(cspPay[nk].cyc[0]) : '<span class="pend">\u2014</span>'}</td>` +
-        `<td>${cspPay && cspPay[nk] && cspPay[nk].cyc[1] ? inr(cspPay[nk].cyc[1]) : '<span class="pend">\u2014</span>'}</td>` +
+        `<td class="${cspPay && cspPay[nk] && !cspPay[nk].cyc[0] ? 'b' : ''}">${inr(cspPay && cspPay[nk] ? cspPay[nk].cyc[0] : 0)}</td>` +
+        `<td class="${cspPay && cspPay[nk] && !cspPay[nk].cyc[1] ? 'b' : ''}">${inr(cspPay && cspPay[nk] ? cspPay[nk].cyc[1] : 0)}</td>` +
         `<td style="white-space:nowrap">${cspPay && cspPay[nk] ? `${escR(cspPay[nk].lastWhen)} <span style="color:var(--muted)">${inr(cspPay[nk].lastRs)}</span>` : '<span class="pend">\u2014</span>'}</td>` +
         `<td style="text-align:left;white-space:normal;font-weight:400;font-size:12px">${tix}</td></tr>`;
     }).join(NL);
