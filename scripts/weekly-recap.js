@@ -82,7 +82,7 @@ async function kaptureReopens(fromISO) {
 // Open vs closed on those tickets, counted over ALL of them — the reasons
 // query below is capped at three rows per CSP and must never be summed for
 // totals.
-// Userbase and MG-pilot enrolment per CSP. customer_base is a daily snapshot,
+// Userbase and MG enrolment per CSP. customer_base is a daily snapshot,
 // so it MUST be pinned to one date or every partner multiplies by the number
 // of days held.
 async function cspProfile() {
@@ -707,7 +707,7 @@ ${top.map(c => {
         .join(', ');
       return `<tr><td style="text-align:left;white-space:normal"><b>${escR(csp)}</b></td>` +
         `<td>${prof ? prof.paying.toLocaleString('en-IN') : '\u2014'}</td>` +
-        `<td>${prof ? (prof.mg ? '<span class="pillmg">MG pilot</span>' : '<span style="color:var(--muted)">no</span>') : '\u2014'}</td>` +
+        `<td>${prof ? (prof.mg ? '<span class="pillmg">Enrolled</span>' : '<span style="color:var(--muted)">Not enrolled</span>') : '\u2014'}</td>` +
         `<td><b>${list.length}</b></td><td class="${oldest >= 14 ? 'b' : ''}">${oldest}d</td>` +
         `<td style="text-align:left;white-space:normal;font-weight:400">${reasonTxt}</td>` +
         `<td>${calls == null ? '\u2014' : calls}</td>` +
@@ -717,9 +717,9 @@ ${top.map(c => {
     }).join(NL);
   const cspBlockHtml = `<section>
 <h2>Why the CSP is not resolving \u2014 ${periods[LASTCOL - 1].key}</h2>
-<p class="sub">${periods[LASTCOL - 1].key} (${periods[LASTCOL - 1].label}) only. ${blocked.length} of that week's ${lwUnres.length} unresolved cases sit with ${Object.keys(blkGrp).length} CSPs whose ground remark points at them. Everything the meeting needs on one row: how big the CSP is, whether they are on the MG pilot, what the ground said, their PTL activity, and the tickets themselves. Ages are days since the case was added; past 14 days is flagged.</p>
+<p class="sub">${periods[LASTCOL - 1].key} (${periods[LASTCOL - 1].label}) only. ${blocked.length} of that week's ${lwUnres.length} unresolved cases sit with ${Object.keys(blkGrp).length} CSPs whose ground remark points at them. Everything the meeting needs on one row: how big the CSP is, whether they are enrolled in MG, what the ground said, their PTL activity, and the tickets themselves. Ages are days since the case was added; past 14 days is flagged.</p>
 <div class="tablewrap" style="max-height:640px;overflow:auto"><table style="min-width:1280px">
-<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG</th><th>Cases</th><th>Oldest</th><th style="text-align:left">What the ground said</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Payout<br><span style="font-weight:400;opacity:.85">1\u201315 Aug</span></th><th>Payout<br><span style="font-weight:400;opacity:.85">16\u201331 Aug</span></th><th style="text-align:left">Tickets</th></tr></thead>
+<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Cases</th><th>Oldest</th><th style="text-align:left">What the ground said</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Payout<br><span style="font-weight:400;opacity:.85">1\u201315 Aug</span></th><th>Payout<br><span style="font-weight:400;opacity:.85">16\u201331 Aug</span></th><th style="text-align:left">Tickets</th></tr></thead>
 <tbody>
 ${blkRows}
 </tbody></table></div>
