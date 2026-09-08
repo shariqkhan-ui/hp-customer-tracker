@@ -690,8 +690,23 @@ ${top.map(c => {
     (blkGrp[k] = blkGrp[k] || []).push(c);
   });
   const ageD = c => Math.round((NOW - clockTs(c)) / 86400000);
-  const blkRows = Object.entries(blkGrp)
-    .sort((x, y) => y[1].length - x[1].length || x[0].localeCompare(y[0]))
+  // Top 10 CSPs by case count - the tail is single-case CSPs and is not what
+  // the meeting works. What is left out is stated under the table.
+  const blkAll = Object.entries(blkGrp)
+    .sort((x, y) => y[1].length - x[1].length || x[0].localeCompare(y[0]));
+  const blkTop = blkAll.slice(0, 10);
+  const blkRest = blkAll.slice(10);
+  const blkTopCases = blkTop.reduce((a, x) => a + x[1].length, 0);
+  const blkRestCases = blkRest.reduce((a, x) => a + x[1].length, 0);
+  const sumProf = (list, f) => list.reduce((a, x) => {
+    const pr = cspProf && cspProf[normName(x[0])];
+    return a + (pr ? pr[f] : 0);
+  }, 0);
+  const blkTopMg = blkTop.filter(x => { const pr = cspProf && cspProf[normName(x[0])]; return pr && pr.mg; }).length;
+  const blkTopCalls = blkTop.reduce((a, x) => a + ((ptl && ptl[normName(x[0])]) ? ptl[normName(x[0])][LASTCOL] : 0), 0);
+  const blkTopOpen = blkTop.reduce((a, x) => { const st = ptlSt && ptlSt[normName(x[0])]; return a + (st ? st.open : 0); }, 0);
+  const blkTopClosed = blkTop.reduce((a, x) => { const st = ptlSt && ptlSt[normName(x[0])]; return a + (st ? st.closed : 0); }, 0);
+  const blkRows = blkTop
     .map(([csp, list]) => {
       const nk = normName(csp);
       const prof = cspProf && cspProf[nk];
@@ -716,12 +731,13 @@ ${top.map(c => {
         `<td style="text-align:left;white-space:normal;font-weight:400;font-size:12px">${tix}</td></tr>`;
     }).join(NL);
   const cspBlockHtml = `<section>
-<h2>Why the CSP is not resolving \u2014 ${periods[LASTCOL - 1].key}</h2>
-<p class="sub">${periods[LASTCOL - 1].key} (${periods[LASTCOL - 1].label}) only. ${blocked.length} of that week's ${lwUnres.length} unresolved cases sit with ${Object.keys(blkGrp).length} CSPs whose ground remark points at them. Everything the meeting needs on one row: how big the CSP is, whether they are enrolled in MG, what the ground said, their PTL activity, and the tickets themselves. Ages are days since the case was added; past 14 days is flagged.</p>
-<div class="tablewrap" style="max-height:640px;overflow:auto"><table style="min-width:1280px">
+<h2>Why the CSP is not resolving \u2014 top 10 CSPs, ${periods[LASTCOL - 1].key}</h2>
+<p class="sub">${periods[LASTCOL - 1].key} (${periods[LASTCOL - 1].label}) only. ${blocked.length} of that week's ${lwUnres.length} unresolved cases sit with ${Object.keys(blkGrp).length} CSPs whose ground remark points at them. The <b>top 10 by case count</b> are below and carry ${blkTopCases} of those cases; the remaining ${blkRest.length} CSPs hold ${blkRestCases} between them, mostly one case each. Everything the meeting needs sits on one row: how big the CSP is, whether they are enrolled in MG, what the ground said, their PTL activity, and the tickets themselves. Ages are days since the case was added; past 14 days is flagged.</p>
+<div class="tablewrap"><table style="min-width:1280px">
 <thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Cases</th><th>Oldest</th><th style="text-align:left">What the ground said</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Payout<br><span style="font-weight:400;opacity:.85">1\u201315 Aug</span></th><th>Payout<br><span style="font-weight:400;opacity:.85">16\u201331 Aug</span></th><th style="text-align:left">Tickets</th></tr></thead>
 <tbody>
 ${blkRows}
+<tr class="tot"><td class="tot" style="text-align:left"><b>Top 10 together</b></td><td class="tot"><b>${sumProf(blkTop, 'paying').toLocaleString('en-IN')}</b></td><td class="tot"><b>${blkTopMg} enrolled</b></td><td class="tot"><b>${blkTopCases}</b></td><td class="tot"></td><td class="tot" style="text-align:left"><b>${pct(blkTopCases, blocked.length)} of the week's CSP-blocked cases</b></td><td class="tot"><b>${blkTopCalls}</b></td><td class="tot"><b>${blkTopOpen} / ${blkTopClosed}</b></td><td class="tot"></td><td class="tot"></td><td class="tot"></td></tr>
 </tbody></table></div>
 <p class="sub" style="margin-top:10px"><b>Payout columns are empty on purpose.</b> Every bonus table in Snowflake has stopped: PARTNER_BONUS_DISBURSEMENT ends 16 Jun, PARTNER_INCENTIVES 23 Jun, WORK_BONUS_TXNS 1 Jun, INCENTIVEVANILLA is unpopulated. The August cycles cannot be sourced from there. Point us at where cycle payout actually lives and both columns fill automatically.</p>
 </section>`;
