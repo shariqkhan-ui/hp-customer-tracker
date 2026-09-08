@@ -604,6 +604,58 @@ ${top.map(c => {
   const sumA = list => list.reduce((a, c) => a + amtRA(c), 0);
   const stage = (label, n, base, note, cls) =>
     `<tr><td class="${cls || ''}"><b>${label}</b></td><td class="${cls || ''}"><b>${n.toLocaleString('en-IN')}</b></td><td class="${cls || ''}">${base ? pct(n, base) : '100%'}</td><td></td><td style="text-align:left;font-weight:400">${note}</td></tr>`;
+  // ── Why the CSP is not resolving ────────────────────────────────
+  // The refund-eligible cases whose ground remark points at the CSP, grouped
+  // CSP by CSP with the actual ticket numbers and that CSP's PTL activity
+  // beside them - so an escalation can be raised straight off the row.
+  const CSP_SIDE = /^CSP |CSP has no router|CSP installed|CSP denied|CSP Not Responding|Device not associated/i;
+  const blocked = eligAll.filter(c => CSP_SIDE.test(trim(c.remarks)));
+  const blkGrp = {};
+  blocked.forEach(c => {
+    const k = (trim(c.partner) || '(unknown)') + '\u0000' + trim(c.remarks);
+    (blkGrp[k] = blkGrp[k] || []).push(c);
+  });
+  const ageD = c => Math.round((NOW - clockTs(c)) / 86400000);
+  const blkRows = Object.entries(blkGrp)
+    .map(([k, list]) => { const [csp, rem] = k.split('\u0000'); return { csp, rem, list }; })
+    .sort((a, b) => b.list.length - a.list.length || a.csp.localeCompare(b.csp))
+    .map(r => {
+      const nk = normName(r.csp);
+      const calls = ptl && ptl[nk] ? ptl[nk][LASTCOL] : null;
+      const stx = ptlSt && ptlSt[nk];
+      const oldest = Math.max(...r.list.map(ageD));
+      const tix = r.list.sort((a, b) => ageD(b) - ageD(a))
+        .map(c => `<a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a> <span style="color:var(--muted)">${ageD(c)}d</span>`)
+        .join(', ');
+      return `<tr><td style="text-align:left;white-space:normal"><b>${escR(r.csp)}</b></td>` +
+        `<td style="text-align:left;white-space:normal;font-weight:400">${escR(r.rem)}</td>` +
+        `<td><b>${r.list.length}</b></td><td class="${oldest >= 14 ? 'b' : ''}">${oldest}d</td>` +
+        `<td>${calls == null ? '—' : calls}</td>` +
+        `<td>${stx ? `<span class="${stx.open ? 'b' : ''}">${stx.open}</span> / ${stx.closed}` : '—'}</td>` +
+        `<td style="text-align:left;white-space:normal;font-weight:400;font-size:12.5px">${tix}</td></tr>`;
+    }).join(NL);
+  const blkByReason = {};
+  blocked.forEach(c => {
+    const r = trim(c.remarks);
+    const e = blkByReason[r] || (blkByReason[r] = { n: 0, csps: new Set() });
+    e.n++; e.csps.add(trim(c.partner) || '(unknown)');
+  });
+  const cspBlockHtml = `<section>
+<h2>Why the CSP is not resolving — case by case</h2>
+<p class="sub">${blocked.length} of the ${E} refund-eligible cases carry a ground remark that points at the CSP. Grouped by CSP and reason, with the ticket numbers and each CSP's PTL activity beside them. Ticket ages are days since the case was added; anything past 14 days is flagged.</p>
+<div class="tablewrap"><table style="min-width:560px;margin-bottom:16px">
+<thead><tr><th style="text-align:left">Reason the ground gave</th><th>Cases</th><th>CSPs</th><th>%</th></tr></thead>
+<tbody>
+${Object.entries(blkByReason).sort((a, b) => b[1].n - a[1].n).map(([r, v]) =>
+  `<tr><td style="text-align:left">${escR(r)}</td><td>${v.n}</td><td>${v.csps.size}</td><td>${pct(v.n, blocked.length)}</td></tr>`).join(NL)}
+</tbody></table></div>
+<div class="tablewrap" style="max-height:620px;overflow:auto"><table style="min-width:1040px">
+<thead><tr><th style="text-align:left">CSP</th><th style="text-align:left">Reason</th><th>Cases</th><th>Oldest</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th style="text-align:left">Tickets</th></tr></thead>
+<tbody>
+${blkRows}
+</tbody></table></div>
+</section>`;
+
   const refundFunnel = `<section>
 <h2>Refund cases funnel</h2>
 <p class="sub">Reads straight down from the Since-launch column above: received &rarr; matured &rarr; unresolved &rarr; refund-eligible, then whether the eligible customers were paid. Refunded plus not-refunded add back to the eligible line exactly.</p>
@@ -750,6 +802,7 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 <p class="sub" style="margin-top:10px">A further ${S.map(x => x.intake).slice(0, 3).join(' / ')} cases (the three completed weeks) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
 </section>
 ${refundFunnel}
+${cspBlockHtml}
 ${cspRca}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's FIRST_REOPENED_TIME (the tracker's own reopened_at field only catches a dashboard revert inside 24 hrs and misses about half of them). Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div></body></html>`;
