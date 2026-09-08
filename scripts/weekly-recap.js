@@ -85,6 +85,50 @@ async function kaptureReopens(fromISO) {
 // Userbase and MG enrolment per CSP. customer_base is a daily snapshot,
 // so it MUST be pinned to one date or every partner multiplies by the number
 // of days held.
+// Bonus actually credited to the CSP's settlement wallet, per fortnightly
+// cycle. This is the live source: every bonus table in the analytics layer
+// (PARTNER_BONUS_DISBURSEMENT, PARTNER_INCENTIVES, WORK_BONUS_TXNS,
+// INCENTIVEVANILLA) stopped feeding between 1 and 23 June 2026, but the
+// payment-settlement wallet ledger is current to the hour.
+// Amounts are stored in paise. The ledger keys on a short CSP code
+// (e.g. a0b9a4), so it joins out through CSP_ACCOUNT to the partner.
+async function cspPayout(cycles) {
+  const key = process.env.METABASE_API_KEY;
+  if (!key) return null;
+  const sql = `WITH acct AS (
+    SELECT DISTINCT CSP_ID, NAME FROM CSP_GATEWAY_SERVICE_CSP_GATEWAY_SERVICE.CSP_ACCOUNT WHERE NAME IS NOT NULL
+  ), led AS (
+    SELECT CSP_ID, AMOUNT, CREATED_AT
+    FROM CSP_PAYMENT_SETTLEMENT_SERVICE_CSP_PAYMENT_SETTLEMENT_SERVICE.WALLET_LEDGER_ENTRIES
+    WHERE ENTRY_TYPE = 'BONUS_CREDIT' AND COALESCE(_FIVETRAN_ACTIVE, TRUE)
+      AND CREATED_AT >= '2026-07-01'
+  )
+  SELECT acct.NAME,
+    TO_CHAR(MAX(led.CREATED_AT), 'DD Mon') AS last_when,
+    ROUND(MAX_BY(led.AMOUNT, led.CREATED_AT) / 100) AS last_rs,
+    ${cycles.map((c, i) => `ROUND(SUM(CASE WHEN led.CREATED_AT >= '${c[1]}' AND led.CREATED_AT < '${c[2]}' THEN led.AMOUNT ELSE 0 END) / 100) AS c${i}`).join(',\n    ')}
+  FROM led JOIN acct ON acct.CSP_ID = led.CSP_ID
+  GROUP BY 1`;
+  try {
+    const r = await fetch(METABASE + '/api/dataset', {
+      method: 'POST', headers: { 'x-api-key': key, 'content-type': 'application/json' },
+      body: JSON.stringify({ database: 113, type: 'native', native: { query: sql } }),
+    }).then(x => x.json());
+    if (!r.data || !r.data.rows) throw new Error(JSON.stringify(r.error || r).slice(0, 200));
+    const m = {};
+    r.data.rows.forEach(row => {
+      const k = normName(row[0]);
+      if (!k) return;
+      const e = m[k] || (m[k] = { cyc: cycles.map(() => 0), lastWhen: row[1], lastRs: Number(row[2]) || 0 });
+      for (let i = 0; i < cycles.length; i++) e.cyc[i] += Number(row[i + 3]) || 0;
+    });
+    console.log('CSP bonus payout for', Object.keys(m).length, 'CSPs');
+    return m;
+  } catch (e) {
+    console.error('CSP payout query failed (non-fatal):', e.message);
+    return null;
+  }
+}
 async function cspProfile() {
   const key = process.env.METABASE_API_KEY;
   if (!key) return null;
@@ -391,6 +435,12 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const ptlWhy = await ptlReasonsByPartner(LAUNCH, CUT);
   const ptlSt = await ptlStatusByPartner(LAUNCH, CUT);
   const cspProf = await cspProfile();
+  // The two fortnightly cycles the review compares.
+  // Bonus is credited on the 1st and the 16th, so the credit DATE is the payout date,
+  // not the earning window: the 1-15 Aug cycle lands on 16 Aug and the 16-31 Aug
+  // cycle lands on 1 Sep. Windowing by earning dates shifts every figure a cycle early.
+  const PAY_CYCLES = [['1-15 Aug', '2026-08-16', '2026-08-17'], ['16-31 Aug', '2026-09-01', '2026-09-02']];
+  const cspPay = await cspPayout(PAY_CYCLES);
   era = era.filter(c => startTs(c) < CUT);
 
   // A reopen is a case WE marked resolved that came back down (reopened_at).
@@ -727,19 +777,21 @@ ${top.map(c => {
         `<td style="text-align:left;white-space:normal;font-weight:400">${reasonTxt}</td>` +
         `<td>${calls == null ? '\u2014' : calls}</td>` +
         `<td>${stx ? `<span class="${stx.open ? 'b' : ''}">${stx.open}</span> / ${stx.closed}` : '\u2014'}</td>` +
-        `<td class="pend">\u2014</td><td class="pend">\u2014</td>` +
+        `<td>${cspPay && cspPay[nk] && cspPay[nk].cyc[0] ? inr(cspPay[nk].cyc[0]) : '<span class="pend">\u2014</span>'}</td>` +
+        `<td>${cspPay && cspPay[nk] && cspPay[nk].cyc[1] ? inr(cspPay[nk].cyc[1]) : '<span class="pend">\u2014</span>'}</td>` +
+        `<td style="white-space:nowrap">${cspPay && cspPay[nk] ? `${escR(cspPay[nk].lastWhen)} <span style="color:var(--muted)">${inr(cspPay[nk].lastRs)}</span>` : '<span class="pend">\u2014</span>'}</td>` +
         `<td style="text-align:left;white-space:normal;font-weight:400;font-size:12px">${tix}</td></tr>`;
     }).join(NL);
   const cspBlockHtml = `<section>
 <h2>Why the CSP is not resolving \u2014 top 10 CSPs, ${periods[LASTCOL - 1].key}</h2>
 <p class="sub">${periods[LASTCOL - 1].key} (${periods[LASTCOL - 1].label}) only. ${blocked.length} of that week's ${lwUnres.length} unresolved cases sit with ${Object.keys(blkGrp).length} CSPs whose ground remark points at them. The <b>top 10 by case count</b> are below and carry ${blkTopCases} of those cases; the remaining ${blkRest.length} CSPs hold ${blkRestCases} between them, mostly one case each. Everything the meeting needs sits on one row: how big the CSP is, whether they are enrolled in MG, what the ground said, their PTL activity, and the tickets themselves. Ages are days since the case was added; past 14 days is flagged.</p>
 <div class="tablewrap"><table style="min-width:1280px">
-<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Cases</th><th>Oldest</th><th style="text-align:left">What the ground said</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Payout<br><span style="font-weight:400;opacity:.85">1\u201315 Aug</span></th><th>Payout<br><span style="font-weight:400;opacity:.85">16\u201331 Aug</span></th><th style="text-align:left">Tickets</th></tr></thead>
+<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Cases</th><th>Oldest</th><th style="text-align:left">What the ground said</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">1-15 Aug cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">16-31 Aug cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Tickets</th></tr></thead>
 <tbody>
 ${blkRows}
-<tr class="tot"><td class="tot" style="text-align:left"><b>Top 10 together</b></td><td class="tot"><b>${sumProf(blkTop, 'paying').toLocaleString('en-IN')}</b></td><td class="tot"><b>${blkTopMg} enrolled</b></td><td class="tot"><b>${blkTopCases}</b></td><td class="tot"></td><td class="tot" style="text-align:left"><b>${pct(blkTopCases, blocked.length)} of the week's CSP-blocked cases</b></td><td class="tot"><b>${blkTopCalls}</b></td><td class="tot"><b>${blkTopOpen} / ${blkTopClosed}</b></td><td class="tot"></td><td class="tot"></td><td class="tot"></td></tr>
+<tr class="tot"><td class="tot" style="text-align:left"><b>Top 10 together</b></td><td class="tot"><b>${sumProf(blkTop, 'paying').toLocaleString('en-IN')}</b></td><td class="tot"><b>${blkTopMg} enrolled</b></td><td class="tot"><b>${blkTopCases}</b></td><td class="tot"></td><td class="tot" style="text-align:left"><b>${pct(blkTopCases, blocked.length)} of the week's CSP-blocked cases</b></td><td class="tot"><b>${blkTopCalls}</b></td><td class="tot"><b>${blkTopOpen} / ${blkTopClosed}</b></td><td class="tot"><b>${inr(blkTop.reduce((a, x) => a + ((cspPay && cspPay[normName(x[0])]) ? cspPay[normName(x[0])].cyc[0] : 0), 0))}</b></td><td class="tot"><b>${inr(blkTop.reduce((a, x) => a + ((cspPay && cspPay[normName(x[0])]) ? cspPay[normName(x[0])].cyc[1] : 0), 0))}</b></td><td class="tot"></td><td class="tot"></td></tr>
 </tbody></table></div>
-<p class="sub" style="margin-top:10px"><b>Payout columns are empty on purpose.</b> Every bonus table in Snowflake has stopped: PARTNER_BONUS_DISBURSEMENT ends 16 Jun, PARTNER_INCENTIVES 23 Jun, WORK_BONUS_TXNS 1 Jun, INCENTIVEVANILLA is unpopulated. The August cycles cannot be sourced from there. Point us at where cycle payout actually lives and both columns fill automatically.</p>
+<p class="sub" style="margin-top:10px">Bonus paid is what actually reached the CSP's settlement wallet (BONUS_CREDIT on the payment-settlement ledger, current to the hour). Credits post on the 1st and the 16th, so the 1-15 Aug cycle is the credit dated 16 Aug and the 16-31 Aug cycle is the credit dated 1 Sep. The analytics bonus tables were unusable - PARTNER_BONUS_DISBURSEMENT stops 16 Jun, PARTNER_INCENTIVES 23 Jun, WORK_BONUS_TXNS 1 Jun - so this reads the ledger the money moved through. <b>Not one of these ten has been paid a bonus since 1 August.</b> Six were last credited on 1 Aug, three on 16 Jul. Across the estate the 16-31 Aug cycle has also only partly run: 46 CSPs credited so far against 359 for the cycle before. A separate adhoc quality bonus of &#8377;8.16 lakh went to 232 CSPs on 31 Aug and is in none of these columns.</p>
 </section>`;
 
   // The week's reopens in full - a handful of cases, so show them rather than
