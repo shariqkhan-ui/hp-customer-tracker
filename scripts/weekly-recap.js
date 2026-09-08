@@ -82,6 +82,41 @@ async function kaptureReopens(fromISO) {
 // Open vs closed on those tickets, counted over ALL of them — the reasons
 // query below is capped at three rows per CSP and must never be summed for
 // totals.
+// Userbase and MG-pilot enrolment per CSP. customer_base is a daily snapshot,
+// so it MUST be pinned to one date or every partner multiplies by the number
+// of days held.
+async function cspProfile() {
+  const key = process.env.METABASE_API_KEY;
+  if (!key) return null;
+  const sql = `WITH d AS (SELECT MAX(DATE) AS md FROM customer_base)
+  SELECT cb.PARTNER_NAME,
+         MAX(cb.PAYING_CUSTOMERS) AS paying,
+         MAX(cb.ACTIVE_R15_CUSTOMERS) AS r15,
+         MAX(CASE WHEN mg.PARTNER_ID IS NOT NULL THEN 1 ELSE 0 END) AS mg
+  FROM customer_base cb
+  CROSS JOIN d
+  LEFT JOIN PROD_DB.PUBLIC.MICROZONE_MG_CSPS mg
+    ON CAST(mg.PARTNER_ID AS STRING) = CAST(cb.PARTNER_ACCOUNT_ID AS STRING)
+  WHERE cb.DATE = d.md AND cb.PARTNER_NAME IS NOT NULL
+  GROUP BY 1`;
+  try {
+    const r = await fetch(METABASE + '/api/dataset', {
+      method: 'POST', headers: { 'x-api-key': key, 'content-type': 'application/json' },
+      body: JSON.stringify({ database: 113, type: 'native', native: { query: sql } }),
+    }).then(x => x.json());
+    if (!r.data || !r.data.rows) throw new Error(JSON.stringify(r.error || r).slice(0, 200));
+    const m = {};
+    r.data.rows.forEach(([name, paying, r15, mg]) => {
+      const k = normName(name);
+      if (k) m[k] = { paying: Number(paying) || 0, r15: Number(r15) || 0, mg: Number(mg) === 1 };
+    });
+    console.log('CSP profiles (userbase + MG) for', Object.keys(m).length, 'CSPs');
+    return m;
+  } catch (e) {
+    console.error('CSP profile query failed (non-fatal):', e.message);
+    return null;
+  }
+}
 async function ptlStatusByPartner(from, to) {
   const key = process.env.METABASE_API_KEY;
   if (!key) return null;
@@ -355,6 +390,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   };
   const ptlWhy = await ptlReasonsByPartner(LAUNCH, CUT);
   const ptlSt = await ptlStatusByPartner(LAUNCH, CUT);
+  const cspProf = await cspProfile();
   era = era.filter(c => startTs(c) < CUT);
 
   // A reopen is a case WE marked resolved that came back down (reopened_at).
@@ -650,58 +686,54 @@ ${top.map(c => {
   const blocked = lwUnres.filter(c => CSP_SIDE.test(trim(c.remarks)));
   const blkGrp = {};
   blocked.forEach(c => {
-    const k = (trim(c.partner) || '(unknown)') + '\u0000' + trim(c.remarks);
+    const k = trim(c.partner) || '(unknown)';
     (blkGrp[k] = blkGrp[k] || []).push(c);
   });
   const ageD = c => Math.round((NOW - clockTs(c)) / 86400000);
   const blkRows = Object.entries(blkGrp)
-    .map(([k, list]) => { const [csp, rem] = k.split('\u0000'); return { csp, rem, list }; })
-    .sort((a, b) => b.list.length - a.list.length || a.csp.localeCompare(b.csp))
-    .map(r => {
-      const nk = normName(r.csp);
+    .sort((x, y) => y[1].length - x[1].length || x[0].localeCompare(y[0]))
+    .map(([csp, list]) => {
+      const nk = normName(csp);
+      const prof = cspProf && cspProf[nk];
       const calls = ptl && ptl[nk] ? ptl[nk][LASTCOL] : null;
       const stx = ptlSt && ptlSt[nk];
-      const oldest = Math.max(...r.list.map(ageD));
-      const tix = r.list.sort((a, b) => ageD(b) - ageD(a))
+      const oldest = Math.max(...list.map(ageD));
+      const reasons = {};
+      list.forEach(c => { const r = trim(c.remarks); reasons[r] = (reasons[r] || 0) + 1; });
+      const reasonTxt = Object.entries(reasons).sort((x, y) => y[1] - x[1])
+        .map(([r, n]) => escR(r) + (Object.keys(reasons).length > 1 ? ` <span style="color:var(--muted)">(${n})</span>` : '')).join('<br>');
+      const tix = list.sort((x, y) => ageD(y) - ageD(x))
         .map(c => `<a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a> <span style="color:var(--muted)">${ageD(c)}d</span>`)
         .join(', ');
-      return `<tr><td style="text-align:left;white-space:normal"><b>${escR(r.csp)}</b></td>` +
-        `<td style="text-align:left;white-space:normal;font-weight:400">${escR(r.rem)}</td>` +
-        `<td><b>${r.list.length}</b></td><td class="${oldest >= 14 ? 'b' : ''}">${oldest}d</td>` +
-        `<td>${calls == null ? '—' : calls}</td>` +
-        `<td>${stx ? `<span class="${stx.open ? 'b' : ''}">${stx.open}</span> / ${stx.closed}` : '—'}</td>` +
-        `<td style="text-align:left;white-space:normal;font-weight:400;font-size:12.5px">${tix}</td></tr>`;
+      return `<tr><td style="text-align:left;white-space:normal"><b>${escR(csp)}</b></td>` +
+        `<td>${prof ? prof.paying.toLocaleString('en-IN') : '\u2014'}</td>` +
+        `<td>${prof ? (prof.mg ? '<span class="pillmg">MG pilot</span>' : '<span style="color:var(--muted)">no</span>') : '\u2014'}</td>` +
+        `<td><b>${list.length}</b></td><td class="${oldest >= 14 ? 'b' : ''}">${oldest}d</td>` +
+        `<td style="text-align:left;white-space:normal;font-weight:400">${reasonTxt}</td>` +
+        `<td>${calls == null ? '\u2014' : calls}</td>` +
+        `<td>${stx ? `<span class="${stx.open ? 'b' : ''}">${stx.open}</span> / ${stx.closed}` : '\u2014'}</td>` +
+        `<td class="pend">\u2014</td><td class="pend">\u2014</td>` +
+        `<td style="text-align:left;white-space:normal;font-weight:400;font-size:12px">${tix}</td></tr>`;
     }).join(NL);
-  const blkByReason = {};
-  blocked.forEach(c => {
-    const r = trim(c.remarks);
-    const e = blkByReason[r] || (blkByReason[r] = { n: 0, csps: new Set() });
-    e.n++; e.csps.add(trim(c.partner) || '(unknown)');
-  });
   const cspBlockHtml = `<section>
-<h2>Why the CSP is not resolving — ${periods[LASTCOL - 1].key}</h2>
-<p class="sub">${periods[LASTCOL - 1].key} (${periods[LASTCOL - 1].label}) only. ${blocked.length} of that week's ${lwUnres.length} unresolved cases carry a ground remark that points at the CSP. Grouped by CSP and reason, with the ticket numbers and each CSP's PTL activity beside them. Ticket ages are days since the case was added; anything past 14 days is flagged.</p>
-<div class="tablewrap"><table style="min-width:560px;margin-bottom:16px">
-<thead><tr><th style="text-align:left">Reason the ground gave</th><th>Cases</th><th>CSPs</th><th>%</th></tr></thead>
-<tbody>
-${Object.entries(blkByReason).sort((a, b) => b[1].n - a[1].n).map(([r, v]) =>
-  `<tr><td style="text-align:left">${escR(r)}</td><td>${v.n}</td><td>${v.csps.size}</td><td>${pct(v.n, blocked.length)}</td></tr>`).join(NL)}
-</tbody></table></div>
-<div class="tablewrap" style="max-height:620px;overflow:auto"><table style="min-width:1040px">
-<thead><tr><th style="text-align:left">CSP</th><th style="text-align:left">Reason</th><th>Cases</th><th>Oldest</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th style="text-align:left">Tickets</th></tr></thead>
+<h2>Why the CSP is not resolving \u2014 ${periods[LASTCOL - 1].key}</h2>
+<p class="sub">${periods[LASTCOL - 1].key} (${periods[LASTCOL - 1].label}) only. ${blocked.length} of that week's ${lwUnres.length} unresolved cases sit with ${Object.keys(blkGrp).length} CSPs whose ground remark points at them. Everything the meeting needs on one row: how big the CSP is, whether they are on the MG pilot, what the ground said, their PTL activity, and the tickets themselves. Ages are days since the case was added; past 14 days is flagged.</p>
+<div class="tablewrap" style="max-height:640px;overflow:auto"><table style="min-width:1280px">
+<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG</th><th>Cases</th><th>Oldest</th><th style="text-align:left">What the ground said</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Payout<br><span style="font-weight:400;opacity:.85">1\u201315 Aug</span></th><th>Payout<br><span style="font-weight:400;opacity:.85">16\u201331 Aug</span></th><th style="text-align:left">Tickets</th></tr></thead>
 <tbody>
 ${blkRows}
 </tbody></table></div>
+<p class="sub" style="margin-top:10px"><b>Payout columns are empty on purpose.</b> Every bonus table in Snowflake has stopped: PARTNER_BONUS_DISBURSEMENT ends 16 Jun, PARTNER_INCENTIVES 23 Jun, WORK_BONUS_TXNS 1 Jun, INCENTIVEVANILLA is unpopulated. The August cycles cannot be sourced from there. Point us at where cycle payout actually lives and both columns fill automatically.</p>
 </section>`;
 
-  // The week's reopens, in full - three or four cases, so show them rather
-  // than summarising. These are the resolutions that did not hold.
+  // The week's reopens in full - a handful of cases, so show them rather than
+  // summarising. These are the resolutions that did not hold.
   const lwCohort = era.filter(c => { const t = startTs(c); return t >= lwFrom && t < lwTo; });
   const lwReopened = lwCohort.filter(c => isMatured(c) && resolvedWithin48(c) === true && reopenedAfter(c));
   const reopSnapHtml = lwReopened.length ? `<section>
-<h2>The ${lwReopened.length} reopened case${lwReopened.length === 1 ? '' : 's'} — ${periods[LASTCOL - 1].key}</h2>
-<p class="sub">Resolutions from ${periods[LASTCOL - 1].label} that did not hold — each marked fixed inside 48 hours, then reopened. “Why it came back” is the customer's own account from the field team's reopen RCA sheet; blanks are cases the sheet has not been filled in for.</p>
-<div class="tablewrap"><table style="min-width:760px">
+<h2>The ${lwReopened.length} reopened case${lwReopened.length === 1 ? '' : 's'} \u2014 ${periods[LASTCOL - 1].key}</h2>
+<p class="sub">Resolutions from ${periods[LASTCOL - 1].label} that did not hold \u2014 each marked fixed inside 48 hours, then reopened. \u201cWhy it came back\u201d is the customer's own account from the field team's reopen RCA sheet; blanks are cases the sheet has not been filled in for.</p>
+<div class="tablewrap"><table style="min-width:860px">
 <thead><tr><th>Ticket</th><th style="text-align:left">CSP</th><th style="text-align:left">Closed on</th><th style="text-align:left">Why it came back</th><th style="text-align:left">What the CSP said</th><th>Reopened</th><th>Status now</th></tr></thead>
 <tbody>
 ${lwReopened.map(c => {
@@ -823,7 +855,7 @@ th:first-child{text-align:left}th.tot{background:var(--head2)}
 td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td:first-child{text-align:left;color:var(--ink);font-weight:600;white-space:normal}
 tr:last-child td{border-bottom:none}td.g{color:var(--good);font-weight:750}td.b{color:var(--bad);font-weight:750}td.tot{background:var(--surface2);font-weight:700}
-.notes{border-top:1px solid var(--border);margin-top:40px;padding-top:14px;font-size:12.5px;color:var(--muted)}
+.pillmg{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--good-soft);color:var(--good);font-size:11px;font-weight:700}\n.notes{border-top:1px solid var(--border);margin-top:40px;padding-top:14px;font-size:12.5px;color:var(--muted)}
 </style></head><body><div class="wrap">
 <header>
 <p class="eyebrow">HP Customer Tracker · 48-Hour TAT Flag</p>
