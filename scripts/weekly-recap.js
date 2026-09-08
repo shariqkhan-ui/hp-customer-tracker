@@ -291,18 +291,17 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     for (let i = 0; i < 4; i++) { if (day >= ranges[i][0] && day <= ranges[i][1]) { wi = i + 1; a = ranges[i][0]; b = ranges[i][1]; break; } }
     return { id: y * 10000 + m * 100 + wi, key: MN2[m] + ' W' + wi, from: istMs(y, m, a), to: istMs(y, m, b + 1) };
   }
-  const allSlices = [];
-  for (let t = LAUNCH; t < NOW; t += 86400000) {
-    const sl = sliceOf(t);
-    if (!allSlices.some(x => x.id === sl.id)) allSlices.push(sl);
-  }
-  const doneSlices = allSlices.filter(x => x.to <= CUT).slice(-3);
-  // The 4th column is the CURRENT week slice so far — not month-to-date.
-  const cur = sliceOf(NOW);
-  const periods = doneSlices.concat([
-    { key: cur.key, from: cur.from, to: CUT },
-    { key: 'Since launch', from: LAUNCH, to: CUT },
-  ]);
+  // Review weeks, oldest first. These are set by hand because the review's
+  // weeks are not uniform 7-day blocks - edit WEEKS to change them. Each entry
+  // is [label, first day inclusive, first day AFTER the window]. The current
+  // part-week is deliberately absent: only completed weeks are compared.
+  const WEEKS = [
+    ['Week 3', istMs(2026, 7, 14), istMs(2026, 7, 22)],
+    ['Week 2', istMs(2026, 7, 22), istMs(2026, 7, 31)],
+    ['Week 1', istMs(2026, 7, 31), istMs(2026, 8, 7)],
+  ];
+  const periods = WEEKS.map(([key, from, to]) => ({ key, from, to }))
+    .concat([{ key: 'Since launch', from: LAUNCH, to: CUT }]);
   periods.forEach(pp => { pp.to = Math.min(pp.to, CUT); pp.label = fmtD(pp.from) + ' – ' + fmtD(pp.to - 1); });
   const LASTCOL = periods.length - 1;
   const ptl = await ptlCallsByPartner(periods);
@@ -536,7 +535,7 @@ ${top.map(c => {
 
   // "Last week" is the week that just ended for the review — the current
   // slice up to yesterday (index 3), not the last fully-closed calendar slice.
-  const LW = LASTCOL - 1;
+  const LW = LASTCOL - 1;   // Week 1, the week just reviewed
   const sWB = S[LW - 1];     // the week before it
   const sLW = S[LW];         // last week
   const sTD = S[LASTCOL];    // since launch
@@ -609,7 +608,11 @@ ${top.map(c => {
   // CSP by CSP with the actual ticket numbers and that CSP's PTL activity
   // beside them - so an escalation can be raised straight off the row.
   const CSP_SIDE = /^CSP |CSP has no router|CSP installed|CSP denied|CSP Not Responding|Device not associated/i;
-  const blocked = unresAll.filter(c => CSP_SIDE.test(trim(c.remarks)));
+  // Scoped to the week under review, not the whole era - this is the list the
+  // meeting escalates, so it has to be this week's list.
+  const lwFrom = periods[LASTCOL - 1].from, lwTo = periods[LASTCOL - 1].to;
+  const lwUnres = unresAll.filter(c => { const t = startTs(c); return t >= lwFrom && t < lwTo; });
+  const blocked = lwUnres.filter(c => CSP_SIDE.test(trim(c.remarks)));
   const blkGrp = {};
   blocked.forEach(c => {
     const k = (trim(c.partner) || '(unknown)') + '\u0000' + trim(c.remarks);
@@ -641,8 +644,8 @@ ${top.map(c => {
     e.n++; e.csps.add(trim(c.partner) || '(unknown)');
   });
   const cspBlockHtml = `<section>
-<h2>Why the CSP is not resolving — case by case</h2>
-<p class="sub">${blocked.length} of the ${unresAll.length} unresolved cases carry a ground remark that points at the CSP. Grouped by CSP and reason, with the ticket numbers and each CSP's PTL activity beside them. Ticket ages are days since the case was added; anything past 14 days is flagged.</p>
+<h2>Why the CSP is not resolving — ${periods[LASTCOL - 1].key}</h2>
+<p class="sub">${periods[LASTCOL - 1].key} (${periods[LASTCOL - 1].label}) only. ${blocked.length} of that week's ${lwUnres.length} unresolved cases carry a ground remark that points at the CSP. Grouped by CSP and reason, with the ticket numbers and each CSP's PTL activity beside them. Ticket ages are days since the case was added; anything past 14 days is flagged.</p>
 <div class="tablewrap"><table style="min-width:560px;margin-bottom:16px">
 <thead><tr><th style="text-align:left">Reason the ground gave</th><th>Cases</th><th>CSPs</th><th>%</th></tr></thead>
 <tbody>
@@ -655,6 +658,25 @@ ${Object.entries(blkByReason).sort((a, b) => b[1].n - a[1].n).map(([r, v]) =>
 ${blkRows}
 </tbody></table></div>
 </section>`;
+
+  // The week's reopens, in full - three or four cases, so show them rather
+  // than summarising. These are the resolutions that did not hold.
+  const lwCohort = era.filter(c => { const t = startTs(c); return t >= lwFrom && t < lwTo; });
+  const lwReopened = lwCohort.filter(c => isMatured(c) && resolvedWithin48(c) === true && reopenedAfter(c));
+  const reopSnapHtml = lwReopened.length ? `<section>
+<h2>The ${lwReopened.length} reopened case${lwReopened.length === 1 ? '' : 's'} — ${periods[LASTCOL - 1].key}</h2>
+<p class="sub">Resolutions from ${periods[LASTCOL - 1].label} that did not hold. Each was marked fixed inside 48 hours and came back afterwards.</p>
+<div class="tablewrap"><table style="min-width:760px">
+<thead><tr><th>Ticket</th><th style="text-align:left">CSP</th><th style="text-align:left">Remark it was closed on</th><th style="text-align:left">Sub-category</th><th>Kapture</th><th>Status now</th></tr></thead>
+<tbody>
+${lwReopened.map(c => `<tr><td><a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a></td>` +
+  `<td style="text-align:left;font-weight:400;white-space:normal">${escR(trim(c.partner) || '\u2014')}</td>` +
+  `<td style="text-align:left;font-weight:400;white-space:normal">${escR(trim(c.remarks) || '\u2014')}</td>` +
+  `<td style="text-align:left;font-weight:400;white-space:normal;font-size:12.5px">${escR(trim(c.subcat) || '\u2014')}</td>` +
+  `<td>${escR(trim(c.kapture_status) || '\u2014')}</td>` +
+  `<td class="${getStatus(c) === 'Unresolved' ? 'b' : ''}">${getStatus(c)}</td></tr>`).join(NL)}
+</tbody></table></div>
+</section>` : '';
 
   const refundFunnel = `<section>
 <h2>Refund cases funnel</h2>
@@ -694,7 +716,7 @@ ${['Nothing payable', 'Still owed to the customer'].map(g => {
   });
   const tvRows = Object.entries(tvB).sort((x, y) => y[1].n - x[1].n).map(([k, v]) =>
     `<tr><td style="text-align:left;white-space:normal">${escT(k)}</td><td>${v.n}</td><td>${v.csps.size}</td>` +
-    `<td style="text-align:left;font-weight:400;white-space:normal">${Object.entries(v.res).sort((x, y) => y[1] - x[1]).map(([r, n]) => escT(r) + (Object.keys(v.res).length > 1 ? ` <span style="color:var(--muted)">(${n})</span>` : '')).join('<br>')}</td></tr>`).join(NL);
+    `<td style="text-align:left;font-weight:400;white-space:normal">${Object.entries(v.res).sort((x, y) => y[1] - x[1]).map(([r]) => escT(r)).join('<br>')}</td></tr>`).join(NL);
   const tvOurs = TVCAM.filter(r => !/Customer TV/.test(r.cause)).length;
   const tvCsps = new Set(TVCAM.map(r => r.csp).filter(Boolean)).size;
   const tvcamHtml = `<section>
@@ -799,8 +821,9 @@ ${row('<b>Total amount refunded to eligible customers</b>', s => inr(s.eligPaidA
 ${row('Refunds paid on cases that had already recovered', s => (s.paidN - s.eligPaidN).toLocaleString('en-IN') + ' (' + inr(s.paidAmt - s.eligPaidAmt) + ')')}
 ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('en-IN'))}
 </tbody></table></div>
-<p class="sub" style="margin-top:10px">A further ${S.map(x => x.intake).slice(0, 3).join(' / ')} cases (the three completed weeks) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
+<p class="sub" style="margin-top:10px">A further ${S.slice(0, 3).map(x => x.intake).join(' / ')} cases (Week 3 / Week 2 / Week 1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
 </section>
+${reopSnapHtml}
 ${refundFunnel}
 ${cspBlockHtml}
 ${cspRca}
