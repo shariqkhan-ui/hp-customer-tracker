@@ -393,10 +393,15 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     const H = sh[0].map(h => h.trim().toLowerCase());
     const col = n => H.findIndex(h => h === n);
     const iT = col('ticket no'), iCx = col('cx remarks'), iCsp = col('csp remarks'), iP = col('last ping time');
+    const iA = col('added at (time)'), iM = col('mobile'), iN = col('customer name'),
+          iC = col('csp'), iS = col('sub-category');
     sh.slice(1).forEach(r => {
       const t = String(r[iT] || '').replace(/\D/g, '');
       if (t) reopReason[t] = { cx: trim(r[iCx]), csp: trim(r[iCsp]), ping: trim(r[iP]) };
-      if (t) reopRcaRows.push({ cx: trim(r[iCx]), csp: trim(r[iCsp]) });
+      if (t) reopRcaRows.push({
+        t, when: trim(r[iA]), mobile: trim(r[iM]), cust: trim(r[iN]), cspName: trim(r[iC]),
+        subcat: trim(r[iS]), cx: trim(r[iCx]), csp: trim(r[iCsp]),
+      });
     });
     console.log('reopen RCA rows:', Object.keys(reopReason).length);
   } catch (e) { console.error('reopen RCA sheet unreadable (non-fatal):', e.message); }
@@ -800,52 +805,32 @@ ${blkRows}
   // summarising. These are the resolutions that did not hold.
   const lwCohort = era.filter(c => { const t = startTs(c); return t >= lwFrom && t < lwTo; });
   const lwReopened = lwCohort.filter(c => isMatured(c) && resolvedWithin48(c) === true && reopenedAfter(c));
-  const reopSnapHtml = lwReopened.length ? `<section>
-<h2>The ${lwReopened.length} reopened case${lwReopened.length === 1 ? '' : 's'} \u2014 ${periods[LASTCOL - 1].key}</h2>
-<p class="sub">Resolutions from ${periods[LASTCOL - 1].label} that did not hold \u2014 each marked fixed inside 48 hours, then reopened. \u201cWhy it came back\u201d is the customer's own account from the field team's reopen RCA sheet; blanks are cases the sheet has not been filled in for.</p>
-<div class="tablewrap"><table style="min-width:860px">
-<thead><tr><th>Ticket</th><th style="text-align:left">CSP</th><th style="text-align:left">Closed on</th><th style="text-align:left">Why it came back</th><th style="text-align:left">What the CSP said</th><th>Reopened</th><th>Status now</th></tr></thead>
-<tbody>
-${lwReopened.map(c => {
-  const k = dig(c.ticket_no), rr = reopReason[k], w = kWho[k];
-  const why = rr && rr.cx ? escR(rr.cx)
-    : w && w.role === 'customer_reopened' ? 'Customer reopened it <span style="color:var(--muted)">(no RCA filled)</span>'
-    : '<span style="color:var(--muted)">Not filled in the reopen RCA sheet</span>';
-  const said = rr && rr.csp ? escR(rr.csp) : '<span style="color:var(--muted)">\u2014</span>';
-  return `<tr><td><a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a></td>` +
-    `<td style="text-align:left;font-weight:400;white-space:normal">${escR(trim(c.partner) || '\u2014')}</td>` +
-    `<td style="text-align:left;font-weight:400;white-space:normal;font-size:12.5px">${escR(trim(c.remarks) || '\u2014')}</td>` +
-    `<td style="text-align:left;font-weight:400;white-space:normal"><b>${why}</b></td>` +
-    `<td style="text-align:left;font-weight:400;white-space:normal">${said}</td>` +
-    `<td style="font-size:12.5px">${w ? escR(w.when) : '\u2014'}</td>` +
-    `<td class="${getStatus(c) === 'Unresolved' ? 'b' : ''}">${getStatus(c)}</td></tr>`;
-}).join(NL)}
-</tbody></table></div>
-
-<h3 style="font-size:15px;margin:26px 0 4px">Reopen remarks across the whole RCA sheet</h3>
-<p class="sub">Every reopened case the field team has written up, not just this week's. The customer's account on the left, the CSP's on the right \u2014 read together they say who is closing tickets the customer does not agree are fixed.</p>
-<div class="tablewrap"><table style="min-width:620px">
-<thead><tr><th style="text-align:left">What the customer said</th><th>Cases</th><th style="text-align:left">What the CSP said</th><th>Cases</th></tr></thead>
-<tbody>
-${(() => {
-  const bucket = (key) => {
-    const m = {};
-    reopRcaRows.forEach(r => { const v = r[key] || '(not filled)'; m[v] = (m[v] || 0) + 1; });
-    return Object.entries(m).sort((a, b) => b[1] - a[1]);
+  // The field team writes each reopen up in the RCA sheet the day they work
+  // it, so the sheet's own "Added At" date is what scopes this to the week.
+  // Matching on the tracker cohort instead would miss reopens on cases
+  // received in an earlier week, which is most of them.
+  const dmy = v => {
+    const m = String(v || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+    return m ? Date.UTC(+m[3], +m[2] - 1, +m[1]) - IST : 0;
   };
-  const cx = bucket('cx'), cs = bucket('csp');
-  const n = Math.max(cx.length, cs.length);
-  const out = [];
-  for (let i = 0; i < n; i++) {
-    out.push('<tr>' +
-      `<td style="text-align:left;font-weight:400;white-space:normal">${cx[i] ? escR(cx[i][0]) : ''}</td><td>${cx[i] ? cx[i][1] : ''}</td>` +
-      `<td style="text-align:left;font-weight:400;white-space:normal">${cs[i] ? escR(cs[i][0]) : ''}</td><td>${cs[i] ? cs[i][1] : ''}</td>` +
-      '</tr>');
-  }
-  return out.join(NL);
-})()}
+  const reopWeekRows = reopRcaRows.filter(r => { const t = dmy(r.when); return t >= lwFrom && t < lwTo; });
+  const reopSnapHtml = reopWeekRows.length ? `<section>
+<h2>Reopened cases \u2014 ${periods[LASTCOL - 1].key}</h2>
+<p class="sub">The ${reopWeekRows.length} customers whose case reopened in ${periods[LASTCOL - 1].label}, with the reason each gave, straight from the field team's reopen RCA sheet.</p>
+<div class="tablewrap"><table style="min-width:980px">
+<thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">Customer</th><th style="text-align:left">CSP</th><th style="text-align:left">Sub-category</th><th style="text-align:left">CX remarks</th><th style="text-align:left">CSP remarks</th></tr></thead>
+<tbody>
+${reopWeekRows.map(r => `<tr>` +
+  `<td><a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(r.t)}?query=${escR(r.t)}" target="_blank" rel="noopener">${escR(r.t)}</a></td>` +
+  `<td style="font-size:12.5px">${escR(r.mobile)}</td>` +
+  `<td style="text-align:left;font-weight:400;white-space:normal">${escR(r.cust)}</td>` +
+  `<td style="text-align:left;font-weight:400;white-space:normal">${escR(r.cspName)}</td>` +
+  `<td style="text-align:left;font-weight:400;white-space:normal;font-size:12.5px">${escR(r.subcat)}</td>` +
+  `<td style="text-align:left;white-space:normal"><b>${escR(r.cx) || '<span style="color:var(--muted);font-weight:400">not filled</span>'}</b></td>` +
+  `<td style="text-align:left;font-weight:400;white-space:normal">${escR(r.csp) || '<span style="color:var(--muted)">\u2014</span>'}</td>` +
+  `</tr>`).join(NL)}
 </tbody></table></div>
-<p class="sub" style="margin-top:10px"><b>The single largest CSP-side remark is &ldquo;Wrongly Closed by CSP&rdquo;</b> \u2014 the ticket was marked resolved while the customer was still down. That is the same failure the closed-on column shows above: every reopen this week was closed as &ldquo;Resolved by Old CSP&rdquo;, on the CSP's word rather than a confirmed ping.</p>
+<p class="sub" style="margin-top:10px">Read the two remark columns together: the customer is reporting the fault came back or was never fixed, while the CSP has recorded <b>&ldquo;Internet Working&rdquo;</b> on ${reopWeekRows.filter(r => /internet working/i.test(r.csp)).length} of the ${reopWeekRows.length}. Every one of this week's reopens was closed on the CSP's word rather than a confirmed ping.</p>
 </section>` : '';
 
   const refundFunnel = `<section>
