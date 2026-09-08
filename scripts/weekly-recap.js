@@ -601,55 +601,6 @@ ${ledgerRows}
   // with the ground team's RCA from the "CSP RCA" tab of the same sheet
   // (columns: CSP | Pending Reason | Current Status). Tab missing → columns
   // render empty with a hint, the section itself always builds from Firebase.
-  let cspRca = '';
-  try {
-    const normName = s => String(s || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    const rcaByCsp = {};
-    try {
-      const csv2 = await fetch('https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/gviz/tq?tqx=out:csv&sheet=CSP%20RCA', { redirect: 'follow' }).then(r => r.text());
-      const sh2 = parseCSVText(csv2);
-      const S2 = sh2[0].map(h => h.trim().toLowerCase());
-      const iC = S2.findIndex(h => h === 'csp'), iR = S2.findIndex(h => h.startsWith('pending reason')), iSt = S2.findIndex(h => h.startsWith('current status'));
-      if (iC >= 0 && iR >= 0) sh2.slice(1).forEach(r => {
-        const k = normName(r[iC]);
-        if (k) rcaByCsp[k] = { reason: trim(r[iR]), status: iSt >= 0 ? trim(r[iSt]) : '' };
-      });
-    } catch (e2) { console.error('CSP RCA tab not readable (non-fatal):', e2.message); }
-    const brByCsp = {}, totByCsp = {};
-    era.forEach(c => { const p = trim(c.partner) || '(unknown)'; totByCsp[p] = (totByCsp[p] || 0) + 1; });
-    breached.forEach(c => { const p = trim(c.partner) || '(unknown)'; brByCsp[p] = (brByCsp[p] || 0) + 1; });
-    const top = Object.entries(brByCsp).sort((a, b) => b[1] - a[1]).slice(0, 10)
-      .map(([p, n]) => ({ p, n, t: totByCsp[p] || n }))
-      .sort((a, b) => b.n / b.t - a.n / a.t);
-    const anyRca = Object.keys(rcaByCsp).length > 0;
-    cspRca = `<section>
-<h2>CSP ticket breach &amp; resolution status — top 10</h2>
-<p class="sub">Top 10 CSPs by breached (unresolved past 48 hrs) cases, worst breach rate first. Calls at PTL = that CSP's calls on the PartnerSupportQueue since 29 Jul; PTL tickets shows how many of the tickets those calls raised are still open (Pending) versus closed (Complete); why they called = the top reasons on those tickets (Ameyo's own disposition is 88% untagged, so it is unusable). Pending reason &amp; current status maintained by the ground team in the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit" style="color:var(--accent-ink)">CSP RCA tab</a>.${anyRca ? '' : ' <b>Tab has no entries yet — team to fill CSP | Pending Reason | Current Status.</b>'}</p>
-<div class="tablewrap"><table style="min-width:900px">
-<thead><tr><th>CSP</th><th>Breached</th><th>Total cases</th><th>Breach rate</th><th>Calls at PTL</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th style="text-align:left">Why they called</th><th style="text-align:left">Pending reason</th><th style="text-align:left">Current status</th></tr></thead>
-<tbody>
-${top.map(c => {
-  const e = rcaByCsp[normName(c.p)] || {};
-  const rate = Math.round(c.n / c.t * 100);
-  const calls = ptl && ptl[normName(c.p)] ? ptl[normName(c.p)][LASTCOL] : null;
-  return `<tr><td>${c.p.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</td><td>${c.n}</td><td>${c.t}</td><td${rate >= 50 ? ' class="b"' : ''}>${rate}%</td><td>${calls == null ? '—' : calls.toLocaleString('en-IN')}</td><td>${(() => {
-    const st = ptlSt && ptlSt[normName(c.p)];
-    if (!st) return '—';
-    return `<span class="${st.open ? 'b' : ''}">${st.open}</span> / ${st.closed}` +
-      (st.open ? `<br><span style="font-size:11px;color:var(--muted)">oldest ${st.oldest}d</span>` : '');
-  })()}</td><td style="text-align:left;white-space:normal;font-weight:400">${(() => {
-    const w = ptlWhy && ptlWhy[normName(c.p)];
-    if (!w || !w.length) return '—';
-    return w.slice(0, 2).map(x => `${x.reason.replace(/</g, '&lt;')} (${x.n})`).join('<br>');
-  })()}</td><td style="text-align:left;white-space:normal">${(e.reason || '—').replace(/</g, '&lt;')}</td><td style="text-align:left;white-space:normal">${(e.status || '—').replace(/</g, '&lt;')}</td></tr>`;
-}).join('\n')}
-<tr><td class="tot"><b>Top 10 together</b></td><td class="tot b"><b>${top.reduce((a, c) => a + c.n, 0)}</b></td><td class="tot">${top.reduce((a, c) => a + c.t, 0)}</td><td class="tot"><b>${pct(top.reduce((a, c) => a + c.n, 0), breached.length)} of breached</b></td><td class="tot"><b>${ptl ? top.reduce((a, c) => a + (ptl[normName(c.p)] ? ptl[normName(c.p)][LASTCOL] : 0), 0).toLocaleString('en-IN') : '—'}</b></td><td class="tot" colspan="4"></td></tr>
-</tbody></table></div>
-</section>`;
-  } catch (e) {
-    console.error('CSP RCA section failed (non-fatal):', e.message);
-    cspRca = '';
-  }
   const inRange = (r) => era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to; });
   // Reopens are an EVENT: counted in the week they came back, against the
   // resolutions marked in that same week.
@@ -981,7 +932,6 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 ${reopSnapHtml}
 ${refundFunnel}
 ${cspBlockHtml}
-${cspRca}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's FIRST_REOPENED_TIME (the tracker's own reopened_at field only catches a dashboard revert inside 24 hrs and misses about half of them). Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div></body></html>`;
 
