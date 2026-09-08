@@ -304,8 +304,43 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     .concat([{ key: 'Since launch', from: LAUNCH, to: CUT }]);
   periods.forEach(pp => { pp.to = Math.min(pp.to, CUT); pp.label = fmtD(pp.from) + ' – ' + fmtD(pp.to - 1); });
   const LASTCOL = periods.length - 1;
+  // Why a reopened case came back. Two sources: the field team's reopen RCA
+  // sheet (the customer's own account and what the CSP said), and Kapture's
+  // record of who reopened the ticket. Sheet failure must not kill the recap.
+  const reopReason = {};
+  try {
+    const sh = parseCSVText(await fetch(RCA_SHEET_CSV, { redirect: 'follow' }).then(r => r.text()));
+    const H = sh[0].map(h => h.trim().toLowerCase());
+    const col = n => H.findIndex(h => h === n);
+    const iT = col('ticket no'), iCx = col('cx remarks'), iCsp = col('csp remarks'), iP = col('last ping time');
+    sh.slice(1).forEach(r => {
+      const t = String(r[iT] || '').replace(/\D/g, '');
+      if (t) reopReason[t] = { cx: trim(r[iCx]), csp: trim(r[iCsp]), ping: trim(r[iP]) };
+    });
+    console.log('reopen RCA rows:', Object.keys(reopReason).length);
+  } catch (e) { console.error('reopen RCA sheet unreadable (non-fatal):', e.message); }
+
   const ptl = await ptlCallsByPartner(periods);
   const kReop = await kaptureReopens('2026-07-29');
+  const kWho = await (async () => {
+    const key = process.env.METABASE_API_KEY;
+    if (!key) return {};
+    const sql = `SELECT KAPTURE_TICKET_ID, TO_CHAR(FIRST_REOPENED_TIME,'DD Mon HH24:MI') AS t,
+        COALESCE(NULLIF(TRIM(FIRST_REOPENED_BY_ROLE),''),'not recorded') AS role
+      FROM PROD_DB.PUBLIC.SERVICE_TICKET_MODEL
+      WHERE FIRST_REOPENED_TIME >= '2026-08-20'`;
+    try {
+      const r = await fetch(METABASE + '/api/dataset', {
+        method: 'POST', headers: { 'x-api-key': key, 'content-type': 'application/json' },
+        body: JSON.stringify({ database: 113, type: 'native', native: { query: sql } }),
+      }).then(x => x.json());
+      const m = {};
+      (r.data && r.data.rows || []).forEach(([t, when, role]) => {
+        const k = String(t || '').replace(/\D/g, ''); if (k) m[k] = { when, role };
+      });
+      return m;
+    } catch (e) { console.error('reopen-by query failed (non-fatal):', e.message); return {}; }
+  })();
   // A reopen counts when the ticket came back AFTER we marked it resolved.
   // A Kapture reopen dated on or before our resolution is usually why the case
   // reached this tracker in the first place, not a failure of our fix.
@@ -665,16 +700,24 @@ ${blkRows}
   const lwReopened = lwCohort.filter(c => isMatured(c) && resolvedWithin48(c) === true && reopenedAfter(c));
   const reopSnapHtml = lwReopened.length ? `<section>
 <h2>The ${lwReopened.length} reopened case${lwReopened.length === 1 ? '' : 's'} — ${periods[LASTCOL - 1].key}</h2>
-<p class="sub">Resolutions from ${periods[LASTCOL - 1].label} that did not hold. Each was marked fixed inside 48 hours and came back afterwards.</p>
+<p class="sub">Resolutions from ${periods[LASTCOL - 1].label} that did not hold — each marked fixed inside 48 hours, then reopened. “Why it came back” is the customer's own account from the field team's reopen RCA sheet; blanks are cases the sheet has not been filled in for.</p>
 <div class="tablewrap"><table style="min-width:760px">
-<thead><tr><th>Ticket</th><th style="text-align:left">CSP</th><th style="text-align:left">Remark it was closed on</th><th style="text-align:left">Sub-category</th><th>Kapture</th><th>Status now</th></tr></thead>
+<thead><tr><th>Ticket</th><th style="text-align:left">CSP</th><th style="text-align:left">Closed on</th><th style="text-align:left">Why it came back</th><th style="text-align:left">What the CSP said</th><th>Reopened</th><th>Status now</th></tr></thead>
 <tbody>
-${lwReopened.map(c => `<tr><td><a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a></td>` +
-  `<td style="text-align:left;font-weight:400;white-space:normal">${escR(trim(c.partner) || '\u2014')}</td>` +
-  `<td style="text-align:left;font-weight:400;white-space:normal">${escR(trim(c.remarks) || '\u2014')}</td>` +
-  `<td style="text-align:left;font-weight:400;white-space:normal;font-size:12.5px">${escR(trim(c.subcat) || '\u2014')}</td>` +
-  `<td>${escR(trim(c.kapture_status) || '\u2014')}</td>` +
-  `<td class="${getStatus(c) === 'Unresolved' ? 'b' : ''}">${getStatus(c)}</td></tr>`).join(NL)}
+${lwReopened.map(c => {
+  const k = dig(c.ticket_no), rr = reopReason[k], w = kWho[k];
+  const why = rr && rr.cx ? escR(rr.cx)
+    : w && w.role === 'customer_reopened' ? 'Customer reopened it <span style="color:var(--muted)">(no RCA filled)</span>'
+    : '<span style="color:var(--muted)">Not filled in the reopen RCA sheet</span>';
+  const said = rr && rr.csp ? escR(rr.csp) : '<span style="color:var(--muted)">\u2014</span>';
+  return `<tr><td><a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a></td>` +
+    `<td style="text-align:left;font-weight:400;white-space:normal">${escR(trim(c.partner) || '\u2014')}</td>` +
+    `<td style="text-align:left;font-weight:400;white-space:normal;font-size:12.5px">${escR(trim(c.remarks) || '\u2014')}</td>` +
+    `<td style="text-align:left;font-weight:400;white-space:normal"><b>${why}</b></td>` +
+    `<td style="text-align:left;font-weight:400;white-space:normal">${said}</td>` +
+    `<td style="font-size:12.5px">${w ? escR(w.when) : '\u2014'}</td>` +
+    `<td class="${getStatus(c) === 'Unresolved' ? 'b' : ''}">${getStatus(c)}</td></tr>`;
+}).join(NL)}
 </tbody></table></div>
 </section>` : '';
 
