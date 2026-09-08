@@ -13,7 +13,7 @@
   "verdict": "Consistent with a device failure",
   "evidence": "No ping data at all until 22 Aug, two days after the complaint, then normal reporting. The unit only appears once it was replaced.",
   "csp": "Supernet",
-  "bucket": "Wi-Fi box had stopped working",
+  "bucket": "Wi-Fi box had stopped working — nothing could connect",
   "resolution": "CSP replaced the Wi-Fi box"
  },
  {
@@ -28,7 +28,7 @@
   "rca": "TV supports Wi-Fi but the SSID was not being displayed. Renaming the Wi-Fi made the network visible on the TV, but internet connectivity was still not working.",
   "reported": true,
   "csp": "North Delhi Broadband Services",
-  "bucket": "TV could not find the Wi-Fi network",
+  "bucket": "TV could not find the Wi-Fi network — internet working elsewhere",
   "resolution": "Wi-Fi network name changed over the phone — no visit needed"
  },
  {
@@ -52,7 +52,7 @@
   "addr": "E-2/137, Gali No. 5, Sonia Vihar",
   "issue": "TV not working",
   "symptom": "SSID not visible",
-  "cause": "Faulty Wi-Fi device",
+  "cause": "SSID visibility / TV compatibility",
   "fix": "CSP replaced the Wi-Fi device",
   "state": "Resolved",
   "rca": "SSID was not appearing on the TV — only the 4G network showed. The CSP replaced the Wi-Fi device and the customer confirmed the TV works.",
@@ -60,8 +60,8 @@
   "verdict": "Not a device failure",
   "evidence": "Router was online throughout: 276 pings/day, only 12 missed, and clients connected on BOTH 2.4 GHz and 5 GHz every day including the complaint day. It was broadcasting Sumit9090, Sumit9090_5G and the Wiom Net SSID on 23 Jul. Band-steering flag never set. The swap changed the SSID configuration, not failed hardware.",
   "csp": "N D Network Solution",
-  "bucket": "Wi-Fi box had stopped working",
-  "resolution": "CSP replaced the Wi-Fi box"
+  "bucket": "TV could not find the Wi-Fi network — internet working elsewhere",
+  "resolution": "Wi-Fi box replaced, which reset the network name — a rename would likely have done it"
  },
  {
   "mob": "9580840030",
@@ -69,7 +69,7 @@
   "addr": "Global Homes-2, UG05, Sector 73, Noida",
   "issue": "TV not working",
   "symptom": "SSID not visible",
-  "cause": "Faulty Wi-Fi device",
+  "cause": "SSID visibility / TV compatibility",
   "fix": "CSP replaced the Wi-Fi device; customer declined the follow-up site visit",
   "state": "Resolved",
   "rca": "SSID was not appearing on the TV — only the 4G network showed. After the CSP replaced the device the network became visible and the TV worked. Customer declined a further site visit.",
@@ -77,8 +77,8 @@
   "verdict": "Cannot be verified",
   "evidence": "Complaint dates from 20 Apr; the hourly ping table only starts 24 Jun, so there is no evidence either way.",
   "csp": "FUTURE NET SERVICES",
-  "bucket": "Wi-Fi box had stopped working",
-  "resolution": "CSP replaced the Wi-Fi box"
+  "bucket": "TV could not find the Wi-Fi network — internet working elsewhere",
+  "resolution": "Wi-Fi box replaced, which reset the network name — a rename would likely have done it"
  },
  {
   "mob": "8800884497",
@@ -94,7 +94,7 @@
   "verdict": "Cannot be verified",
   "evidence": "Complaint dates from 9 Jun; the hourly ping table only starts 24 Jun, so there is no evidence either way.",
   "csp": "Capital Cable Network",
-  "bucket": "Wi-Fi box had stopped working",
+  "bucket": "Wi-Fi box had stopped working — nothing could connect",
   "resolution": "CSP replaced the Wi-Fi box"
  },
  {
@@ -199,7 +199,7 @@
   "rca": "Connection kept dropping and the SSID was not appearing on the TV. Changing the Wi-Fi name through the manual WLAN settings brought the network back on the TV.",
   "reported": true,
   "csp": "Jai It Service",
-  "bucket": "TV could not find the Wi-Fi network",
+  "bucket": "TV could not find the Wi-Fi network — internet working elsewhere",
   "resolution": "Wi-Fi network name changed over the phone — no visit needed"
  },
  {

@@ -635,13 +635,14 @@ ${['Nothing payable', 'Still owed to the customer'].map(g => {
   const tvN = TVCAM.length;
   const tvB = {};
   TVCAM.forEach(r => {
-    const e = tvB[r.bucket] || (tvB[r.bucket] = { n: 0, csps: new Set(), res: r.resolution, open: 0 });
+    const e = tvB[r.bucket] || (tvB[r.bucket] = { n: 0, csps: new Set(), res: {}, open: 0 });
     e.n++; if (r.csp) e.csps.add(r.csp);
+    e.res[r.resolution] = (e.res[r.resolution] || 0) + 1;
     if (r.state === 'Open') e.open++;
   });
   const tvRows = Object.entries(tvB).sort((x, y) => y[1].n - x[1].n).map(([k, v]) =>
     `<tr><td style="text-align:left;white-space:normal">${escT(k)}</td><td>${v.n}</td><td>${v.csps.size}</td>` +
-    `<td style="text-align:left;font-weight:400;white-space:normal">${escT(v.res)}</td></tr>`).join(NL);
+    `<td style="text-align:left;font-weight:400;white-space:normal">${Object.entries(v.res).sort((x, y) => y[1] - x[1]).map(([r, n]) => escT(r) + (Object.keys(v.res).length > 1 ? ` <span style="color:var(--muted)">(${n})</span>` : '')).join('<br>')}</td></tr>`).join(NL);
   const tvOurs = TVCAM.filter(r => !/Customer TV/.test(r.cause)).length;
   const tvCsps = new Set(TVCAM.map(r => r.csp).filter(Boolean)).size;
   const tvcamHtml = `<section>

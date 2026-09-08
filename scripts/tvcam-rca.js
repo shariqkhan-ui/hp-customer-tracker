@@ -41,7 +41,8 @@ const ourSide = N - (layerCount['Customer premise'] || 0);
 const resolved = ROWS.filter(r => r.state === 'Resolved');
 const noFault = ROWS.filter(r => r.state === 'No fault at our end');
 const open = ROWS.filter(r => r.state === 'Open');
-const deviceSwaps = has(/Faulty Wi-Fi device/).length;
+const deviceSwaps = ROWS.filter(r => /replaced/i.test(r.fix || '') || /replaced/i.test(r.resolution || '')).length;
+const trulyDead = has(/Faulty Wi-Fi device/).length;
 const ssidCases = ROWS.filter(r => /SSID not visible/i.test(r.symptom)).length;
 const tvLabelled = ROWS.filter(r => /tv|camera/i.test(r.issue)).length;
 // Were the swaps warranted? Tested against DBT.HOURLY_DEVICE_PING_INFLUX —
@@ -194,7 +195,7 @@ const bodyInner = `<div class="wrap">
       ${LAYERS.map(([name, , desc]) => layerCount[name] ? `<tr><td class="lbl">${name}</td><td class="wrap" style="color:var(--muted);font-size:13px">${desc}</td><td>${layerCount[name]}</td><td>${pct(layerCount[name], N)}</td></tr>` : '').join('\n')}
     </tbody></table></div>
 
-  <div class="finding"><b>The Wi-Fi device is the single largest cause.</b> ${deviceSwaps} of ${N} cases ended in a unit being replaced, and in every one of those the symptom was the same: the network name had vanished from every device in the house. A reset was tried in those cases and never recovered it — the unit was dead, not confused.</div>
+  <div class="finding"><b>Two different faults were being recorded as one.</b> ${deviceSwaps} of ${N} cases ended in a unit being replaced, all on the symptom “the network name has vanished”. But only ${trulyDead} of them had the name missing from <i>every</i> device, which is what a dead unit looks like. In the other ${deviceSwaps - trulyDead} the name was missing on the television alone while the rest of the house stayed online — so the box was working, and replacing it fixed the problem only because a new unit comes up with a fresh network name.</div>
 </section>
 
 <section>
