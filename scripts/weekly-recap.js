@@ -387,6 +387,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // sheet (the customer's own account and what the CSP said), and Kapture's
   // record of who reopened the ticket. Sheet failure must not kill the recap.
   const reopReason = {};
+  const reopRcaRows = [];
   try {
     const sh = parseCSVText(await fetch(RCA_SHEET_CSV, { redirect: 'follow' }).then(r => r.text()));
     const H = sh[0].map(h => h.trim().toLowerCase());
@@ -395,6 +396,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     sh.slice(1).forEach(r => {
       const t = String(r[iT] || '').replace(/\D/g, '');
       if (t) reopReason[t] = { cx: trim(r[iCx]), csp: trim(r[iCsp]), ping: trim(r[iP]) };
+      if (t) reopRcaRows.push({ cx: trim(r[iCx]), csp: trim(r[iCsp]) });
     });
     console.log('reopen RCA rows:', Object.keys(reopReason).length);
   } catch (e) { console.error('reopen RCA sheet unreadable (non-fatal):', e.message); }
@@ -819,6 +821,31 @@ ${lwReopened.map(c => {
     `<td class="${getStatus(c) === 'Unresolved' ? 'b' : ''}">${getStatus(c)}</td></tr>`;
 }).join(NL)}
 </tbody></table></div>
+
+<h3 style="font-size:15px;margin:26px 0 4px">Reopen remarks across the whole RCA sheet</h3>
+<p class="sub">Every reopened case the field team has written up, not just this week's. The customer's account on the left, the CSP's on the right \u2014 read together they say who is closing tickets the customer does not agree are fixed.</p>
+<div class="tablewrap"><table style="min-width:620px">
+<thead><tr><th style="text-align:left">What the customer said</th><th>Cases</th><th style="text-align:left">What the CSP said</th><th>Cases</th></tr></thead>
+<tbody>
+${(() => {
+  const bucket = (key) => {
+    const m = {};
+    reopRcaRows.forEach(r => { const v = r[key] || '(not filled)'; m[v] = (m[v] || 0) + 1; });
+    return Object.entries(m).sort((a, b) => b[1] - a[1]);
+  };
+  const cx = bucket('cx'), cs = bucket('csp');
+  const n = Math.max(cx.length, cs.length);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    out.push('<tr>' +
+      `<td style="text-align:left;font-weight:400;white-space:normal">${cx[i] ? escR(cx[i][0]) : ''}</td><td>${cx[i] ? cx[i][1] : ''}</td>` +
+      `<td style="text-align:left;font-weight:400;white-space:normal">${cs[i] ? escR(cs[i][0]) : ''}</td><td>${cs[i] ? cs[i][1] : ''}</td>` +
+      '</tr>');
+  }
+  return out.join(NL);
+})()}
+</tbody></table></div>
+<p class="sub" style="margin-top:10px"><b>The single largest CSP-side remark is &ldquo;Wrongly Closed by CSP&rdquo;</b> \u2014 the ticket was marked resolved while the customer was still down. That is the same failure the closed-on column shows above: every reopen this week was closed as &ldquo;Resolved by Old CSP&rdquo;, on the CSP's word rather than a confirmed ping.</p>
 </section>` : '';
 
   const refundFunnel = `<section>
