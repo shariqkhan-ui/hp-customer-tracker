@@ -124,8 +124,8 @@
   "rca": "Customer was trying to join the 5 GHz network on a TV that does not support 5 GHz. The TV service shop confirmed the model is 2.4 GHz only.",
   "reported": true,
   "csp": "Bright Internet Service",
-  "bucket": "The TV itself, not the connection",
-  "resolution": "Explained to the customer — nothing to fix on our side"
+  "bucket": "TV was getting hanged",
+  "resolution": "Checked at the TV service centre"
  },
  {
   "mob": "9871117839",
@@ -214,8 +214,8 @@
   "rca": "YouTube would not play on the TV while the internet worked on the phone. The YouTube app had been uninstalled from the TV. A TV technician checked it and the problem went away.",
   "reported": true,
   "csp": "DA fibernet",
-  "bucket": "The TV itself, not the connection",
-  "resolution": "TV technician reinstalled the app — nothing to fix on our side"
+  "bucket": "YouTube was uninstalled from the TV",
+  "resolution": "TV technician reinstalled the app"
  },
  {
   "mob": "9354979586",
@@ -229,7 +229,7 @@
   "rca": "After the TV came back from repair it had to be reconnected to Wi-Fi every time it was switched off, so the customer reported it as an internet fault. A TV technician visited and corrected the TV settings.",
   "reported": true,
   "csp": "Shri vishnu Broadband services",
-  "bucket": "The TV itself, not the connection",
-  "resolution": "TV technician corrected the TV settings — nothing to fix on our side"
+  "bucket": "TV was not auto-connecting to Wi-Fi",
+  "resolution": "TV technician corrected the TV settings"
  }
 ]

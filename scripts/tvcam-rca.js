@@ -26,28 +26,42 @@ const by = (key) => {
 };
 const has = re => ROWS.filter(r => re.test(r.cause));
 
-// Where the fault actually sat. This is the spine of the whole report.
+// Where the fault actually sat, keyed off the issue type so it cannot drift
+// as the wording of a root cause changes.
 const LAYERS = [
-  ['Our access network', /Faulty Wi-Fi device|SSID|Coverage|LAN cabling/, 'The Wi-Fi device we installed, how it was configured, the cable run, or where it was placed'],
-  ['ISP / backhaul', /ISP/, 'Upstream capacity or an outage at the ISP — outside the home, outside the CSP'],
-  ['Line quality', /Optical/, 'Optical receive power out of range on the fibre serving the home'],
-  ['Customer premise', /Customer TV|Band mismatch|Customer-premise/, "The customer's own TV or the app on it — no fault on our side"],
+  ['Our access network', 'The Wi-Fi box we installed, how it was configured, the cable run, or where it was placed'],
+  ['ISP / backhaul', 'Upstream capacity or an outage at the ISP - outside the home, outside the CSP'],
+  ['Line quality', 'Optical receive power out of range on the fibre serving the home'],
+  ['Customer premise', "The customer's own TV or the app on it - no fault on our side"],
 ];
-const layerOf = c => (LAYERS.find(l => l[1].test(c)) || LAYERS[3])[0];
+const LAYER_OF = {
+  'Wi-Fi box had stopped working \u2014 nothing could connect': 'Our access network',
+  'TV could not see the 2.4 GHz network': 'Our access network',
+  'Wi-Fi network name kept resetting': 'Our access network',
+  'Camera cable connector was loose': 'Our access network',
+  'TV too far from the Wi-Fi box': 'Our access network',
+  "Internet was down at the provider\u2019s end": 'ISP / backhaul',
+  'Internet speed too low for video': 'ISP / backhaul',
+  'Weak signal on the fibre line': 'Line quality',
+  'YouTube was uninstalled from the TV': 'Customer premise',
+  'TV was not auto-connecting to Wi-Fi': 'Customer premise',
+  'TV was getting hanged': 'Customer premise',
+};
+const layerOf = b => LAYER_OF[b] || 'Customer premise';
 const layerCount = {};
-ROWS.forEach(r => { const l = layerOf(r.cause); layerCount[l] = (layerCount[l] || 0) + 1; });
+ROWS.forEach(r => { const l = layerOf(r.bucket); layerCount[l] = (layerCount[l] || 0) + 1; });
 const ourSide = N - (layerCount['Customer premise'] || 0);
 
 const resolved = ROWS.filter(r => r.state === 'Resolved');
 const noFault = ROWS.filter(r => r.state === 'No fault at our end');
 const open = ROWS.filter(r => r.state === 'Open');
 const deviceSwaps = ROWS.filter(r => /replaced/i.test(r.fix || '') || /replaced/i.test(r.resolution || '')).length;
-const trulyDead = has(/Faulty Wi-Fi device/).length;
+const trulyDead = ROWS.filter(r => /stopped working/.test(r.bucket)).length;
 const ssidCases = ROWS.filter(r => /SSID not visible/i.test(r.symptom)).length;
 const tvLabelled = ROWS.filter(r => /tv|camera/i.test(r.issue)).length;
 // Were the swaps warranted? Tested against DBT.HOURLY_DEVICE_PING_INFLUX —
 // a dead unit stops pinging, a configuration fault leaves it online.
-const swapped = ROWS.filter(r => /Faulty Wi-Fi device/.test(r.cause));
+const swapped = ROWS.filter(r => r.verdict);
 const vNot = swapped.filter(r => r.verdict === 'Not a device failure').length;
 const vYes = swapped.filter(r => r.verdict === 'Consistent with a device failure').length;
 const vUnk = swapped.filter(r => r.verdict === 'Cannot be verified').length;
@@ -56,8 +70,10 @@ const swapRows = swapped.map(r =>
   `<td><span class="pill ${r.verdict === 'Not a device failure' ? 'no' : r.verdict === 'Consistent with a device failure' ? 'ok' : 'na'}">${esc(r.verdict)}</span></td>` +
   `<td class="wrap">${esc(r.evidence)}</td></tr>`).join(String.fromCharCode(10));
 
-const causeRows = by('cause').map(([k, n]) =>
-  `<tr><td class="lbl wrap">${esc(k)}</td><td class="lay">${esc(layerOf(k))}</td><td>${n}</td><td>${pct(n, N)}</td></tr>`).join('\n');
+const causeRows = by('bucket').map(([k, n]) => {
+  const res = [...new Set(ROWS.filter(r => r.bucket === k).map(r => r.resolution))].join('; ');
+  return `<tr><td class="lbl wrap">${esc(k)}</td><td class="lay">${esc(layerOf(k))}</td><td>${n}</td><td>${pct(n, N)}</td><td class="wrap">${esc(res)}</td></tr>`;
+}).join('\n');
 
 const openRows = open.map(r =>
   `<tr><td class="mono">${esc(r.mob)}</td><td class="mono">${esc(r.dev)}</td><td class="wrap">${esc(r.cause)}</td>` +
@@ -65,7 +81,7 @@ const openRows = open.map(r =>
 
 const ledger = ROWS.map((r, i) =>
   `<tr><td class="num">${i + 1}</td><td class="mono">${esc(r.mob)}</td><td class="mono">${esc(r.dev)}</td>` +
-  `<td class="wrap">${esc(r.issue)}</td><td class="wrap"><b>${esc(r.cause)}</b></td>` +
+  `<td class="wrap">${esc(r.issue)}</td><td class="wrap"><b>${esc(r.bucket)}</b></td>` +
   `<td class="wrap">${esc(r.rca)}</td><td class="wrap">${esc(r.fix)}</td>` +
   `<td><span class="pill ${r.state === 'Resolved' ? 'ok' : r.state === 'Open' ? 'no' : 'na'}">${esc(r.state)}</span></td>` +
   `<td>${r.reported ? '✓' : ''}</td></tr>`).join('\n');
@@ -183,16 +199,16 @@ const bodyInner = `<div class="wrap">
 
 <section>
   <div class="sec-head"><span class="sec-no">02</span><h2>What was actually wrong</h2></div>
-  <p class="sub">Every case traced to a single root cause. Grouped by where the fault physically sat.</p>
+  <p class="sub">Every case traced to one issue with one fix. Grouped by where the fault physically sat.</p>
   <div class="tablewrap"><table>
-    <thead><tr><th>Root cause</th><th style="text-align:left">Where it sat</th><th>Cases</th><th>Share</th></tr></thead>
+    <thead><tr><th>Issue</th><th style="text-align:left">Where it sat</th><th>Cases</th><th>Share</th><th style="text-align:left">Resolution</th></tr></thead>
     <tbody>${causeRows}</tbody></table></div>
 
   <h3>Rolled up by layer</h3>
   <div class="tablewrap"><table style="min-width:520px">
     <thead><tr><th>Layer</th><th style="text-align:left">What this covers</th><th>Cases</th><th>Share</th></tr></thead>
     <tbody>
-      ${LAYERS.map(([name, , desc]) => layerCount[name] ? `<tr><td class="lbl">${name}</td><td class="wrap" style="color:var(--muted);font-size:13px">${desc}</td><td>${layerCount[name]}</td><td>${pct(layerCount[name], N)}</td></tr>` : '').join('\n')}
+      ${LAYERS.map(([name, desc]) => layerCount[name] ? `<tr><td class="lbl">${name}</td><td class="wrap" style="color:var(--muted);font-size:13px">${desc}</td><td>${layerCount[name]}</td><td>${pct(layerCount[name], N)}</td></tr>` : '').join('\n')}
     </tbody></table></div>
 
   <div class="finding"><b>Two different faults were being recorded as one.</b> ${deviceSwaps} of ${N} cases ended in a unit being replaced, all on the symptom “the network name has vanished”. But only ${trulyDead} of them had the name missing from <i>every</i> device, which is what a dead unit looks like. In the other ${deviceSwaps - trulyDead} the name was missing on the television alone while the rest of the house stayed online — so the box was working, and replacing it fixed the problem only because a new unit comes up with a fresh network name.</div>
@@ -224,7 +240,7 @@ const bodyInner = `<div class="wrap">
 
   <h3>Still open — ${open.length} cases</h3>
   <div class="tablewrap"><table style="min-width:640px">
-    <thead><tr><th>Mobile</th><th>Device</th><th style="text-align:left">Root cause</th><th style="text-align:left">Next action</th></tr></thead>
+    <thead><tr><th>Mobile</th><th>Device</th><th style="text-align:left">Issue</th><th style="text-align:left">Next action</th></tr></thead>
     <tbody>${openRows}</tbody></table></div>
 </section>
 
