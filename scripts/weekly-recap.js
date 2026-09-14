@@ -928,8 +928,7 @@ ${tvcamHtml}
 <div class="tablewrap"><table>
 <thead><tr><th>Metric</th>${cols}</tr></thead>
 <tbody>
-${row('Cases received', s => s.n.toLocaleString('en-IN'))}
-${row('Matured — past 48 hrs since being added', s => s.m.toLocaleString('en-IN') + ' (' + pct(s.m, s.n) + ')')}
+${row('<b>Cases matured — crossed 48 hrs</b>', s => s.m.toLocaleString('en-IN') + ' <span style="font-weight:400;color:var(--muted)">of ' + s.n.toLocaleString('en-IN') + ' received</span>')}
 ${row('<b>Resolved within 48 hrs</b>', s => s.w48g.toLocaleString('en-IN') + ' (' + pct(s.w48g, s.m) + ')', 'g')}
 ${row('<b>Reopened</b>', s => (s.w48g - s.w48) + ' (' + pct(s.w48g - s.w48, s.w48g) + ')', 'b')}
 ${row('<b>Resolved within 48 hrs — net of reopened</b>', s => s.w48.toLocaleString('en-IN') + ' (' + pct(s.w48, s.m) + ')', 'g')}
