@@ -2756,7 +2756,7 @@ function copyWeekly() {
 }
 // Bonus / PTL figures are computed server-side by the Monday recap and parked
 // in Firebase; the tab just reads whatever is there.
-fbGet('/weekly_snapshot').then(v => { if (v) window.__wkSnapshot = v; }).catch(() => {});
+fbGet('/cases/__snapshot__').then(v => { if (v) window.__wkSnapshot = v; }).catch(() => {});
 
 // ── Action Items (weekly-meeting decisions) ──────────────────────────────────
 // Stored at /cases/__action_items__ (the __ prefix keeps them out of case

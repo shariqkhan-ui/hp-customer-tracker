@@ -1007,10 +1007,10 @@ ${cspBlockHtml}
     if (cspPay) Object.entries(cspPay).forEach(([k, v]) => {
       snap.bonus[k] = { c0: v.cyc[0], c1: v.cyc[1], lastWhen: v.lastWhen, lastRs: v.lastRs };
     });
-    await fetch(FIREBASE_DB + '/weekly_snapshot.json', {
+    await fetch(FIREBASE_DB + '/cases/__snapshot__.json', {
       method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(snap),
-    });
-    console.log('weekly_snapshot written for', Object.keys(snap.bonus).length, 'CSPs');
+    }).then(r => { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); });
+    console.log('snapshot written for', Object.keys(snap.bonus).length, 'CSPs');
   } catch (e) { console.error('snapshot write failed (non-fatal):', e.message); }
 
   fs.writeFileSync(outPath, html);
