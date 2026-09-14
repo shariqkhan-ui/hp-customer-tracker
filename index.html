@@ -2623,11 +2623,22 @@ function renderWeekly() {
   });
   prevMat.forEach(r => {
     const p = (r[6] || '').trim() || '(unknown)';
-    const e = byCsp[p] = byCsp[p] || { n: 0, bad: 0, prevN: 0, prevBad: 0 };
+    const e = byCsp[p] = byCsp[p] || { n: 0, bad: 0, prevN: 0, prevBad: 0, lwBad: 0 };
     e.prevN++; if (getStatus(r) === 'Unresolved') e.prevBad++;
   });
-  const worst = Object.entries(byCsp).filter(([, e]) => e.bad > 0)
-    .sort((a, b) => b[1].bad - a[1].bad || (b[1].bad / b[1].n) - (a[1].bad / a[1].n)).slice(0, 10);
+  // Last week on its own, to separate a NEW defaulter from one already on the
+  // list. The meeting wants the new names, not last week's again.
+  const lwFrom = from - (to - from) - 1, lwTo = from - 1;
+  rows.filter(r => { const m = maturedAt(r); return m >= lwFrom && m <= lwTo; })
+    .forEach(r => {
+      const p = (r[6] || '').trim() || '(unknown)';
+      const e = byCsp[p] = byCsp[p] || { n: 0, bad: 0, prevN: 0, prevBad: 0, lwBad: 0 };
+      if (getStatus(r) === 'Unresolved') e.lwBad = (e.lwBad || 0) + 1;
+    });
+  const rank = (a, b) => b[1].bad - a[1].bad || (b[1].bad / b[1].n) - (a[1].bad / a[1].n);
+  const defaulters = Object.entries(byCsp).filter(([, e]) => e.bad > 0);
+  const worst = defaulters.filter(([, e]) => !e.lwBad).sort(rank).slice(0, 10);
+  const repeat = defaulters.filter(([, e]) => e.lwBad).sort(rank);
   const verdict = e => {
     const now = e.n ? e.bad / e.n : 0, before = e.prevN ? e.prevBad / e.prevN : null;
     if (before === null || e.prevN < 3) return ['<span style="color:var(--muted)">New / too few cases before</span>', ''];
@@ -2708,8 +2719,10 @@ function renderWeekly() {
       Object.entries(rTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
         '<tr><td style="text-align:left;padding-left:26px;font-weight:400">' + esc(k) + '</td><td>' + n + '</td><td>' + pct1(n, rElig.length) + '</td></tr>').join('')));
 
-  h += T('5 · The 10 CSPs that hurt resolution most this week',
-    'Ranked by unresolved cases. "Prior form" compares the same CSP across the previous two weeks, so a CSP that was fine and broke this week is separated from one that has been bad throughout.' +
+  h += T('5 · New defaulters this week — 10 worst',
+    'CSPs that broke <b>this</b> week: they have unresolved cases now and had none last week. ' + repeat.length +
+    ' CSP' + (repeat.length === 1 ? '' : 's') + ' carried over from last week and are listed separately below. ' +
+    '"Prior form" compares the same CSP across the previous two weeks.' +
     (snap && snap.bonus ? '' : ' <b>Bonus columns fill once the Monday recap has run.</b>'),
     tbl('<th style="text-align:left">CSP</th><th>Matured</th><th>Unresolved</th><th>Breach rate</th><th>Prior 2 weeks</th><th style="text-align:left">Prior form</th><th>Bonus 1–15 / 16–31</th>',
       worst.map(([p, e]) => {
@@ -2720,6 +2733,15 @@ function renderWeekly() {
           '<td style="text-align:left;white-space:normal">' + v[0] + '</td>' +
           '<td style="font-size:12px">' + bonusCell(p) + '</td></tr>';
       }).join(''), 980));
+
+  h += T('5b · Carried over from last week',
+    repeat.length + ' CSP' + (repeat.length === 1 ? '' : 's') + ' had unresolved cases last week and again this week. These are not new — they are unfinished business.',
+    tbl('<th style="text-align:left">CSP</th><th>Matured</th><th>Unresolved</th><th>Breach rate</th><th>Last week</th><th>Bonus 1–15 / 16–31</th>',
+      repeat.slice(0, 15).map(([p, e]) =>
+        '<tr><td style="text-align:left;white-space:normal"><b>' + esc(p) + '</b></td><td>' + e.n + '</td>' +
+        '<td class="b">' + e.bad + '</td><td>' + pct1(e.bad, e.n) + '</td>' +
+        '<td class="b">' + e.lwBad + '</td>' +
+        '<td style="font-size:12px">' + bonusCell(p) + '</td></tr>').join(''), 760));
 
   document.getElementById('wkBody').innerHTML = h;
   loadMom(from, to);
