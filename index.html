@@ -2290,34 +2290,47 @@ function weekOptionLabels() {
 }
 
 // ── Period columns for the sheet-style reports ──
-// Rolling two-month window: LAST month's final 3 weekly slices + its month
-// total, then THIS month's weeks (1-7 / 8-14 / 15-21 / 22-end) + TillDate,
-// then a Grand Total from the 1st of last month to today. Older months are
+// The two completed months as single totals, then the current month week by
+// week (slices 1-7 / 8-14 / 15-21 / 22-end), then MTD. Older months are
 // deliberately excluded.
 function buildPeriods() {
+  // Columns: the two completed months as single totals, then the current
+  // month week by week (slices 1-7 / 8-14 / 15-21 / 22-end), then MTD.
+  // e.g. Jul | Aug | Sep Wk1 | Sep Wk2 | Sep MTD
   const periods = [];
   const nowD = new Date();
-  const monthsToShow = [new Date(nowD.getFullYear(), nowD.getMonth() - 1, 1), new Date(nowD.getFullYear(), nowD.getMonth(), 1)];
-  monthsToShow.forEach((ms, mi) => {
-    const y = ms.getFullYear(), mo = ms.getMonth();
-    const isCur = mi === 1;
-    const name = ms.toLocaleString('en', { month: 'short' });
-    const lastDay = new Date(y, mo + 1, 0).getDate();
-    const monthEnd = new Date(y, mo, lastDay, 23, 59, 59, 999).getTime();
-    const ranges = [[1, 7], [8, 14], [15, 21], [22, lastDay]];
-    const weeks = [];
-    let wi = 0;
-    for (const [a, b] of ranges) {
-      const from = new Date(y, mo, a).getTime();
-      if (from > nowD.getTime()) break;
-      wi++;
-      weeks.push({ label: name + ' W' + wi + ' (' + a + '-' + b + ')', from, to: new Date(y, mo, b, 23, 59, 59, 999).getTime() });
-    }
-    // Last month: only its final 3 weeks; current month: all weeks so far
-    periods.push(...(isCur ? weeks : weeks.slice(-3)));
-    periods.push({ label: name + (isCur ? ' TillDate' : ' Total'), from: new Date(y, mo, 1).getTime(), to: isCur ? nowD.getTime() : monthEnd, cls: 'total' });
+  const y = nowD.getFullYear(), mo = nowD.getMonth();
+  for (let back = 2; back >= 1; back--) {
+    const ms = new Date(y, mo - back, 1);
+    const my = ms.getFullYear(), mm = ms.getMonth();
+    const lastDay = new Date(my, mm + 1, 0).getDate();
+    periods.push({
+      label: ms.toLocaleString('en', { month: 'short' }),
+      from: new Date(my, mm, 1).getTime(),
+      to: new Date(my, mm, lastDay, 23, 59, 59, 999).getTime(),
+      cls: 'total',
+    });
+  }
+  const name = nowD.toLocaleString('en', { month: 'short' });
+  const lastDay = new Date(y, mo + 1, 0).getDate();
+  const ranges = [[1, 7], [8, 14], [15, 21], [22, lastDay]];
+  let wi = 0;
+  for (const [a2, b2] of ranges) {
+    const from = new Date(y, mo, a2).getTime();
+    if (from > nowD.getTime()) break;
+    wi++;
+    periods.push({
+      label: name + ' Wk' + wi,
+      from,
+      to: new Date(y, mo, b2, 23, 59, 59, 999).getTime(),
+    });
+  }
+  periods.push({
+    label: name + ' MTD',
+    from: new Date(y, mo, 1).getTime(),
+    to: nowD.getTime(),
+    cls: 'grand',
   });
-  periods.push({ label: 'Grand Total', from: monthsToShow[0].getTime(), to: nowD.getTime(), cls: 'grand' });
   return periods;
 }
 function renderWeekTable(rows) {
@@ -2691,9 +2704,8 @@ function renderReports() {
   // to the full base when no filters have been applied yet.
   const rows = visRows.length || Object.keys(msState).some(k => msState[k].size) ? visRows : allRows;
   const now = Date.now();
-  // ── Period columns, exactly like the migration-analysis sheet:
-  // Jun in halves + Jun Total, later months weekly (1-7, 8-14, 15-21, 22-end)
-  // + Month Total / TillDate, then a Grand Total column.
+  // ── Period columns (see buildPeriods): two completed months as totals,
+  // then this month's weekly slices, then MTD.
   const periods = buildPeriods();
   const perCases = periods.map(p => rows.filter(r => { const ts = rowStartTsAny(r); return ts >= p.from && ts <= p.to; }));
 
