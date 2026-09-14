@@ -589,9 +589,9 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div class="status-count" id="sKSplit" style="font-size:20px">—</div>
       <div class="status-label">&#x1F5C2; Kapture: Pending / Completed <span style="font-size:10px;opacity:.7">(of Unresolved &gt; 48 Hrs)</span></div>
     </div>
-    <div class="status-card rstat" title="Refund funnel: Eligible = exactly the Unresolved > 48 Hrs cases; Done = of those, refunded per Finance sheet or Cx Action; Pending = the rest. % of eligible.">
+    <div class="status-card rstat" title="Refund funnel: Eligible = exactly the Unresolved > 48 Hrs cases. Done = refunded per Finance sheet or Cx Action. Parked = a Refund Action reason is recorded (Cx DNP, pickup ticket not raised, PFT miss, 120 hrs, amount ₹0). Pending = no reason recorded yet — the real backlog. % of eligible.">
       <div class="status-count" id="sRSplit" style="font-size:20px">—</div>
-      <div class="status-label">&#x1F4B8; Refund: Eligible / Pending / Done <span style="font-size:10px;opacity:.7">(= Unresolved &gt; 48 Hrs)</span></div>
+      <div class="status-label">&#x1F4B8; Refund: Eligible / Pending / Parked / Done <span style="font-size:10px;opacity:.7">(= Unresolved &gt; 48 Hrs)</span></div>
     </div>
     <div class="status-card reopen" id="reopenCard" onclick="toggleReopenFilter()" style="cursor:pointer" title="Tickets marked resolved that were reverted to unresolved within 24 hours. Click to view them.">
       <div class="status-count" id="sReopenCount">—</div>
@@ -754,6 +754,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div style="font-size:11px;color:#7a5c6e;padding:6px 4px 0">Engineer close = resolved-type Ground Remark; Cx close = Kapture completion (FINAL_RESOLVED_TIME, "disposed by PFT", synced every 30 min) or the tracker's Cx Action timestamp. "No update available" = engineer closed but PFT hasn't completed the Kapture ticket yet.</div>
     </div>
     <div class="sheet-panel"><div class="sheet-title"><span>NQT team remarks</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRemarks','nqt-remarks')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRemarks"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>Refund not paid — reason by period (eligible cases still unpaid)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRefundReason','refund-pending-reasons')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRefundReason"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Average TAT (in hours)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAvgTat','average-tat-hours')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAvgTat"></div></div>
     <div class="report-card">
       <h3>&#x1F4DE; C. Cx closure time after engineer closed</h3>
@@ -2146,14 +2147,24 @@ function renderAll() {
   // bucket (same set as the Kapture split card). Refunded-then-resolved cases
   // drop out of all three figures.
   const isRefunded = r => effectiveVal(r, 23) === 'Refund Done' || !!sheetEntryFor(r);
+  // A case with a Refund Action recorded against it — Cx DNP, pickup ticket
+  // not raised, PFT process miss, 120 hrs not crossed, amount computed as ₹0 —
+  // has been looked at and parked. Counting those as "pending" inflated the
+  // number roughly 2.6x, so they get their own figure.
+  const raSet = r => (r[33] || '').trim();
+  const isParked = r => raSet(r) !== '' || (r[24] !== '' && r[24] != null && Number(r[24]) === 0);
   const eligR = unresRows.length;
   const doneR = unresRows.filter(isRefunded).length;
-  const pendR = eligR - doneR;
+  const restR = unresRows.filter(r => !isRefunded(r));
+  const parkR = restR.filter(isParked).length;
+  const pendR = restR.length - parkR;
   const rpct = n => eligR ? Math.round(n / eligR * 100) + '%' : '—';
   document.getElementById('sRSplit').innerHTML =
     '<span style="color:var(--text)">Eligible ' + eligR + '</span>' +
     '<span style="color:var(--muted)"> · </span>' +
     '<span style="color:#d29922">Pending ' + pendR + ' (' + rpct(pendR) + ')</span>' +
+    '<span style="color:var(--muted)"> · </span>' +
+    '<span style="color:#8b949e">Parked ' + parkR + ' (' + rpct(parkR) + ')</span>' +
     '<span style="color:var(--muted)"> · </span>' +
     '<span style="color:#3fb950">Done ' + doneR + ' (' + rpct(doneR) + ')</span>';
   setText('kTotal',   total);
@@ -2829,6 +2840,38 @@ function renderReports() {
   // tracker's Cx Action timestamp when Kapture hasn't closed yet.
   const cxActTs = r => Number(r[28]) || Number(r[25]) || 0;
   tatPctTable('sheetCxTat', r => remarkTs(r) > 0 && isResolutionRemark(r[8]), remarkTs, cxActTs, true);
+
+  // 3b. Refund not paid — why, by period. Every case that breached 48 hrs and
+  // has not been refunded, bucketed by its Refund Action. Blank means nothing
+  // recorded yet, which is the genuine backlog.
+  {
+    const isRefundedR = r => effectiveVal(r, 23) === 'Refund Done' || !!sheetEntryFor(r);
+    const openEligible = list => list.filter(r =>
+      getStatus(r) === 'Unresolved' && isTatExpired(r) && !isRefundedR(r));
+    const reasonOf = r => {
+      const m = (r[33] || '').trim();
+      if (m) return m;
+      if (r[24] !== '' && r[24] != null && Number(r[24]) === 0) return 'Amount ₹0 — refund not possible';
+      return 'No reason recorded';
+    };
+    const tally = {};
+    perCases.forEach(list => openEligible(list).forEach(r => {
+      const k = reasonOf(r); tally[k] = (tally[k] || 0) + 1;
+    }));
+    const specs = Object.keys(tally).sort((a, b) => {
+      if (a === 'No reason recorded') return -1;
+      if (b === 'No reason recorded') return 1;
+      return tally[b] - tally[a];
+    }).map(k => ({ label: k, key: k }));
+    sheetTable('sheetRefundReason', 'Reason not paid',
+      specs.concat([{ label: 'Grand Total', gtot: true }]),
+      (spec, list) => {
+        const open = openEligible(list);
+        if (spec.gtot) return { text: numFmt(open.length) };
+        const n = open.filter(r => reasonOf(r) === spec.key).length;
+        return { text: n ? numFmt(n) : '-', bg: spec.key === 'No reason recorded' && n ? '#FBE3F2' : null };
+      });
+  }
 
   // 4+5. Migration team remarks — counts and %
   // Display remarks with "CSP" wording; legacy "…Partner" values merge into
