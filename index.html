@@ -2146,13 +2146,13 @@ function renderAll() {
   // Refund funnel — per user: eligible = EXACTLY the Unresolved > 48 Hrs
   // bucket (same set as the Kapture split card). Refunded-then-resolved cases
   // drop out of all three figures.
-  const isRefunded = r => effectiveVal(r, 23) === 'Refund Done' || !!sheetEntryFor(r);
+  const isRefunded = r => effectiveVal(r, 23) === 'Refund Done' || (r[33] || '').trim() === 'Refund Done' || !!sheetEntryFor(r);
   // A case with a Refund Action recorded against it — Cx DNP, pickup ticket
   // not raised, PFT process miss, 120 hrs not crossed, amount computed as ₹0 —
   // has been looked at and parked. Counting those as "pending" inflated the
   // number roughly 2.6x, so they get their own figure.
   const raSet = r => (r[33] || '').trim();
-  const isParked = r => raSet(r) !== '' || (r[24] !== '' && r[24] != null && Number(r[24]) === 0);
+  const isParked = r => (raSet(r) !== '' && raSet(r) !== 'Refund Done') || (r[24] !== '' && r[24] != null && Number(r[24]) === 0);
   const eligR = unresRows.length;
   const doneR = unresRows.filter(isRefunded).length;
   const restR = unresRows.filter(r => !isRefunded(r));
@@ -2845,7 +2845,7 @@ function renderReports() {
   // dropdown value — the long tail was unreadable. Paid cases and Wiom Net
   // cases sit in the same table so the whole refund picture is on one screen.
   {
-    const isRefundedR = r => effectiveVal(r, 23) === 'Refund Done' || !!sheetEntryFor(r);
+    const isRefundedR = r => effectiveVal(r, 23) === 'Refund Done' || (r[33] || '').trim() === 'Refund Done' || !!sheetEntryFor(r);
     const breached = list => list.filter(r => getStatus(r) === 'Unresolved' && isTatExpired(r));
     const reasonOf = r => {
       const m = (r[33] || '').trim();
