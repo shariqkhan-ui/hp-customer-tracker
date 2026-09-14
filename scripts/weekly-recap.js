@@ -767,11 +767,18 @@ ${blkRows}
   const reopWeekRows = reopRcaRows.filter(r => { const t = dmy(r.when); return t >= lwFrom && t < lwTo; });
   // If the sheet has no rows for the week, say so. Silently dropping the
   // section makes an unfilled sheet look like a week with no reopens.
-  const rcaLatest = reopRcaRows.map(r => dmy(r.when)).filter(Boolean).sort().pop();
-  const reopSnapHtml = !reopWeekRows.length ? `<section>
-<h2>Reopened cases — ${periods[LASTCOL - 1].key}</h2>
-<p class="sub">The tracker counted <b>${S[LASTCOL - 1].w48g - S[LASTCOL - 1].w48} reopened case${(S[LASTCOL - 1].w48g - S[LASTCOL - 1].w48) === 1 ? '' : 's'}</b> in ${periods[LASTCOL - 1].label}, but <b>the reopen RCA sheet has no entries for this week</b> — its most recent row is dated ${rcaLatest ? fmtD(rcaLatest) : 'unknown'}. Without it there is no record of why any of them came back. The sheet is the only place that reason is captured.</p>
-</section>` : `<section>
+  const rcaLatest = reopRcaRows.map(r => dmy(r.when)).filter(Boolean).sort((x, y) => x - y).pop();
+  const lwReopCount = S[LASTCOL - 1].w48g - S[LASTCOL - 1].w48;
+  let reopSnapHtml;
+  if (!reopWeekRows.length) {
+    // Say the sheet is empty. Dropping the section silently reads as "no
+    // reopens this week", which is a different and much rosier claim.
+    reopSnapHtml = `<section>
+<h2>Reopened cases \u2014 ${periods[LASTCOL - 1].key}</h2>
+<p class="sub">The tracker counted <b>${lwReopCount} reopened case${lwReopCount === 1 ? '' : 's'}</b> in ${periods[LASTCOL - 1].label}, but <b>the reopen RCA sheet has no entries for this week</b> \u2014 its most recent row is dated ${rcaLatest ? fmtD(rcaLatest) : 'unknown'}. Without it there is no record of why any of them came back, and the sheet is the only place that reason is captured.</p>
+</section>`;
+  } else {
+    reopSnapHtml = `<section>
 <h2>Reopened cases \u2014 ${periods[LASTCOL - 1].key}</h2>
 <p class="sub">The ${reopWeekRows.length} customers whose case reopened in ${periods[LASTCOL - 1].label}, with the reason each gave, straight from the field team's reopen RCA sheet.</p>
 <div class="tablewrap"><table style="min-width:980px">
@@ -787,8 +794,9 @@ ${reopWeekRows.map(r => `<tr>` +
   `<td style="text-align:left;font-weight:400;white-space:normal">${escR(r.csp) || '<span style="color:var(--muted)">\u2014</span>'}</td>` +
   `</tr>`).join(NL)}
 </tbody></table></div>
-<p class="sub" style="margin-top:10px">Read the two remark columns together: the customer is reporting the fault came back or was never fixed, while the CSP has recorded <b>&ldquo;Internet Working&rdquo;</b> on ${reopWeekRows.filter(r => /internet working/i.test(r.csp)).length} of the ${reopWeekRows.length}. Every one of this week's reopens was closed on the CSP's word rather than a confirmed ping.</p>
-</section>` : '';
+<p class="sub" style="margin-top:10px">Read the two remark columns together: the customer is reporting the fault came back or was never fixed, while the CSP has recorded <b>&ldquo;Internet Working&rdquo;</b> on ${reopWeekRows.filter(r => /internet working/i.test(r.csp)).length} of the ${reopWeekRows.length}.</p>
+</section>`;
+  }
 
   const refundFunnel = `<section>
 <h2>Refund cases funnel</h2>
