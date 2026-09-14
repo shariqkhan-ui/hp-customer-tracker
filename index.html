@@ -2567,9 +2567,13 @@ let momKey = '';
 function wkRange() {
   const f = document.getElementById('wkFrom'), t = document.getElementById('wkTo');
   if (f && !f.value) {
-    const now = new Date(), from = new Date(now.getTime() - 6 * 86400000);
+    // Default to the last COMPLETE Monday-Sunday week, which is the week the
+    // meeting reviews. Both dates stay editable.
+    const now = new Date(), dow = now.getDay();
+    const lastSun = new Date(now); lastSun.setDate(now.getDate() - (dow === 0 ? 7 : dow));
+    const mon = new Date(lastSun); mon.setDate(lastSun.getDate() - 6);
     const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-    f.value = iso(from); t.value = iso(now);
+    f.value = iso(mon); t.value = iso(lastSun);
   }
   const from = new Date(f.value + 'T00:00:00').getTime();
   const to = new Date(t.value + 'T23:59:59.999').getTime();
