@@ -2847,9 +2847,14 @@ function renderReports() {
   {
     const isRefundedR = r => effectiveVal(r, 23) === 'Refund Done' || (r[33] || '').trim() === 'Refund Done' || !!sheetEntryFor(r);
     const breached = list => list.filter(r => getStatus(r) === 'Unresolved' && isTatExpired(r));
+    // Mirrors raEffective on the Refund Action tab, in the same order: a
+    // manual entry wins, then a router that pinged after the complaint (the
+    // line came back, so nothing is owed), then a computed ₹0, then pending.
+    // Leaving the ping step out counted 79 recovered lines as pending refunds.
     const reasonOf = r => {
       const m = (r[33] || '').trim();
       if (m) return m;
+      if (Number(r[35]) > 0 && Number(r[35]) > caseStartTs(r)) return 'Ping up';
       if (r[24] !== '' && r[24] != null && Number(r[24]) === 0) return 'Amount 0 — refund not possible';
       return '';
     };
@@ -2861,11 +2866,12 @@ function renderReports() {
       ['PFT process miss',               r => reasonOf(r) === 'PFT process miss'],
       ['120 hr not crossed',             r => reasonOf(r) === '120 hr not crossed'],
       ['Wiom Net user',                  r => reasonOf(r) === 'Wiom Net user'],
+      ['Line came back — nothing owed',  r => reasonOf(r) === 'Ping up'],
       ['Amount too low to refund',       r => /^Amount /.test(reasonOf(r))],
       ['Other reason recorded',          r => {
         const k = reasonOf(r);
         return k !== '' && !/^Amount /.test(k) &&
-          ['Cx DNP 3', 'Pickup ticket not created by Cx', 'PFT process miss', '120 hr not crossed', 'Wiom Net user'].indexOf(k) < 0;
+          ['Cx DNP 3', 'Pickup ticket not created by Cx', 'PFT process miss', '120 hr not crossed', 'Wiom Net user', 'Ping up'].indexOf(k) < 0;
       }],
     ];
     const specs = ROWS.map(([label], i) => ({ label, idx: i }))
