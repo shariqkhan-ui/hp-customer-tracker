@@ -2402,7 +2402,7 @@ function showMainTab(t) {
 // Every flag-era case that has EVER breached 48 hrs. One status column
 // (refund_action) owned by Deepakshi; auto-fallbacks: Finance-sheet Refund
 // Done, then Ping up for cases that recovered after breaching.
-const REFUND_ACTION_OPTS = ['Refund Done', 'Ping up', 'Wiom Net user', 'Cx DNP 3', 'Amount 0 — refund not possible', 'Amount <10 — refund not possible', 'Pickup ticket not created by Cx', 'EXIT partner — refund by Kapil', 'CSP resolved — removed from PFT list', 'Duplicate ticket', '120 hr not crossed', 'Refund not demanded by Cx', 'PFT process miss', 'Refund not required'];
+const REFUND_ACTION_OPTS = ['Refund Done', 'Ping up', 'Cx DNP 3', 'Amount 0 — refund not possible', 'Amount <10 — refund not possible', 'Pickup ticket not created by Cx', 'EXIT partner — refund by Kapil', 'CSP resolved — removed from PFT list', 'Duplicate ticket', '120 hr not crossed', 'Refund not demanded by Cx', 'PFT process miss', 'Refund not required'];
 function raEffective(r) {
   const manual = (r[33] || '').trim();
   if (manual) return { v: manual, auto: false };
@@ -2865,13 +2865,12 @@ function renderReports() {
       ['Pickup ticket not created by Cx', r => reasonOf(r) === 'Pickup ticket not created by Cx'],
       ['PFT process miss',               r => reasonOf(r) === 'PFT process miss'],
       ['120 hr not crossed',             r => reasonOf(r) === '120 hr not crossed'],
-      ['Wiom Net user',                  r => reasonOf(r) === 'Wiom Net user'],
       ['Line came back — nothing owed',  r => reasonOf(r) === 'Ping up'],
       ['Amount too low to refund',       r => /^Amount /.test(reasonOf(r))],
       ['Other reason recorded',          r => {
         const k = reasonOf(r);
         return k !== '' && !/^Amount /.test(k) &&
-          ['Cx DNP 3', 'Pickup ticket not created by Cx', 'PFT process miss', '120 hr not crossed', 'Wiom Net user', 'Ping up'].indexOf(k) < 0;
+          ['Cx DNP 3', 'Pickup ticket not created by Cx', 'PFT process miss', '120 hr not crossed', 'Ping up'].indexOf(k) < 0;
       }],
     ];
     const specs = ROWS.map(([label], i) => ({ label, idx: i }))
