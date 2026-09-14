@@ -1000,6 +1000,19 @@ ${cspBlockHtml}
 </div></body></html>`;
 
   const outPath = path.join(__dirname, '..', 'recap.html');
+  // Park the figures the dashboard cannot compute itself (they need Metabase)
+  // so the in-tracker Weekly Review tab can show bonus per CSP.
+  try {
+    const snap = { generated_at: NOW, cycles: PAY_CYCLES.map(c => c[0]), bonus: {} };
+    if (cspPay) Object.entries(cspPay).forEach(([k, v]) => {
+      snap.bonus[k] = { c0: v.cyc[0], c1: v.cyc[1], lastWhen: v.lastWhen, lastRs: v.lastRs };
+    });
+    await fetch(FIREBASE_DB + '/weekly_snapshot.json', {
+      method: 'PUT', headers: { 'content-type': 'application/json' }, body: JSON.stringify(snap),
+    });
+    console.log('weekly_snapshot written for', Object.keys(snap.bonus).length, 'CSPs');
+  } catch (e) { console.error('snapshot write failed (non-fatal):', e.message); }
+
   fs.writeFileSync(outPath, html);
   console.log('recap.html written:', html.length, 'bytes');
 

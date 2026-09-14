@@ -434,6 +434,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
     <div class="main-tab" id="mtab_reports" onclick="showMainTab('reports')">&#x1F4C8; Reports</div>
     <div class="main-tab" id="mtab_refundaction" onclick="showMainTab('refundaction')">&#x1F4B8; Refund Action</div>
     <div class="main-tab" id="mtab_actions" onclick="showMainTab('actions')">&#x1F4CB; Action Items</div>
+    <div class="main-tab" id="mtab_weekly" onclick="showMainTab('weekly')">&#x1F4DD; Weekly Review</div>
   </div>
 
   <!-- Filters (visible on every tab — applies to Cases, Refund Done and Reports) -->
@@ -794,6 +795,27 @@ table.main-tbl tbody tr:hover { background: #220020; }
   </div>
 
   <!-- ═══ Action Items tab (weekly-meeting decisions; posted daily to Slack) ═══ -->
+  <div id="tabWeekly" style="display:none">
+    <div class="card" style="margin-bottom:12px">
+      <div style="display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap">
+        <div><label style="font-size:11px;color:var(--muted);display:block">Week from</label>
+          <input type="date" id="wkFrom" onchange="renderWeekly()" style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)"></div>
+        <div><label style="font-size:11px;color:var(--muted);display:block">to</label>
+          <input type="date" id="wkTo" onchange="renderWeekly()" style="padding:7px 10px;background:var(--bg);border:1px solid var(--border);border-radius:6px;color:var(--text)"></div>
+        <button class="btn" onclick="copyWeekly()">&#x1F4CB; Copy for circulation</button>
+        <button class="btn" onclick="window.print()">&#x1F5A8; Print / PDF</button>
+        <span style="font-size:12px;color:var(--muted)">Cases are counted by when they <b>matured</b> (crossed 48 hrs), so a case added last week that matured this week belongs to this week.</span>
+      </div>
+    </div>
+    <div id="wkBody"></div>
+    <div class="card" style="margin-top:14px">
+      <h3 style="margin:0 0 8px">&#x1F4DD; Minutes of the meeting &mdash; circulate after</h3>
+      <p style="font-size:12px;color:var(--muted);margin:0 0 8px">Saved automatically against this week. Everyone with the tracker sees the same notes.</p>
+      <textarea id="wkMom" oninput="saveMomDebounced()" placeholder="Decisions, owners, deadlines&hellip;"
+        style="width:100%;min-height:220px;padding:12px;background:var(--bg);border:1px solid var(--border);border-radius:8px;color:var(--text);font:14px/1.6 inherit;resize:vertical"></textarea>
+      <div id="wkMomState" style="font-size:11px;color:var(--muted);margin-top:6px"></div>
+    </div>
+  </div>
   <div id="tabActions" style="display:none">
     <div class="report-card">
       <h3>&#x1F4CB; Weekly meeting — action items</h3>
@@ -2381,7 +2403,7 @@ function renderWeekTable(rows) {
 
 // ── Main tabs ──
 function showMainTab(t) {
-  ['cases','refund','reports','refundaction','actions'].forEach(x => {
+  ['cases','refund','reports','refundaction','actions','weekly'].forEach(x => {
     document.getElementById('mtab_' + x).classList.toggle('active', x === t);
   });
   document.getElementById('tabCases').style.display   = t === 'cases'   ? '' : 'none';
@@ -2389,13 +2411,15 @@ function showMainTab(t) {
   document.getElementById('tabReports').style.display = t === 'reports' ? '' : 'none';
   document.getElementById('tabRefundAction').style.display = t === 'refundaction' ? '' : 'none';
   document.getElementById('tabActions').style.display = t === 'actions' ? '' : 'none';
+  document.getElementById('tabWeekly').style.display = t === 'weekly' ? '' : 'none';
   // Global week/engineer/status filters only apply to Cases / Refund Done / Reports
   var fb = document.getElementById('filtersBar');
-  if (fb) fb.style.display = (t === 'refundaction' || t === 'actions') ? 'none' : '';
+  if (fb) fb.style.display = (t === 'refundaction' || t === 'actions' || t === 'weekly') ? 'none' : '';
   if (t === 'refund')  { renderRefundTab(); loadRefundSheet().then(renderRefundTab); }
   if (t === 'reports') renderReports();
   if (t === 'refundaction') renderRefundAction();
   if (t === 'actions') loadActionItems();
+  if (t === 'weekly') renderWeekly();
 }
 
 // ── Refund Action tab ────────────────────────────────────────────────────────
@@ -2529,6 +2553,203 @@ async function raEditNote(ticket) {
   row[34] = nv.trim();
   renderRefundAction();
 }
+
+// ── Weekly Review tab ───────────────────────────────────────────────────────
+// A meeting-ready page built off the same rows the rest of the tracker uses,
+// with an editable minutes box saved to Firebase so the notes circulate.
+//
+// The cohort here is MATURITY, not intake: a case belongs to the week its
+// 48-hour window closed in. A case added last Friday that matured on Monday is
+// this week's, which is how the meeting actually reads it.
+const MOM_PATH = '/cases/__mom__';
+let momKey = '';
+
+function wkRange() {
+  const f = document.getElementById('wkFrom'), t = document.getElementById('wkTo');
+  if (f && !f.value) {
+    const now = new Date(), from = new Date(now.getTime() - 6 * 86400000);
+    const iso = d => d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+    f.value = iso(from); t.value = iso(now);
+  }
+  const from = new Date(f.value + 'T00:00:00').getTime();
+  const to = new Date(t.value + 'T23:59:59.999').getTime();
+  return { from, to };
+}
+const maturedAt = r => { const c = caseStartTs(r); return c > 0 ? c + TAT_LIMIT_MS : 0; };
+const wkFmt = ms => new Date(ms).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' });
+
+function renderWeekly() {
+  const { from, to } = wkRange();
+  const rows = allRows;
+  const isRef = r => effectiveVal(r, 23) === 'Refund Done' || (r[33] || '').trim() === 'Refund Done' || !!sheetEntryFor(r);
+  const pingedBack = r => Number(r[35]) > 0 && Number(r[35]) > caseStartTs(r);
+
+  // ── cohort: cases whose 48-hr window closed inside the window ────────────
+  const mat = rows.filter(r => { const m = maturedAt(r); return m > 0 && m >= from && m <= to; });
+  const res = mat.filter(r => getStatus(r) !== 'Unresolved');
+  const reop = mat.filter(r => Number(r[26]) > 0);
+  const unres = mat.filter(r => getStatus(r) === 'Unresolved');
+  const elig = unres.filter(r => !pingedBack(r));
+  const pct1 = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
+
+  const prevFrom = from - (to - from) - 1, prevTo = from - 1;
+  const prevMat = rows.filter(r => { const m = maturedAt(r); return m > 0 && m >= prevFrom && m <= prevTo; });
+  const prevRes = prevMat.filter(r => getStatus(r) !== 'Unresolved').length;
+  const delta = (prevMat.length && mat.length)
+    ? (res.length / mat.length - prevRes / prevMat.length) * 100 : 0;
+
+  // ── 1. action items still open ──────────────────────────────────────────
+  const aiList = Object.entries(aiItems || {}).filter(([, v]) => v && v.item);
+  const aiOpen = aiList.filter(([, v]) => v.status !== 'Done');
+  const aiDone = aiList.filter(([, v]) => v.status === 'Done');
+  const aiRow = ([, v]) => '<tr><td style="text-align:left;white-space:normal">' + esc(v.item) + '</td>' +
+    '<td>' + esc(v.owner || '—') + '</td><td>' + esc(v.due || '—') + '</td>' +
+    '<td>' + aiStatusBadge(v.status) + '</td>' +
+    '<td style="text-align:left;white-space:normal;font-weight:400">' + esc(v.notes || '—') + '</td></tr>';
+
+  // ── 4. worst CSPs this week, with their prior form ──────────────────────
+  const byCsp = {};
+  mat.forEach(r => {
+    const p = (r[6] || '').trim() || '(unknown)';
+    const e = byCsp[p] = byCsp[p] || { n: 0, bad: 0, prevN: 0, prevBad: 0 };
+    e.n++; if (getStatus(r) === 'Unresolved') e.bad++;
+  });
+  prevMat.forEach(r => {
+    const p = (r[6] || '').trim() || '(unknown)';
+    const e = byCsp[p] = byCsp[p] || { n: 0, bad: 0, prevN: 0, prevBad: 0 };
+    e.prevN++; if (getStatus(r) === 'Unresolved') e.prevBad++;
+  });
+  const worst = Object.entries(byCsp).filter(([, e]) => e.bad > 0)
+    .sort((a, b) => b[1].bad - a[1].bad || (b[1].bad / b[1].n) - (a[1].bad / a[1].n)).slice(0, 10);
+  const verdict = e => {
+    const now = e.n ? e.bad / e.n : 0, before = e.prevN ? e.prevBad / e.prevN : null;
+    if (before === null || e.prevN < 3) return ['<span style="color:var(--muted)">No prior volume to compare</span>', ''];
+    if (before <= 0.25 && now >= 0.5) return ['<b style="color:var(--red)">Was fine, broke this week</b>', 'new'];
+    if (before >= 0.5 && now >= 0.5) return ['<span style="color:var(--red)">Bad last week too — ongoing</span>', 'old'];
+    if (now > before) return ['<span style="color:var(--yellow)">Getting worse</span>', 'worse'];
+    return ['<span style="color:var(--green,#3fb950)">Improving</span>', 'better'];
+  };
+
+  const snap = window.__wkSnapshot || null;
+  const bonusCell = p => {
+    if (!snap || !snap.bonus) return '<span style="color:var(--muted)">—</span>';
+    const k = p.toLowerCase().replace(/[^a-z0-9]/g, '');
+    const b = snap.bonus[k];
+    if (!b) return '<span style="color:var(--muted)">—</span>';
+    const none = !b.c0 && !b.c1;
+    return '<span style="color:' + (none ? 'var(--red)' : 'var(--text)') + '">₹' +
+      (b.c0 || 0).toLocaleString('en-IN') + ' / ₹' + (b.c1 || 0).toLocaleString('en-IN') + '</span>' +
+      (b.lastWhen ? '<br><span style="font-size:10px;color:var(--muted)">last ' + esc(b.lastWhen) + '</span>' : '');
+  };
+
+  const T = (title, sub, inner) => '<div class="card" style="margin-bottom:14px"><h3 style="margin:0 0 4px">' + title + '</h3>' +
+    (sub ? '<p style="font-size:12px;color:var(--muted);margin:0 0 10px">' + sub + '</p>' : '') + inner + '</div>';
+  const tbl = (head, body, min) => '<div class="sheet-scroll"><table class="rpt-table" style="min-width:' + (min || 620) + 'px">' +
+    '<thead><tr>' + head + '</tr></thead><tbody>' + (body || '<tr><td colspan="9" style="color:var(--muted)">Nothing this week.</td></tr>') + '</tbody></table></div>';
+
+  let h = '<div style="font-size:13px;color:var(--muted);margin-bottom:10px">Week of <b style="color:var(--text)">' +
+    wkFmt(from) + ' – ' + wkFmt(to) + '</b> · generated ' + new Date().toLocaleString('en-IN', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) + '</div>';
+
+  h += T('1 · Action items from the last meeting',
+    aiOpen.length + ' still open, ' + aiDone.length + ' closed. Open ones first — these are what the meeting starts on.',
+    tbl('<th style="text-align:left">Action item</th><th>Owner</th><th>Due</th><th>Status</th><th style="text-align:left">Latest update</th>',
+      aiOpen.map(aiRow).join('') + aiDone.map(aiRow).join('')));
+
+  h += T('2 · The week in numbers',
+    'Cohort is cases that <b>matured</b> (crossed 48 hrs) between ' + wkFmt(from) + ' and ' + wkFmt(to) +
+    ' — including ones added earlier. ' + mat.length + ' cases matured this week.',
+    tbl('<th style="text-align:left">Metric</th><th>Cases</th><th>%</th><th style="text-align:left">Read</th>',
+      '<tr><td style="text-align:left"><b>Cases matured this week</b></td><td><b>' + mat.length + '</b></td><td>100%</td>' +
+      '<td style="text-align:left;font-weight:400">Crossed the 48-hour mark in this window</td></tr>' +
+      '<tr><td style="text-align:left"><b>Resolved</b></td><td class="g">' + res.length + '</td><td class="g">' + pct1(res.length, mat.length) + '</td>' +
+      '<td style="text-align:left;font-weight:400">' + (delta >= 0 ? '▲ ' : '▼ ') + Math.abs(delta).toFixed(1) + ' pts vs the previous week</td></tr>' +
+      '<tr><td style="text-align:left">Reopened</td><td>' + reop.length + '</td><td>' + pct1(reop.length, res.length) + '</td>' +
+      '<td style="text-align:left;font-weight:400">Of this week\'s resolutions, came back down</td></tr>' +
+      '<tr><td style="text-align:left"><b>Unresolved</b></td><td class="b">' + unres.length + '</td><td class="b">' + pct1(unres.length, mat.length) + '</td>' +
+      '<td style="text-align:left;font-weight:400">Customer still down when the 48 hrs ran out</td></tr>' +
+      '<tr><td style="text-align:left">— of those, line came back later</td><td>' + (unres.length - elig.length) + '</td><td>' + pct1(unres.length - elig.length, unres.length) + '</td>' +
+      '<td style="text-align:left;font-weight:400">Recovered after the breach, nothing owed</td></tr>' +
+      '<tr><td style="text-align:left"><b>Refund-eligible</b></td><td class="b">' + elig.length + '</td><td class="b">' + pct1(elig.length, mat.length) + '</td>' +
+      '<td style="text-align:left;font-weight:400">Still down, no ping since the complaint</td></tr>' +
+      '<tr><td style="text-align:left">CSPs involved</td><td>' + Object.keys(byCsp).filter(k => byCsp[k].bad).length + '</td><td>—</td>' +
+      '<td style="text-align:left;font-weight:400">Distinct CSPs holding at least one unresolved case</td></tr>'));
+
+  h += T('3 · Reopened cases — case by case',
+    reop.length + ' resolution' + (reop.length === 1 ? '' : 's') + ' came back down. The remark each was closed on is the RCA.',
+    tbl('<th>Ticket</th><th>Mobile</th><th style="text-align:left">CSP</th><th style="text-align:left">Closed on this remark</th><th style="text-align:left">Sub-category</th><th>Status now</th>',
+      reop.map(r => '<tr><td>' + ticketLink((r[1] || '').trim()) + '</td><td style="font-size:12px">' + esc((r[3] || '').trim()) + '</td>' +
+        '<td style="text-align:left;white-space:normal">' + esc((r[6] || '').trim()) + '</td>' +
+        '<td style="text-align:left;white-space:normal"><b>' + esc((r[8] || '').trim() || '—') + '</b></td>' +
+        '<td style="text-align:left;white-space:normal;font-size:12px">' + esc((r[4] || '').trim()) + '</td>' +
+        '<td>' + esc(getStatus(r)) + '</td></tr>').join(''), 900));
+
+  const rElig = elig, rPaid = rElig.filter(isRef), rUnpaid = rElig.filter(r => !isRef(r));
+  const reasonOf = r => {
+    const m = (r[33] || '').trim();
+    if (m) return m;
+    if (r[24] !== '' && r[24] != null && Number(r[24]) === 0) return 'Amount 0 — refund not possible';
+    return 'No reason recorded';
+  };
+  const rTally = {};
+  rUnpaid.forEach(r => { const k = reasonOf(r); rTally[k] = (rTally[k] || 0) + 1; });
+  h += T('4 · Refund status for this week\'s cases',
+    rElig.length + ' of this week\'s matured cases are refund-eligible. Refunded plus not-refunded add back to that exactly.',
+    tbl('<th style="text-align:left">Status</th><th>Cases</th><th>%</th>',
+      '<tr><td style="text-align:left"><b>Refund-eligible</b></td><td><b>' + rElig.length + '</b></td><td>100%</td></tr>' +
+      '<tr><td style="text-align:left">Refunded</td><td class="g">' + rPaid.length + '</td><td class="g">' + pct1(rPaid.length, rElig.length) + '</td></tr>' +
+      '<tr><td style="text-align:left">Not refunded</td><td class="b">' + rUnpaid.length + '</td><td class="b">' + pct1(rUnpaid.length, rElig.length) + '</td></tr>' +
+      Object.entries(rTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
+        '<tr><td style="text-align:left;padding-left:26px;font-weight:400">' + esc(k) + '</td><td>' + n + '</td><td>' + pct1(n, rElig.length) + '</td></tr>').join('')));
+
+  h += T('5 · The 10 CSPs that hurt resolution most this week',
+    'Ranked by unresolved cases. "Prior form" compares the same CSP in the previous week, so a CSP that was fine and broke this week is separated from one that has been bad throughout.' +
+    (snap && snap.bonus ? '' : ' <b>Bonus columns fill once the Monday recap has run.</b>'),
+    tbl('<th style="text-align:left">CSP</th><th>Matured</th><th>Unresolved</th><th>Breach rate</th><th>Prev week</th><th style="text-align:left">Prior form</th><th>Bonus 1–15 / 16–31</th>',
+      worst.map(([p, e]) => {
+        const v = verdict(e);
+        return '<tr><td style="text-align:left;white-space:normal"><b>' + esc(p) + '</b></td><td>' + e.n + '</td>' +
+          '<td class="b">' + e.bad + '</td><td>' + pct1(e.bad, e.n) + '</td>' +
+          '<td>' + (e.prevN ? pct1(e.prevBad, e.prevN) : '—') + '</td>' +
+          '<td style="text-align:left;white-space:normal">' + v[0] + '</td>' +
+          '<td style="font-size:12px">' + bonusCell(p) + '</td></tr>';
+      }).join(''), 980));
+
+  document.getElementById('wkBody').innerHTML = h;
+  loadMom(from, to);
+}
+
+// Minutes of the meeting — one note per week, shared by everyone.
+function loadMom(from, to) {
+  momKey = 'w' + new Date(from).toISOString().slice(0, 10);
+  fbGet(MOM_PATH + '/' + momKey).then(v => {
+    const el = document.getElementById('wkMom');
+    if (el && document.activeElement !== el) el.value = (v && v.text) || '';
+    const st = document.getElementById('wkMomState');
+    if (st) st.textContent = v && v.updated_at ? 'Last saved ' + fmtTsDate(v.updated_at) + (v.by ? ' by ' + v.by : '') : 'Not saved yet';
+  }).catch(() => {});
+}
+let momTimer = null;
+function saveMomDebounced() {
+  clearTimeout(momTimer);
+  document.getElementById('wkMomState').textContent = 'Saving…';
+  momTimer = setTimeout(() => {
+    const sess = getSession() || {};
+    fbPut(MOM_PATH + '/' + momKey, { text: document.getElementById('wkMom').value, updated_at: Date.now(), by: sess.name || sess.email || '' })
+      .then(() => { document.getElementById('wkMomState').textContent = 'Saved ✓'; })
+      .catch(e => { document.getElementById('wkMomState').textContent = 'Save failed: ' + e.message; });
+  }, 900);
+}
+function copyWeekly() {
+  const body = document.getElementById('wkBody').innerText;
+  const mom = document.getElementById('wkMom').value.trim();
+  const txt = body + (mom ? '\n\nMINUTES OF THE MEETING\n' + mom : '');
+  navigator.clipboard.writeText(txt)
+    .then(() => toast('Report copied — paste into the mail ✓', 'success'))
+    .catch(() => toast('Copy failed', 'error'));
+}
+// Bonus / PTL figures are computed server-side by the Monday recap and parked
+// in Firebase; the tab just reads whatever is there.
+fbGet('/weekly_snapshot').then(v => { if (v) window.__wkSnapshot = v; }).catch(() => {});
 
 // ── Action Items (weekly-meeting decisions) ──────────────────────────────────
 // Stored at /cases/__action_items__ (the __ prefix keeps them out of case
