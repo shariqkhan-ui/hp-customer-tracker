@@ -375,9 +375,9 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // is [label, first day inclusive, first day AFTER the window]. The current
   // part-week is deliberately absent: only completed weeks are compared.
   const WEEKS = [
-    ['Week 3', istMs(2026, 7, 14), istMs(2026, 7, 22)],
-    ['Week 2', istMs(2026, 7, 22), istMs(2026, 7, 31)],
-    ['Week 1', istMs(2026, 7, 31), istMs(2026, 8, 7)],
+    ['Week 3', istMs(2026, 7, 22), istMs(2026, 7, 31)],
+    ['Week 2', istMs(2026, 7, 31), istMs(2026, 8, 7)],
+    ['Week 1', istMs(2026, 8, 7), istMs(2026, 8, 14)],
   ];
   const periods = WEEKS.map(([key, from, to]) => ({ key, from, to }))
     .concat([{ key: 'Since launch', from: LAUNCH, to: CUT }]);
@@ -765,7 +765,13 @@ ${blkRows}
     return m ? Date.UTC(+m[3], +m[2] - 1, +m[1]) - IST : 0;
   };
   const reopWeekRows = reopRcaRows.filter(r => { const t = dmy(r.when); return t >= lwFrom && t < lwTo; });
-  const reopSnapHtml = reopWeekRows.length ? `<section>
+  // If the sheet has no rows for the week, say so. Silently dropping the
+  // section makes an unfilled sheet look like a week with no reopens.
+  const rcaLatest = reopRcaRows.map(r => dmy(r.when)).filter(Boolean).sort().pop();
+  const reopSnapHtml = !reopWeekRows.length ? `<section>
+<h2>Reopened cases — ${periods[LASTCOL - 1].key}</h2>
+<p class="sub">The tracker counted <b>${S[LASTCOL - 1].w48g - S[LASTCOL - 1].w48} reopened case${(S[LASTCOL - 1].w48g - S[LASTCOL - 1].w48) === 1 ? '' : 's'}</b> in ${periods[LASTCOL - 1].label}, but <b>the reopen RCA sheet has no entries for this week</b> — its most recent row is dated ${rcaLatest ? fmtD(rcaLatest) : 'unknown'}. Without it there is no record of why any of them came back. The sheet is the only place that reason is captured.</p>
+</section>` : `<section>
 <h2>Reopened cases \u2014 ${periods[LASTCOL - 1].key}</h2>
 <p class="sub">The ${reopWeekRows.length} customers whose case reopened in ${periods[LASTCOL - 1].label}, with the reason each gave, straight from the field team's reopen RCA sheet.</p>
 <div class="tablewrap"><table style="min-width:980px">
@@ -924,7 +930,7 @@ ${row('<b>Unresolved and eligible for refund</b> <span style="font-weight:400;co
 ${row('Customers refunded <span style="font-weight:400;color:var(--muted)">(of those eligible)</span>', s => s.eligPaidN.toLocaleString('en-IN') + ' (' + pct(s.eligPaidN, s.elig) + ')', 'g')}
 ${row('<b>Average amount paid to a customer</b>', s => (s.eligPaidN ? inr(s.eligPaidAmt / s.eligPaidN) : '—'))}
 ${row('<b>Total amount refunded to eligible customers</b>', s => inr(s.eligPaidAmt), 'g')}
-${row('Refunds paid on cases that had already recovered', s => (s.paidN - s.eligPaidN).toLocaleString('en-IN') + ' (' + inr(s.paidAmt - s.eligPaidAmt) + ')')}
+${row('Refunds paid on cases that had already recovered', s => Math.max(0, s.doneN - s.eligPaidN).toLocaleString('en-IN') + ' (' + inr(Math.max(0, s.doneAmt - s.eligPaidAmt)) + ')')}
 ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('en-IN'))}
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">A further ${S.slice(0, 3).map(x => x.intake).join(' / ')} cases (Week 3 / Week 2 / Week 1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
