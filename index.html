@@ -2596,7 +2596,10 @@ function renderWeekly() {
   const elig = unres.filter(r => !pingedBack(r));
   const pct1 = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
 
-  const prevFrom = from - (to - from) - 1, prevTo = from - 1;
+  // Prior form uses the TWO weeks before the selected one. A single week
+  // leaves most CSPs with too few cases to judge, so the verdict came out as
+  // "no prior volume" for the majority of the table.
+  const prevFrom = from - 2 * (to - from) - 2, prevTo = from - 1;
   const prevMat = rows.filter(r => { const m = maturedAt(r); return m > 0 && m >= prevFrom && m <= prevTo; });
   const prevRes = prevMat.filter(r => getStatus(r) !== 'Unresolved').length;
   const delta = (prevMat.length && mat.length)
@@ -2627,7 +2630,7 @@ function renderWeekly() {
     .sort((a, b) => b[1].bad - a[1].bad || (b[1].bad / b[1].n) - (a[1].bad / a[1].n)).slice(0, 10);
   const verdict = e => {
     const now = e.n ? e.bad / e.n : 0, before = e.prevN ? e.prevBad / e.prevN : null;
-    if (before === null || e.prevN < 3) return ['<span style="color:var(--muted)">No prior volume to compare</span>', ''];
+    if (before === null || e.prevN < 3) return ['<span style="color:var(--muted)">New / too few cases before</span>', ''];
     if (before <= 0.25 && now >= 0.5) return ['<b style="color:var(--red)">Was fine, broke this week</b>', 'new'];
     if (before >= 0.5 && now >= 0.5) return ['<span style="color:var(--red)">Bad last week too — ongoing</span>', 'old'];
     if (now > before) return ['<span style="color:var(--yellow)">Getting worse</span>', 'worse'];
@@ -2706,14 +2709,14 @@ function renderWeekly() {
         '<tr><td style="text-align:left;padding-left:26px;font-weight:400">' + esc(k) + '</td><td>' + n + '</td><td>' + pct1(n, rElig.length) + '</td></tr>').join('')));
 
   h += T('5 · The 10 CSPs that hurt resolution most this week',
-    'Ranked by unresolved cases. "Prior form" compares the same CSP in the previous week, so a CSP that was fine and broke this week is separated from one that has been bad throughout.' +
+    'Ranked by unresolved cases. "Prior form" compares the same CSP across the previous two weeks, so a CSP that was fine and broke this week is separated from one that has been bad throughout.' +
     (snap && snap.bonus ? '' : ' <b>Bonus columns fill once the Monday recap has run.</b>'),
-    tbl('<th style="text-align:left">CSP</th><th>Matured</th><th>Unresolved</th><th>Breach rate</th><th>Prev week</th><th style="text-align:left">Prior form</th><th>Bonus 1–15 / 16–31</th>',
+    tbl('<th style="text-align:left">CSP</th><th>Matured</th><th>Unresolved</th><th>Breach rate</th><th>Prior 2 weeks</th><th style="text-align:left">Prior form</th><th>Bonus 1–15 / 16–31</th>',
       worst.map(([p, e]) => {
         const v = verdict(e);
         return '<tr><td style="text-align:left;white-space:normal"><b>' + esc(p) + '</b></td><td>' + e.n + '</td>' +
           '<td class="b">' + e.bad + '</td><td>' + pct1(e.bad, e.n) + '</td>' +
-          '<td>' + (e.prevN ? pct1(e.prevBad, e.prevN) : '—') + '</td>' +
+          '<td>' + (e.prevN >= 3 ? pct1(e.prevBad, e.prevN) + ' <span style="font-size:10px;color:var(--muted)">(' + e.prevN + ')</span>' : '—') + '</td>' +
           '<td style="text-align:left;white-space:normal">' + v[0] + '</td>' +
           '<td style="font-size:12px">' + bonusCell(p) + '</td></tr>';
       }).join(''), 980));
