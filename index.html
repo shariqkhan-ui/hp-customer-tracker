@@ -754,7 +754,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <div style="font-size:11px;color:#7a5c6e;padding:6px 4px 0">Engineer close = resolved-type Ground Remark; Cx close = Kapture completion (FINAL_RESOLVED_TIME, "disposed by PFT", synced every 30 min) or the tracker's Cx Action timestamp. "No update available" = engineer closed but PFT hasn't completed the Kapture ticket yet.</div>
     </div>
     <div class="sheet-panel"><div class="sheet-title"><span>NQT team remarks</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRemarks','nqt-remarks')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRemarks"></div></div>
-    <div class="sheet-panel"><div class="sheet-title"><span>Refund not paid — reason by period (eligible cases still unpaid)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRefundReason','refund-pending-reasons')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRefundReason"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>Refund status by period (breached cases)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRefundReason','refund-pending-reasons')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRefundReason"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Average TAT (in hours)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAvgTat','average-tat-hours')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAvgTat"></div></div>
     <div class="report-card">
       <h3>&#x1F4DE; C. Cx closure time after engineer closed</h3>
@@ -2402,7 +2402,7 @@ function showMainTab(t) {
 // Every flag-era case that has EVER breached 48 hrs. One status column
 // (refund_action) owned by Deepakshi; auto-fallbacks: Finance-sheet Refund
 // Done, then Ping up for cases that recovered after breaching.
-const REFUND_ACTION_OPTS = ['Refund Done', 'Ping up', 'Cx DNP 3', 'Amount 0 — refund not possible', 'Amount <10 — refund not possible', 'Pickup ticket not created by Cx', 'EXIT partner — refund by Kapil', 'CSP resolved — removed from PFT list', 'Duplicate ticket', '120 hr not crossed', 'Refund not demanded by Cx', 'PFT process miss', 'Refund not required'];
+const REFUND_ACTION_OPTS = ['Refund Done', 'Ping up', 'Wiom Net user', 'Cx DNP 3', 'Amount 0 — refund not possible', 'Amount <10 — refund not possible', 'Pickup ticket not created by Cx', 'EXIT partner — refund by Kapil', 'CSP resolved — removed from PFT list', 'Duplicate ticket', '120 hr not crossed', 'Refund not demanded by Cx', 'PFT process miss', 'Refund not required'];
 function raEffective(r) {
   const manual = (r[33] || '').trim();
   if (manual) return { v: manual, auto: false };
@@ -2841,36 +2841,46 @@ function renderReports() {
   const cxActTs = r => Number(r[28]) || Number(r[25]) || 0;
   tatPctTable('sheetCxTat', r => remarkTs(r) > 0 && isResolutionRemark(r[8]), remarkTs, cxActTs, true);
 
-  // 3b. Refund not paid — why, by period. Every case that breached 48 hrs and
-  // has not been refunded, bucketed by its Refund Action. Blank means nothing
-  // recorded yet, which is the genuine backlog.
+  // 3b. Refund by period. A fixed, short row set rather than one row per
+  // dropdown value — the long tail was unreadable. Paid cases and Wiom Net
+  // cases sit in the same table so the whole refund picture is on one screen.
   {
     const isRefundedR = r => effectiveVal(r, 23) === 'Refund Done' || !!sheetEntryFor(r);
-    const openEligible = list => list.filter(r =>
-      getStatus(r) === 'Unresolved' && isTatExpired(r) && !isRefundedR(r));
+    const breached = list => list.filter(r => getStatus(r) === 'Unresolved' && isTatExpired(r));
     const reasonOf = r => {
       const m = (r[33] || '').trim();
       if (m) return m;
-      if (r[24] !== '' && r[24] != null && Number(r[24]) === 0) return 'Amount ₹0 — refund not possible';
-      return 'No reason recorded';
+      if (r[24] !== '' && r[24] != null && Number(r[24]) === 0) return 'Amount 0 — refund not possible';
+      return '';
     };
-    const tally = {};
-    perCases.forEach(list => openEligible(list).forEach(r => {
-      const k = reasonOf(r); tally[k] = (tally[k] || 0) + 1;
-    }));
-    const specs = Object.keys(tally).sort((a, b) => {
-      if (a === 'No reason recorded') return -1;
-      if (b === 'No reason recorded') return 1;
-      return tally[b] - tally[a];
-    }).map(k => ({ label: k, key: k }));
-    sheetTable('sheetRefundReason', 'Reason not paid',
-      specs.concat([{ label: 'Grand Total', gtot: true }]),
-      (spec, list) => {
-        const open = openEligible(list);
-        if (spec.gtot) return { text: numFmt(open.length) };
-        const n = open.filter(r => reasonOf(r) === spec.key).length;
-        return { text: n ? numFmt(n) : '-', bg: spec.key === 'No reason recorded' && n ? '#FBE3F2' : null };
-      });
+    // label → which breached, unpaid cases it counts
+    const ROWS = [
+      ['Refund pending — no reason yet', r => reasonOf(r) === ''],
+      ['Cx DNP 3',                       r => reasonOf(r) === 'Cx DNP 3'],
+      ['Pickup ticket not created by Cx', r => reasonOf(r) === 'Pickup ticket not created by Cx'],
+      ['PFT process miss',               r => reasonOf(r) === 'PFT process miss'],
+      ['120 hr not crossed',             r => reasonOf(r) === '120 hr not crossed'],
+      ['Wiom Net user',                  r => reasonOf(r) === 'Wiom Net user'],
+      ['Amount too low to refund',       r => /^Amount /.test(reasonOf(r))],
+      ['Other reason recorded',          r => {
+        const k = reasonOf(r);
+        return k !== '' && !/^Amount /.test(k) &&
+          ['Cx DNP 3', 'Pickup ticket not created by Cx', 'PFT process miss', '120 hr not crossed', 'Wiom Net user'].indexOf(k) < 0;
+      }],
+    ];
+    const specs = ROWS.map(([label], i) => ({ label, idx: i }))
+      .concat([{ label: 'Refund paid', paid: true }, { label: 'Grand Total — breached cases', gtot: true }]);
+    sheetTable('sheetRefundReason', 'Refund status', specs, (spec, list) => {
+      const br = breached(list);
+      if (spec.gtot) return { text: numFmt(br.length) };
+      if (spec.paid) {
+        const n = br.filter(isRefundedR).length;
+        return { text: n ? numFmt(n) : '-', bg: n ? '#E4F3E9' : null };
+      }
+      const unpaid = br.filter(r => !isRefundedR(r));
+      const n = unpaid.filter(ROWS[spec.idx][1]).length;
+      return { text: n ? numFmt(n) : '-', bg: spec.idx === 0 && n ? '#FBE3F2' : null };
+    });
   }
 
   // 4+5. Migration team remarks — counts and %
