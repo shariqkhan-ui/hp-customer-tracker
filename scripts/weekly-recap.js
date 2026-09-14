@@ -651,10 +651,21 @@ ${ledgerRows}
   const NOTHING = ['Amount 0 \u2014 refund not possible', 'Amount <10 \u2014 refund not possible', 'Duplicate ticket',
     'Refund not demanded by Cx', 'Refund not required', 'EXIT partner \u2014 refund by Kapil',
     'CSP resolved \u2014 removed from PFT list', 'Ping up'];
-  const grp = { 'Nothing payable': { n: 0, amt: 0, sub: {} }, 'Still owed to the customer': { n: 0, amt: 0, sub: {} } };
+  // A case with a reason recorded against it is not "refund pending" - the
+  // desk has looked at it and parked it. Only cases with no reason are a
+  // genuine backlog, so they get their own bucket rather than being folded in
+  // and inflating the number.
+  const BLOCKED = ['Cx DNP 3', 'Pickup ticket not created by Cx', 'PFT process miss', '120 hr not crossed'];
+  const grp = {
+    'Nothing payable': { n: 0, amt: 0, sub: {} },
+    'Parked with a reason recorded': { n: 0, amt: 0, sub: {} },
+    'Refund pending \u2014 no reason recorded': { n: 0, amt: 0, sub: {} },
+  };
   eligUnpaid.forEach(c => {
     const k = raEffective(c);
-    const g = NOTHING.includes(k) ? 'Nothing payable' : 'Still owed to the customer';
+    const g = NOTHING.includes(k) ? 'Nothing payable'
+      : BLOCKED.includes(k) ? 'Parked with a reason recorded'
+      : 'Refund pending \u2014 no reason recorded';
     const e = grp[g];
     e.n++; e.amt += amtRA(c);
     const t = e.sub[k] || (e.sub[k] = { n: 0, amt: 0 });
@@ -798,6 +809,45 @@ ${reopWeekRows.map(r => `<tr>` +
 </section>`;
   }
 
+  // Month-on-month view of why a refund has not been paid. Cohorted by the
+  // month the case was added, over every eligible case that is still unpaid.
+  const monthsBack = [];
+  {
+    const d = new Date(NOW + IST);
+    for (let i = 2; i >= 0; i--) {
+      const m = new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() - i, 1));
+      monthsBack.push({
+        key: MN2[m.getUTCMonth()] + ' ' + String(m.getUTCFullYear()).slice(2),
+        from: Date.UTC(m.getUTCFullYear(), m.getUTCMonth(), 1) - IST,
+        to: Date.UTC(m.getUTCFullYear(), m.getUTCMonth() + 1, 1) - IST,
+      });
+    }
+  }
+  const momReasons = {};
+  eligUnpaid.forEach(c => {
+    const k = raEffective(c), t = clockTs(c);
+    const mi = monthsBack.findIndex(m => t >= m.from && t < m.to);
+    if (mi < 0) return;
+    const row = momReasons[k] || (momReasons[k] = monthsBack.map(() => 0));
+    row[mi]++;
+  });
+  const momRows = Object.entries(momReasons)
+    .sort((a, b) => b[1].reduce((x, y) => x + y, 0) - a[1].reduce((x, y) => x + y, 0))
+    .map(([k, arr]) => `<tr><td style="text-align:left">${escR(k)}</td>` +
+      arr.map(v => `<td>${v || '-'}</td>`).join('') +
+      `<td class="tot"><b>${arr.reduce((x, y) => x + y, 0)}</b></td></tr>`).join(NL);
+  const momTotals = monthsBack.map((_, i) => Object.values(momReasons).reduce((a, arr) => a + arr[i], 0));
+  const momHtml = `<section>
+<h2>Why a refund is still unpaid \u2014 month on month</h2>
+<p class="sub">Every refund-eligible case that has not been paid, by the month the case was added. A reason recorded against a case means the desk has looked at it; the rows with no reason are the genuine backlog.</p>
+<div class="tablewrap"><table style="min-width:560px">
+<thead><tr><th style="text-align:left">Reason</th>${monthsBack.map(m => `<th>${m.key}</th>`).join('')}<th class="tot">Total</th></tr></thead>
+<tbody>
+${momRows}
+<tr class="tot"><td class="tot" style="text-align:left"><b>Total</b></td>${momTotals.map(v => `<td class="tot"><b>${v}</b></td>`).join('')}<td class="tot"><b>${momTotals.reduce((a, b) => a + b, 0)}</b></td></tr>
+</tbody></table></div>
+</section>`;
+
   const refundFunnel = `<section>
 <h2>Refund cases funnel</h2>
 <p class="sub">Reads straight down from the Since-launch column above: received &rarr; matured &rarr; unresolved &rarr; refund-eligible, then whether the eligible customers were paid. Refunded plus not-refunded add back to the eligible line exactly.</p>
@@ -811,7 +861,7 @@ ${stage('Unresolved at 48 hrs', unresAll.length, maturedAll.length, 'Breached th
 ${stage('Refund-eligible &mdash; no ping since the complaint', E, unresAll.length, 'The customer is still down and is owed money', 'b')}
 <tr><td class="g" style="padding-left:20px"><b>Refunded</b></td><td class="g"><b>${eligPaid.length.toLocaleString('en-IN')}</b></td><td class="g"><b>${pct(eligPaid.length, E)}</b></td><td>${inr(sumA(eligPaid))}</td><td style="text-align:left;font-weight:400">Paid, per the tracker or the Finance sheet</td></tr>
 <tr><td class="b" style="padding-left:20px"><b>Not refunded</b></td><td class="b"><b>${eligUnpaid.length.toLocaleString('en-IN')}</b></td><td class="b"><b>${pct(eligUnpaid.length, E)}</b></td><td>${inr(sumA(eligUnpaid))}</td><td style="text-align:left;font-weight:400">Split below by what is blocking it</td></tr>
-${['Nothing payable', 'Still owed to the customer'].map(g => {
+${['Refund pending \u2014 no reason recorded', 'Parked with a reason recorded', 'Nothing payable'].map(g => {
   const t = grp[g];
   if (!t || !t.n) return '';
   return `<tr><td style="padding-left:38px"><b>${g}</b></td><td><b>${t.n.toLocaleString('en-IN')}</b></td><td><b>${pct(t.n, E)}</b></td><td>${inr(t.amt)}</td><td></td></tr>` + NL +
@@ -914,7 +964,7 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 <div class="tile"><div class="label">Resolved within 48 hrs</div><div class="value" style="color:var(--good)">${sTD.w48.toLocaleString('en-IN')} (${pct(sTD.w48, sTD.m)})</div><div class="note">of ${sTD.m.toLocaleString('en-IN')} matured, net of reopened &middot; <b>last week: ${sLW.w48.toLocaleString('en-IN')} (${pct(sLW.w48, sLW.m)})</b> &middot; target ${TARGET_PCT}%</div></div>
 <div class="tile"><div class="label">Unresolved</div><div class="value" style="color:var(--bad)">${sTD.unresM.toLocaleString('en-IN')} (${pct(sTD.unresM, sTD.m)})</div><div class="note">of ${sTD.m.toLocaleString('en-IN')} matured, still down past 48 hrs &middot; <b>last week: ${sLW.unresM.toLocaleString('en-IN')} (${pct(sLW.unresM, sLW.m)})</b></div></div>
 <div class="tile"><div class="label">Cases added since 29 Jul</div><div class="value">${sTD.n.toLocaleString('en-IN')}</div><div class="note">avg <b>~${avgPerDay} tickets/day</b> · ${sTD.m.toLocaleString('en-IN')} matured · ${(sTD.n - sTD.m).toLocaleString('en-IN')} in window · <b>last week: ${sLW.n} added</b></div></div>
-<div class="tile" style="border-color:var(--bad)"><div class="label">Still owed to customers</div><div class="value" style="color:var(--bad)">${inr(grp['Still owed to the customer'] ? grp['Still owed to the customer'].amt : 0)}</div><div class="note"><b>${grp['Still owed to the customer'] ? grp['Still owed to the customer'].n : 0} cases (${pct(grp['Still owed to the customer'] ? grp['Still owed to the customer'].n : 0, E)})</b> of the ${E} refund-eligible, not yet paid</div></div>
+<div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending</div><div class="value" style="color:var(--bad)">${inr(grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].amt : 0)}</div><div class="note"><b>${grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].n : 0} cases (${pct(grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].n : 0, E)})</b> of the ${E} refund-eligible, not yet paid</div></div>
 <div class="tile" style="border-color:var(--good)"><div class="label">Refunded to eligible customers</div><div class="value" style="color:var(--good)">${inr(sumA(eligPaid))}</div><div class="note"><b>${eligPaid.length} cases (${pct(eligPaid.length, E)})</b> of the ${E} refund-eligible &middot; <b>last week: ${sLW.eligPaidN} (${inr(sLW.eligPaidAmt)})</b></div></div>
 <div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened</div><div class="value" style="color:var(--accent-ink)">${sTD.w48g - sTD.w48} (${pct(sTD.w48g - sTD.w48, sTD.w48g)})</div><div class="note">of ${sTD.w48g.toLocaleString('en-IN')} within-48hr resolutions since 29 Jul &middot; <b>last week: ${sLW.w48g - sLW.w48} (${pct(sLW.w48g - sLW.w48, sLW.w48g)})</b></div></div>
 <div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Resolved within 48 hrs: <b>${pct(sWB.w48, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.w48, sLW.m)}</b> (${lwLabel})</div></div>
@@ -944,6 +994,7 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 </section>
 ${reopSnapHtml}
 ${refundFunnel}
+${momHtml}
 ${cspBlockHtml}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's FIRST_REOPENED_TIME (the tracker's own reopened_at field only catches a dashboard revert inside 24 hrs and misses about half of them). Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div></body></html>`;
