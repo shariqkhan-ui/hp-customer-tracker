@@ -375,9 +375,9 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // is [label, first day inclusive, first day AFTER the window]. The current
   // part-week is deliberately absent: only completed weeks are compared.
   const WEEKS = [
-    ['Week 3', istMs(2026, 7, 22), istMs(2026, 7, 31)],
-    ['Week 2', istMs(2026, 7, 31), istMs(2026, 8, 7)],
-    ['Week 1', istMs(2026, 8, 7), istMs(2026, 8, 14)],
+    ['Week 3', istMs(2026, 7, 31), istMs(2026, 8, 7)],
+    ['Week 2', istMs(2026, 8, 7), istMs(2026, 8, 14)],
+    ['Week 1', istMs(2026, 8, 14), istMs(2026, 8, 21)],
   ];
   const periods = WEEKS.map(([key, from, to]) => ({ key, from, to }))
     .concat([{ key: 'Since launch', from: LAUNCH, to: CUT }]);
@@ -444,9 +444,9 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const cspProf = await cspProfile();
   // The two fortnightly cycles the review compares.
   // Bonus is credited on the 1st and the 16th, so the credit DATE is the payout date,
-  // not the earning window: the 1-15 Aug cycle lands on 16 Aug and the 16-31 Aug
-  // cycle lands on 1 Sep. Windowing by earning dates shifts every figure a cycle early.
-  const PAY_CYCLES = [['1-15 Aug', '2026-08-16', '2026-08-17'], ['16-31 Aug', '2026-09-01', '2026-09-02']];
+  // not the earning window: the 16-31 Aug cycle lands on 1 Sep and the 1-15 Sep
+  // cycle lands on 16 Sep. Windowing by earning dates shifts every figure a cycle early.
+  const PAY_CYCLES = [['16-31 Aug', '2026-09-01', '2026-09-02'], ['1-15 Sep', '2026-09-16', '2026-09-17']];
   const cspPay = await cspPayout(PAY_CYCLES);
   era = era.filter(c => startTs(c) < CUT);
 
@@ -751,16 +751,32 @@ ${ledgerRows}
         `<td style="white-space:nowrap">${cspPay && cspPay[nk] ? `${escR(cspPay[nk].lastWhen)} <span style="color:var(--muted)">${inr(cspPay[nk].lastRs)}</span>` : '<span class="pend">\u2014</span>'}</td>` +
         `<td style="text-align:left;white-space:normal;font-weight:400;font-size:12px">${tix}</td></tr>`;
     }).join(NL);
+  // The bonus commentary is read off the ledger, not written by hand: how many
+  // of the ten went unpaid across both cycles, when they were last credited,
+  // and how far each cycle has run across the whole estate.
+  const payOf = name => (cspPay && cspPay[normName(name)]) || null;
+  const blkTopUnpaid = blkTop.filter(x => { const p = payOf(x[0]); return !p || (!p.cyc[0] && !p.cyc[1]); }).length;
+  const lastWhenCount = {};
+  blkTop.forEach(x => { const p = payOf(x[0]); if (p && p.lastWhen) lastWhenCount[p.lastWhen] = (lastWhenCount[p.lastWhen] || 0) + 1; });
+  const lastWhenTxt = Object.entries(lastWhenCount).sort((a, b) => b[1] - a[1])
+    .map(([w, n]) => `${w} (${n})`).join(', ');
+  const estateCyc = [0, 1].map(i => cspPay ? Object.values(cspPay).filter(v => v.cyc[i] > 0).length : 0);
+  const bonusNote = cspPay
+    ? `<b>${blkTopUnpaid} of these ten have had nothing credited in either cycle.</b>` +
+      (lastWhenTxt ? ` Last credit dates across the ten: ${lastWhenTxt}.` : '') +
+      ` Across the estate the ${PAY_CYCLES[1][0]} cycle has credited ${estateCyc[1].toLocaleString('en-IN')} CSPs so far against ${estateCyc[0].toLocaleString('en-IN')} for the cycle before.`
+    : 'Bonus figures are unavailable this run — the ledger query did not return.';
+
   const cspBlockHtml = `<section>
 <h2>Why the CSP is not resolving \u2014 top 10 CSPs, ${periods[LASTCOL - 1].key}</h2>
 <p class="sub">${periods[LASTCOL - 1].key} (${periods[LASTCOL - 1].label}) only. ${blocked.length} of that week's ${lwUnres.length} unresolved cases sit with ${Object.keys(blkGrp).length} CSPs whose ground remark points at them. The <b>top 10 by case count</b> are below and carry ${blkTopCases} of those cases; the remaining ${blkRest.length} CSPs hold ${blkRestCases} between them, mostly one case each. Everything the meeting needs sits on one row: how big the CSP is, whether they are enrolled in MG, what the ground said, their PTL activity, and the tickets themselves. Ages are days since the case was added; past 14 days is flagged.</p>
 <div class="tablewrap"><table style="min-width:1280px">
-<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Cases</th><th>Oldest</th><th style="text-align:left">What the ground said</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">1-15 Aug cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">16-31 Aug cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Tickets</th></tr></thead>
+<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Cases</th><th>Oldest</th><th style="text-align:left">What the ground said</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[0][0]} cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[1][0]} cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Tickets</th></tr></thead>
 <tbody>
 ${blkRows}
 <tr class="tot"><td class="tot" style="text-align:left"><b>Top 10 together</b></td><td class="tot"><b>${sumProf(blkTop, 'paying').toLocaleString('en-IN')}</b></td><td class="tot"><b>${blkTopMg} enrolled</b></td><td class="tot"><b>${blkTopCases}</b></td><td class="tot"></td><td class="tot" style="text-align:left"><b>${pct(blkTopCases, blocked.length)} of the week's CSP-blocked cases</b></td><td class="tot"><b>${blkTopCalls}</b></td><td class="tot"><b>${blkTopOpen} / ${blkTopClosed}</b></td><td class="tot"><b>${inr(blkTop.reduce((a, x) => a + ((cspPay && cspPay[normName(x[0])]) ? cspPay[normName(x[0])].cyc[0] : 0), 0))}</b></td><td class="tot"><b>${inr(blkTop.reduce((a, x) => a + ((cspPay && cspPay[normName(x[0])]) ? cspPay[normName(x[0])].cyc[1] : 0), 0))}</b></td><td class="tot"></td><td class="tot"></td></tr>
 </tbody></table></div>
-<p class="sub" style="margin-top:10px">Bonus paid is what actually reached the CSP's settlement wallet (BONUS_CREDIT on the payment-settlement ledger, current to the hour). Credits post on the 1st and the 16th, so the 1-15 Aug cycle is the credit dated 16 Aug and the 16-31 Aug cycle is the credit dated 1 Sep. The analytics bonus tables were unusable - PARTNER_BONUS_DISBURSEMENT stops 16 Jun, PARTNER_INCENTIVES 23 Jun, WORK_BONUS_TXNS 1 Jun - so this reads the ledger the money moved through. <b>Not one of these ten has been paid a bonus since 1 August.</b> Six were last credited on 1 Aug, three on 16 Jul. Across the estate the 16-31 Aug cycle has also only partly run: 46 CSPs credited so far against 359 for the cycle before. A separate adhoc quality bonus of &#8377;8.16 lakh went to 232 CSPs on 31 Aug and is in none of these columns.</p>
+<p class="sub" style="margin-top:10px">Bonus paid is what actually reached the CSP's settlement wallet (BONUS_CREDIT on the payment-settlement ledger, current to the hour). Credits post on the 1st and the 16th, so the ${PAY_CYCLES[0][0]} cycle is the credit dated ${fmtD(Date.parse(PAY_CYCLES[0][1] + 'T00:00:00+05:30'))} and the ${PAY_CYCLES[1][0]} cycle is the credit dated ${fmtD(Date.parse(PAY_CYCLES[1][1] + 'T00:00:00+05:30'))}. The analytics bonus tables were unusable - PARTNER_BONUS_DISBURSEMENT stops 16 Jun, PARTNER_INCENTIVES 23 Jun, WORK_BONUS_TXNS 1 Jun - so this reads the ledger the money moved through. ${bonusNote} A separate adhoc quality bonus of &#8377;8.16 lakh went to 232 CSPs on 31 Aug and is in none of these columns.</p>
 </section>`;
 
   // The week's reopens in full - a handful of cases, so show them rather than
@@ -974,7 +990,7 @@ ${aiHtml}
 ${tvcamHtml}
 <section>
 <h2>Week-wise numbers</h2>
-<p class="sub">Weeks are the tracker's own buckets (1-7 / 8-14 / 15-21 / 22-end), cohorted by the date the case entered the tracker, so every row answers the same question: of the cases received in this week, what happened. Reopened is read the same way — of this week's own within-48hr resolutions, the ones that later came back down. Each cell shows the absolute number with its share in brackets. Cases received after ${cutLabel} are excluded, and every percentage is over matured cases only — those that completed their full 48-hour window.</p>
+<p class="sub">Weeks are Monday-anchored (Mon–Sun, IST), cohorted by the date the case entered the tracker, so every row answers the same question: of the cases received in this week, what happened. Reopened is read the same way — of this week's own within-48hr resolutions, the ones that later came back down. Each cell shows the absolute number with its share in brackets. Cases received after ${cutLabel} are excluded, and every percentage is over matured cases only — those that completed their full 48-hour window.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>Metric</th>${cols}</tr></thead>
 <tbody>
@@ -996,7 +1012,7 @@ ${reopSnapHtml}
 ${refundFunnel}
 ${momHtml}
 ${cspBlockHtml}
-<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are the tracker's own slices (1-7 / 8-14 / 15-21 / 22-end, IST); intake cut off at the end of the most recent Saturday. A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's FIRST_REOPENED_TIME (the tracker's own reopened_at field only catches a dashboard revert inside 24 hrs and misses about half of them). Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST); intake cut off at the end of yesterday (${cutLabel}). A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's FIRST_REOPENED_TIME (the tracker's own reopened_at field only catches a dashboard revert inside 24 hrs and misses about half of them). Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div></body></html>`;
 
   const outPath = path.join(__dirname, '..', 'recap.html');
