@@ -1054,16 +1054,15 @@ ${['Refund pending \u2014 no reason recorded', 'Parked with a reason recorded', 
   // ── Last meeting's action items ───────────────────────────────────────────
   // Live from the tracker's Action Items tab — nothing typed by hand.
   const escA = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
-  // Only the current cycle. Items due before the last meeting belong to
-  // closed cycles and were carried for weeks after they were done - move
-  // AI_SINCE forward to the new meeting date each time the cycle turns.
-  const AI_SINCE = '2026-09-13';
+  // Only what is still open. Closed items were being carried week after week
+  // long after they were done; they stay in the tracker's Action Items tab,
+  // which is the record, and come back here the moment one is reopened.
   const aiItems = Object.entries(aiRaw || {})
-    .filter(([, v]) => v && v.item && (!trim(v.due) || trim(v.due) >= AI_SINCE))
+    .filter(([, v]) => v && v.item && trim(v.status) !== 'Done')
     .sort((a, b) => (a[1].created_at || 0) - (b[1].created_at || 0));
   const aiHtml = `<section>
-<h2>Action items from the last meeting</h2>
-<p class="sub">The current cycle only — items raised on or after ${fmtD(Date.parse(AI_SINCE + 'T00:00:00+05:30'))}, taken one by one in the order they were raised. Status is live from the tracker's Action Items tab; earlier cycles' items stay there but are closed and are not repeated here.</p>
+<h2>Pending action items</h2>
+<p class="sub">Still open, live from the tracker's Action Items tab. Items that have been closed are not repeated here — the tab holds the full record.</p>
 <div class="tablewrap"><table>
 <thead><tr><th style="width:26px">#</th><th style="text-align:left">Action item</th><th>Owner</th><th>Due</th><th>Status</th><th style="text-align:left">Where it landed</th></tr></thead>
 <tbody>
@@ -1074,7 +1073,7 @@ ${aiItems.length ? aiItems.map(([, v], i) =>
   `<td style="font-weight:400">${escA(v.due) || '—'}</td>` +
   `<td class="${v.status === 'Done' ? 'g' : 'b'}">${escA(v.status || 'Open')}</td>` +
   `<td style="text-align:left;white-space:normal;font-weight:400">${escA(v.notes) || '<i style="color:var(--muted)">no closing note yet</i>'}</td></tr>`
-).join(String.fromCharCode(10)) : '<tr><td colspan="6" style="text-align:left">No action items recorded for this cycle.</td></tr>'}
+).join(String.fromCharCode(10)) : '<tr><td colspan="6" style="text-align:left">Nothing open — every action item from the last meeting is closed.</td></tr>'}
 </tbody></table></div>
 </section>`;
 
