@@ -811,6 +811,69 @@ ${stopped.length ? `<tr class="tot"><td class="tot" style="text-align:left"><b>T
 <p class="sub" style="margin-top:10px">Bonus paid is what actually reached the CSP's settlement wallet (BONUS_CREDIT on the payment-settlement ledger, current to the hour): the ${PAY_CYCLES[0][0]} cycle is the credit dated ${fmtD(Date.parse(PAY_CYCLES[0][1] + 'T00:00:00+05:30'))}, the ${PAY_CYCLES[1][0]} cycle the credit dated ${fmtD(Date.parse(PAY_CYCLES[1][1] + 'T00:00:00+05:30'))}. The analytics bonus tables stopped feeding in June, so this reads the ledger the money moved through. ${cspPay ? `<b>${stopPayUnpaid} of these ${stopped.length} have had nothing credited in either cycle.</b> Across the estate the ${PAY_CYCLES[1][0]} cycle has credited ${estateCyc[1].toLocaleString('en-IN')} CSPs so far against ${estateCyc[0].toLocaleString('en-IN')} for the cycle before.` : 'Bonus figures are unavailable this run \u2014 the ledger query did not return.'}</p>
 </section>`;
 
+
+  // ── CSPs that were failing and have come back ───────────────────────────
+  // The mirror of the table above, and the one the meeting asked for by name:
+  // a CSP that was not resolving last week and resolved everything it was
+  // handed this week. Judged against LAST WEEK rather than the whole record,
+  // because that is the turn being claimed; its longer record sits in its own
+  // column so a one-week bounce cannot pass as a fixed CSP. The last column is
+  // the honest test - whether it also went back for the customers it had
+  // already left down.
+  const REV_MIN = 2, REV_WAS = 0.5, REV_NOW = 0.8;
+  const prevWeekG = tally(maturedAll.filter(c => {
+    const m = maturedAt(c);
+    return m >= periods[LASTCOL - 2].from && m < periods[LASTCOL - 2].to;
+  }));
+  const oldBreach = {};
+  maturedAll.filter(c => maturedAt(c) < lwFrom && resolvedWithin48(c) !== true).forEach(c => {
+    const k = partnerOf(c);
+    const e = oldBreach[k] || (oldBreach[k] = { b: 0, down: [] });
+    e.b++; if (!isResolvedNow(c)) e.down.push(c);
+  });
+  const revived = Object.keys(weekG)
+    .filter(k => prevWeekG[k] && prevWeekG[k].n >= REV_MIN && weekG[k].n >= REV_MIN)
+    .map(k => ({ k, l: prevWeekG[k], w: weekG[k], b: beforeG[k] || { n: 0, r: 0 }, old: oldBreach[k] || { b: 0, down: [] } }))
+    .filter(x => x.l.r / x.l.n <= REV_WAS && x.w.r / x.w.n >= REV_NOW)
+    .sort((a, b) => b.w.n - a.w.n || (b.w.r / b.w.n - b.l.r / b.l.n) - (a.w.r / a.w.n - a.l.r / a.l.n));
+  const revCases = revived.reduce((a, x) => a + x.w.n, 0);
+  const revRes = revived.reduce((a, x) => a + x.w.r, 0);
+  const revOldDown = revived.reduce((a, x) => a + x.old.down.length, 0);
+  const revOldB = revived.reduce((a, x) => a + x.old.b, 0);
+  const revRows = revived.map(x => {
+    const nk = normName(x.k);
+    const prof = cspProf && cspProf[nk];
+    const calls = ptl && ptl[nk] ? ptl[nk][LASTCOL] : null;
+    const down = x.old.down.length;
+    return `<tr><td style="text-align:left;white-space:normal"><b>${escR(x.k)}</b></td>` +
+      `<td>${prof ? prof.paying.toLocaleString('en-IN') : '\u2014'}</td>` +
+      `<td>${prof ? (prof.mg ? '<span class="pillmg">Enrolled</span>' : '<span style="color:var(--muted)">Not enrolled</span>') : '\u2014'}</td>` +
+      `<td class="b">${x.l.r} / ${x.l.n} <span style="color:var(--muted)">(${(x.l.r / x.l.n * 100).toFixed(0)}%)</span></td>` +
+      `<td class="g">${x.w.r} / ${x.w.n} <span style="color:var(--muted)">(${(x.w.r / x.w.n * 100).toFixed(0)}%)</span></td>` +
+      `<td class="g"><b>+${((x.w.r / x.w.n - x.l.r / x.l.n) * 100).toFixed(0)} pp</b></td>` +
+      `<td>${x.b.n ? x.b.r + ' / ' + x.b.n + ' <span style="color:var(--muted)">(' + pct(x.b.r, x.b.n) + ')</span>' : '\u2014'}</td>` +
+      `<td class="${down ? 'b' : 'g'}">${x.old.b ? (x.old.b - down) + ' / ' + x.old.b : '\u2014'}</td>` +
+      `<td>${calls == null ? '\u2014' : calls}</td>` +
+      `<td class="${cspPay && cspPay[nk] && !cspPay[nk].cyc[0] ? 'b' : ''}">${inr(cspPay && cspPay[nk] ? cspPay[nk].cyc[0] : 0)}</td>` +
+      `<td class="${cspPay && cspPay[nk] && !cspPay[nk].cyc[1] ? 'b' : ''}">${inr(cspPay && cspPay[nk] ? cspPay[nk].cyc[1] : 0)}</td>` +
+      `<td style="white-space:nowrap">${cspPay && cspPay[nk] ? `${escR(cspPay[nk].lastWhen)} <span style="color:var(--muted)">${inr(cspPay[nk].lastRs)}</span>` : '<span class="pend">\u2014</span>'}</td>` +
+      `<td style="text-align:left;white-space:normal;font-weight:400">${down
+        ? `<span style="color:var(--bad)">Clean week, but ${down} older customer${down === 1 ? '' : 's'} still down</span>`
+        : '<span style="color:var(--good)">Clean week, nothing left behind</span>'}</td>` +
+      `<td style="text-align:left;white-space:normal;font-weight:400;font-size:12px">${down ? stopTix(x.old.down) : '<span style="color:var(--muted)">\u2014</span>'}</td></tr>`;
+  }).join(NL);
+  const revivedHtml = `<section>
+<h2>CSPs that were failing and have come back</h2>
+<p class="sub">The mirror of the table above. Each of these took at least ${REV_MIN} cases in ${periods[LASTCOL - 2].label} and resolved <b>half or fewer</b>, then took at least ${REV_MIN} in ${periods[LASTCOL - 1].label} and resolved <b>${(REV_NOW * 100).toFixed(0)}% or more</b>. <b>${revived.length} CSPs</b> did that, resolving <b>${revRes} of ${revCases}</b> cases between them this week. Their longer record is in its own column so a single good week cannot pass as a CSP that has been fixed \u2014 and the column after it is the real test: whether they also went back for the customers they had already left down.</p>
+<div class="tablewrap"><table style="min-width:1280px">
+<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>${periods[LASTCOL - 2].key}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>${periods[LASTCOL - 1].key}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>Move</th><th>Whole record<br><span style="font-weight:400;opacity:.85">before ${fmtD(lwFrom)}</span></th><th>Old breached cases<br><span style="font-weight:400;opacity:.85">fixed since</span></th><th>PTL calls</th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[0][0]} cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[1][0]} cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Where they stand</th><th style="text-align:left">Older customers still down</th></tr></thead>
+<tbody>
+${revived.length ? revRows : '<tr><td colspan="14" style="text-align:left">No CSP came back from a failing week to a clean one this week.</td></tr>'}
+${revived.length ? `<tr class="tot"><td class="tot" style="text-align:left"><b>These ${revived.length} together</b></td><td class="tot"><b>${revived.reduce((a, x) => { const q = cspProf && cspProf[normName(x.k)]; return a + (q ? q.paying : 0); }, 0).toLocaleString('en-IN')}</b></td><td class="tot"><b>${revived.filter(x => { const q = cspProf && cspProf[normName(x.k)]; return q && q.mg; }).length} enrolled</b></td><td class="tot b"><b>${revived.reduce((a, x) => a + x.l.r, 0)} / ${revived.reduce((a, x) => a + x.l.n, 0)} (${pct(revived.reduce((a, x) => a + x.l.r, 0), revived.reduce((a, x) => a + x.l.n, 0))})</b></td><td class="tot g"><b>${revRes} / ${revCases} (${pct(revRes, revCases)})</b></td><td class="tot"></td><td class="tot"></td><td class="tot ${revOldDown ? 'b' : 'g'}"><b>${revOldB - revOldDown} / ${revOldB}</b></td><td class="tot"><b>${revived.reduce((a, x) => a + ((ptl && ptl[normName(x.k)]) ? ptl[normName(x.k)][LASTCOL] : 0), 0)}</b></td><td class="tot"><b>${inr(revived.reduce((a, x) => a + ((cspPay && cspPay[normName(x.k)]) ? cspPay[normName(x.k)].cyc[0] : 0), 0))}</b></td><td class="tot"><b>${inr(revived.reduce((a, x) => a + ((cspPay && cspPay[normName(x.k)]) ? cspPay[normName(x.k)].cyc[1] : 0), 0))}</b></td><td class="tot"></td><td class="tot" style="text-align:left"><b>${revOldDown ? revOldDown + ' older customers still down between them' : 'Nothing left behind'}</b></td><td class="tot"></td></tr>` : ''}
+</tbody></table></div>
+${revived.length ? `<p class="sub" style="margin-top:10px">Read the last two columns together before calling any of these fixed: on this week's work they are clean, but of the ${revOldB} cases they had already breached before ${fmtD(lwFrom)} they have gone back and fixed ${revOldB - revOldDown}. ${revOldDown ? `${revOldDown} of those customers are still down today, and they are named on the row.` : ''} A CSP is worth taking off the watchlist when both columns are clean two weeks running.</p>` : ''}
+</section>`;
+
   // ── Last week's CSPs, followed forward ──────────────────────────────────
   // The question on the table is whether the CSPs that were not resolving have
   // come back. This answers it by name: take every case that was STILL OPEN
@@ -1153,6 +1216,7 @@ ${weekRefundHtml}
 ${refundFunnel}
 ${momHtml}
 ${cspBlockHtml}
+${revivedHtml}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's FIRST_REOPENED_TIME (the tracker's own reopened_at field only catches a dashboard revert inside 24 hrs and misses about half of them). Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div></body></html>`;
 
