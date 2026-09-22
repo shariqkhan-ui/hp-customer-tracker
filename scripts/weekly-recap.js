@@ -529,13 +529,19 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // the rate ~7x. It is reported separately instead.
   const reopTs = c => Number(c.reopened_at) || 0;
   const isReop = c => reopTs(c) > 0;
-  const amtOf = c => (c.refund_amount !== '' && c.refund_amount != null && !isNaN(Number(c.refund_amount)))
-    ? Number(c.refund_amount)
-    : (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : (hubOf(c) ? hubOf(c).amt : 0));
-  // Three sources say a customer was paid, and Wiom Hub is the one that moved
-  // the money: a case counts as refunded if the Finance sheet, the tracker or
-  // the Hub says so. Cases the Hub paid that the tracker never marked are
-  // listed by name in the refund reconciliation section.
+  // Money actually paid beats money computed: the Hub amount wins wherever
+  // there is one, then the tracker's pro-rata, then the Finance sheet.
+  const amtOf = c => (hubPaid(c) && hubOf(c).amt)
+    ? hubOf(c).amt
+    : ((c.refund_amount !== '' && c.refund_amount != null && !isNaN(Number(c.refund_amount)))
+      ? Number(c.refund_amount)
+      : (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0));
+  // Wiom Hub is the source of truth for a refund (Shariq, 22 Sep): it is where
+  // the payment is raised, approved and sent, and the sync marks a case
+  // Refund Done as soon as the Hub approves it. The Finance sheet and the
+  // tracker's own fields are the FALLBACK, for refunds the Hub never saw. Any
+  // of them makes a case refunded; the reconciliation section below counts
+  // each refund against its best source so the fallback's size is visible.
   const isDone = c => !!sheetEntry(c) || trim(c.cx_action) === 'Refund Done' || trim(c.refund_action) === 'Refund Done' || hubPaid(c);
   const cameInAsReopen = c => String(c.source) === 'reopened-cron';
   const RES_REMARKS = ['resolved by old partner', 'resolved by old csp'];
@@ -1145,6 +1151,10 @@ ${reopWeekRows.map(r => `<tr>` +
   const hubRejected = eligAll.filter(c => { const h = hubOf(c); return h && h.st === 'REJECTED'; });
   const hubPending = eligAll.filter(c => { const h = hubOf(c); return h && h.st === 'PENDING'; });
   const hubOnly = hubApproved.filter(c => !trackerSaysDone(c));
+  const refundedAll = eligAll.filter(isDone);
+  const srcHub = refundedAll.filter(hubPaid);
+  const srcSheet = refundedAll.filter(c => !hubPaid(c) && !!sheetEntry(c));
+  const srcTracker = refundedAll.filter(c => !hubPaid(c) && !sheetEntry(c));
   const hubAmt = list => list.reduce((a, c) => a + (hubOf(c) ? hubOf(c).amt : 0), 0);
   const surfaceRow = (name, sp, note) =>
     `<tr><td style="text-align:left;white-space:normal">${name}</td>` +
@@ -1156,7 +1166,7 @@ ${reopWeekRows.map(r => `<tr>` +
     `<td style="text-align:left;white-space:normal;font-weight:400">${note}</td></tr>`;
   const refundTriangleHtml = `<section>
 <h2>Refund pending \u2014 the same number on every surface</h2>
-<p class="sub">Four records carry a refund status — the tracker's Refund card, this doc, the tracker's Weekly Review tab and Wiom Hub, where the money actually moves — and they do not match, because they count different sets. Neither is wrong; this is the bridge between them, so the meeting can stop re-deriving it. <b>Pending</b> everywhere below means the same thing: eligible, not refunded, and <b>no reason recorded against it</b> \u2014 the genuine backlog. <b>Parked</b> means the desk has looked at it and written down why it is not being paid (Cx DNP, pickup ticket not raised, PFT process miss, 120 hrs not crossed, amount computed as \u20b90).</p>
+<p class="sub"><b>Wiom Hub is the source of truth for a refund</b> — it is where the payment is raised, approved and sent — and the sync marks a case Refund Done the moment the Hub approves it, so nobody has to key it in twice. The Finance sheet and the tracker's own fields are kept as a fallback, for refunds the Hub never saw. Four records still carry a refund status and they do not match, because they count different sets. Neither is wrong; this is the bridge between them, so the meeting can stop re-deriving it. <b>Pending</b> everywhere below means the same thing: eligible, not refunded, and <b>no reason recorded against it</b> \u2014 the genuine backlog. <b>Parked</b> means the desk has looked at it and written down why it is not being paid (Cx DNP, pickup ticket not raised, PFT process miss, 120 hrs not crossed, amount computed as \u20b90).</p>
 <div class="tablewrap"><table style="min-width:900px">
 <thead><tr><th style="text-align:left">Step</th><th>Cases</th><th style="text-align:left">What it is</th></tr></thead>
 <tbody>
@@ -1173,6 +1183,14 @@ ${surfaceRow("Tracker \u2192 Weekly Review tab, section 4", docWk, `${periods[LA
 ${surfaceRow('The same week without the ping filter', cardWk, `${periods[LASTCOL - 1].label} only`)}
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">So the honest headline is <b>${docAll.pend.length} customers, ${inr(sumA(docAll.pend))}</b>: eligible, still down, and nobody has written down why they have not been paid. The tracker's card reads ${cardAll.pend.length} because it also counts the ${pingedBack.length} whose line recovered. Everything else in the gap has a reason against it — that column is the funnel's <i>parked</i> and <i>nothing payable</i> rows added together. This doc's row is lower than the tracker's for one more reason: it counts a refund Wiom Hub has already paid even where nobody marked it in the tracker, which is ${hubOnly.length} cases.${hyphenVariants ? ` One cleanup at source: ${hyphenVariants} cases carry a reason typed with a plain hyphen where the dropdown uses a dash, which splits the same reason into two rows wherever it is tallied \u2014 they are merged below.` : ''}</p>
+<div class="tablewrap" style="margin-bottom:14px"><table style="min-width:820px">
+<thead><tr><th style="text-align:left">Where each refund is recorded</th><th>Cases</th><th>Amount</th><th style="text-align:left">Read</th></tr></thead>
+<tbody>
+<tr><td><b>Refunded, of the ${eligAll.length} eligible</b></td><td><b>${refundedAll.length}</b></td><td><b>${inr(sumA(refundedAll))}</b></td><td></td></tr>
+<tr><td>↳ <b>Wiom Hub</b> — the payment itself</td><td class="g">${srcHub.length}</td><td class="g">${inr(sumA(srcHub))}</td><td style="text-align:left;font-weight:400">The source of truth: raised, approved and sent in t_plan_refund_request</td></tr>
+<tr><td>↳ Finance sheet only <span style="font-weight:400;color:var(--muted)">(fallback)</span></td><td>${srcSheet.length}</td><td>${inr(sumA(srcSheet))}</td><td style="text-align:left;font-weight:400">Finance records it as paid and the Hub has no matching request — worth confirming the money went out</td></tr>
+<tr><td>↳ Tracker field only <span style="font-weight:400;color:var(--muted)">(fallback)</span></td><td>${srcTracker.length}</td><td>${inr(sumA(srcTracker))}</td><td style="text-align:left;font-weight:400">Marked by hand in the tracker; neither the Hub nor Finance carries it</td></tr>
+</tbody></table></div>
 <div class="tablewrap" style="margin-bottom:14px"><table style="min-width:900px">
 <thead><tr><th style="text-align:left">Wiom Hub — <span style="font-weight:400;opacity:.85">t_plan_refund_request, where the money actually moves</span></th><th>Cases</th><th>Amount</th><th style="text-align:left">Read</th></tr></thead>
 <tbody>

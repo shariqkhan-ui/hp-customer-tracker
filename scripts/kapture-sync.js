@@ -129,6 +129,12 @@ async function fbPatch(path, value) {
   return httpRequest('PATCH', FIREBASE_DB + path + '.json?access_token=' + token, value, {});
 }
 
+// Append-only write (Firebase POST generates the key) — used for audit rows.
+async function fbPost(path, value) {
+  const token = await getFirebaseToken();
+  return httpRequest('POST', FIREBASE_DB + path + '.json?access_token=' + token, value, {});
+}
+
 // ── Metabase query ────────────────────────────────────────────────────────────
 
 async function queryMetabase(sql, apiKey) {
@@ -415,12 +421,21 @@ async function syncHubRefunds(apiKey) {
     if (!hub[k] || (e.when || '') >= (hub[k].when || '')) hub[k] = e;   // latest request wins
   });
   const all = await fbGet('/cases') || {};
+  const sheetMap = await fbGet('/refund_sheet') || {};
+  const sheetMobMap = await fbGet('/refund_sheet_mob') || {};
+  const dg = v => String(v || '').replace(/\D/g, '');
+  const inSheet = c => sheetMap[dg(c.ticket_no)] || sheetMobMap[dg(c.mobile).slice(-10)] || null;
+  const alreadyDone = c => String(c.refund_action || '').trim() === 'Refund Done' ||
+                           String(c.cx_action || '').trim() === 'Refund Done' || !!inSheet(c);
   let stamped = 0, matched = 0;
+  const toMark = {};                      // mobile -> candidate cases to mark Refund Done
+  const paidMobiles = new Set();          // customers already marked on some other case
   for (const [key, c] of Object.entries(all)) {
     if (key.startsWith('__') || !c || !c.ticket_no) continue;
     const ts = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
     if (ts < TAT_LAUNCH_MS) continue;
-    const h = hub[String(c.mobile || '').replace(/\D/g, '').slice(-10)];
+    const mob = dg(c.mobile).slice(-10);
+    const h = hub[mob];
     if (!h) continue;
     matched++;
     const patch = {};
@@ -430,8 +445,38 @@ async function syncHubRefunds(apiKey) {
     if (String(c.hub_refund_on || '') !== h.when) patch.hub_refund_on = h.when;
     if (String(c.hub_refund_utr || '') !== h.utr) patch.hub_refund_utr = h.utr;
     if (Object.keys(patch).length) { await fbPatch('/cases/' + key, patch); stamped++; }
+    // Per Shariq (22 Sep): the Hub is the source of truth for refunds, so an
+    // APPROVED payment marks the case Refund Done here without waiting for
+    // anyone to key it in. The Finance sheet stays as a fallback for refunds
+    // the Hub never saw.
+    if (alreadyDone(c)) paidMobiles.add(mob);   // this customer's payment is already recorded
+    else if (h.st === 'APPROVED') (toMark[mob] = toMark[mob] || []).push({ key, c, h });
   }
-  log(`Wiom Hub refunds: ${Object.keys(hub).length} customers in the Hub, ${matched} cases matched, ${stamped} stamped.`);
+  // One payment, one customer, one case: marking every open ticket of the same
+  // customer would count the same money several times, so only the case
+  // closest in time to the payment is marked.
+  let marked = 0, dupeSkipped = 0;
+  for (const [mob, list] of Object.entries(toMark)) {
+    if (paidMobiles.has(mob)) { dupeSkipped += list.length; continue; }   // one payment, already marked
+    const refTs = t => Date.parse((t.h.when || '') + 'T00:00:00+05:30') || 0;
+    const caseTs = t => Number(t.c.added_at) || Number(t.c.owner_assigned_at) || 0;
+    list.sort((x, y) => Math.abs(caseTs(x) - refTs(x)) - Math.abs(caseTs(y) - refTs(y)));
+    dupeSkipped += list.length - 1;
+    const t = list[0];
+    const prev = String(t.c.refund_action || '').trim();
+    const note = `Paid in Wiom Hub on ${t.h.when}, Rs${t.h.amt}` +
+      (t.h.utr ? ', UTR ' + t.h.utr : '') + (prev ? ' \u2014 previous status: ' + prev : '');
+    const patch = { refund_action: 'Refund Done', refund_action_note: note };
+    if (t.c.refund_amount === '' || t.c.refund_amount == null || Number(t.c.refund_amount) === 0) patch.refund_amount = t.h.amt;
+    await fbPatch('/cases/' + t.key, patch);
+    await fbPost('/cases/__audit__', {
+      user_name: 'Wiom Hub sync', ticket_no: String(t.c.ticket_no), field: 'refund_action',
+      old_value: prev, new_value: 'Refund Done \u00b7 ' + note, ts: new Date().toISOString(),
+    }).catch(e => log('WARN: Hub refund audit write failed — ' + e.message));
+    marked++;
+  }
+  log(`Wiom Hub refunds: ${Object.keys(hub).length} customers in the Hub, ${matched} cases matched, ${stamped} stamped, ${marked} newly marked Refund Done` +
+      (dupeSkipped ? `, ${dupeSkipped} same-customer duplicate${dupeSkipped === 1 ? '' : 's'} left alone` : '') + '.');
 }
 
 async function syncLastPing(apiKey) {
