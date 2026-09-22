@@ -1050,6 +1050,79 @@ ${reopWeekRows.map(r => `<tr>` +
 </section>`;
   }
 
+  // ── Refund pending, reconciled across every surface ─────────────────────
+  // The same words mean different sets in different places and the meeting
+  // kept re-asking which number was right. Both are correct for what they
+  // count, so the bridge between them is shown rather than one being picked:
+  // the tracker's Refund card calls every breached case eligible, this doc and
+  // the tracker's Weekly Review tab drop the ones whose line came back on.
+  // "Parked" is the card's own test - a Refund Action reason is recorded, or
+  // the amount computed to zero.
+  const parkedOf = c => {
+    const ra = trim(c.refund_action);
+    return (ra !== '' && ra !== 'Refund Done') ||
+      (c.refund_amount !== '' && c.refund_amount != null && Number(c.refund_amount) === 0);
+  };
+  const split = list => {
+    const done = list.filter(isDone);
+    const rest = list.filter(c => !isDone(c));
+    const park = rest.filter(parkedOf);
+    const pend = rest.filter(c => !parkedOf(c));
+    return { n: list.length, done, park, pend };
+  };
+  const cardAll = split(unresAll);        // what the tracker's Refund card counts
+  const docAll = split(eligAll);          // what this doc and the Weekly Review tab count
+  const cardWk = split(lwMat.filter(c => getStatus(c) === 'Unresolved'));
+  const docWk = split(lwElig);
+  const pingedPaid = pingedBack.filter(isDone).length;
+  // The desk's reason values carry both dash characters, which splits the same
+  // reason into two rows wherever they are tallied. Normalised here, and the
+  // count of affected cases is stated so it can be cleaned at source.
+  const normReason = v => trim(v).replace(/\s*[-\u2013\u2014]\s*/g, ' \u2014 ');
+  const reasonTally = {};
+  eligUnpaid.forEach(c => {
+    const ra = trim(c.refund_action);
+    const k = normReason(ra && ra !== 'Refund Done' ? ra
+      : ((c.refund_amount !== '' && c.refund_amount != null && Number(c.refund_amount) === 0)
+        ? 'Amount 0 \u2014 refund not possible' : 'No reason recorded'));
+    reasonTally[k] = (reasonTally[k] || 0) + 1;
+  });
+  const hyphenVariants = eligUnpaid.filter(c => /\s-\s/.test(trim(c.refund_action))).length;
+  const surfaceRow = (name, sp, note) =>
+    `<tr><td style="text-align:left;white-space:normal">${name}</td>` +
+    `<td><b>${sp.n.toLocaleString('en-IN')}</b></td>` +
+    `<td class="g">${sp.done.length.toLocaleString('en-IN')} (${pct(sp.done.length, sp.n)})</td>` +
+    `<td>${sp.park.length.toLocaleString('en-IN')} (${pct(sp.park.length, sp.n)})</td>` +
+    `<td class="b"><b>${sp.pend.length.toLocaleString('en-IN')} (${pct(sp.pend.length, sp.n)})</b></td>` +
+    `<td class="b">${inr(sumA(sp.pend))}</td>` +
+    `<td style="text-align:left;white-space:normal;font-weight:400">${note}</td></tr>`;
+  const refundTriangleHtml = `<section>
+<h2>Refund pending \u2014 the same number on every surface</h2>
+<p class="sub">Three surfaces publish a refund-pending figure and they do not match, because they count different sets. Neither is wrong; this is the bridge between them, so the meeting can stop re-deriving it. <b>Pending</b> everywhere below means the same thing: eligible, not refunded, and <b>no reason recorded against it</b> \u2014 the genuine backlog. <b>Parked</b> means the desk has looked at it and written down why it is not being paid (Cx DNP, pickup ticket not raised, PFT process miss, 120 hrs not crossed, amount computed as \u20b90).</p>
+<div class="tablewrap"><table style="min-width:900px">
+<thead><tr><th style="text-align:left">Step</th><th>Cases</th><th style="text-align:left">What it is</th></tr></thead>
+<tbody>
+<tr><td><b>Unresolved past 48 hrs, since 29 Jul</b></td><td><b>${unresAll.length.toLocaleString('en-IN')}</b></td><td style="text-align:left;font-weight:400">Every breached case. The tracker's Refund card calls all of these eligible</td></tr>
+<tr><td>\u2212 line came back on after the complaint</td><td>${pingedBack.length.toLocaleString('en-IN')}</td><td style="text-align:left;font-weight:400">Recovered after the breach, so nothing is owed \u2014 ${pingedPaid} of them were refunded anyway</td></tr>
+<tr class="tot"><td class="tot"><b>= Refund-eligible</b></td><td class="tot"><b>${eligAll.length.toLocaleString('en-IN')}</b></td><td class="tot" style="text-align:left;font-weight:400"><b>What this doc and the tracker's Weekly Review tab call eligible</b></td></tr>
+</tbody></table></div>
+<div class="tablewrap" style="margin-top:14px"><table style="min-width:1020px">
+<thead><tr><th style="text-align:left">Where you see it</th><th>Eligible</th><th>Refunded</th><th>Reason recorded<br><span style="font-weight:400;opacity:.85">parked + nothing payable</span></th><th>Pending<br><span style="font-weight:400;opacity:.85">no reason</span></th><th>Pending \u20b9</th><th style="text-align:left">Scope</th></tr></thead>
+<tbody>
+${surfaceRow("Tracker \u2192 Refund card (<i>Eligible / Pending / Parked / Done</i>)", cardAll, 'Since 29 Jul, no ping filter')}
+${surfaceRow('This doc \u2014 funnel and tiles', docAll, 'Since 29 Jul, line never came back')}
+${surfaceRow("Tracker \u2192 Weekly Review tab, section 4", docWk, `${periods[LASTCOL - 1].label} only, line never came back`)}
+${surfaceRow('The same week without the ping filter', cardWk, `${periods[LASTCOL - 1].label} only`)}
+</tbody></table></div>
+<p class="sub" style="margin-top:10px">So the honest headline is <b>${docAll.pend.length} customers, ${inr(sumA(docAll.pend))}</b>: eligible, still down, and nobody has written down why they have not been paid. The tracker's card reads ${cardAll.pend.length} because it also counts the ${pingedBack.length} whose line recovered. Everything else in the gap has a reason against it — that column is the funnel's <i>parked</i> and <i>nothing payable</i> rows added together.${hyphenVariants ? ` One cleanup at source: ${hyphenVariants} cases carry a reason typed with a plain hyphen where the dropdown uses a dash, which splits the same reason into two rows wherever it is tallied \u2014 they are merged below.` : ''}</p>
+<div class="tablewrap"><table>
+<thead><tr><th style="text-align:left">Why an eligible case has not been paid</th><th>Cases</th><th>% of eligible</th></tr></thead>
+<tbody>
+${Object.entries(reasonTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
+  `<tr><td style="text-align:left;white-space:normal"${k === 'No reason recorded' ? ' class="b"' : ''}>${escR(k)}</td><td${k === 'No reason recorded' ? ' class="b"' : ''}>${n}</td><td>${pct(n, eligAll.length)}</td></tr>`).join(NL)}
+</tbody></table></div>
+</section>`;
+
   // Month-on-month view of why a refund has not been paid. Cohorted by the
   // month the case was added, over every eligible case that is still unpaid.
   const monthsBack = [];
@@ -1214,6 +1287,7 @@ ${whyHtml}
 ${reopSnapHtml}
 ${weekRefundHtml}
 ${refundFunnel}
+${refundTriangleHtml}
 ${momHtml}
 ${cspBlockHtml}
 ${revivedHtml}
