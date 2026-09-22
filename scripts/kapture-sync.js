@@ -385,6 +385,55 @@ async function syncKaptureResolution(apiKey) {
 // ping (S3.ROUTER_PING_HOURLY_DATA_V2 via SERVICE_TICKET_MODEL.DEVICE_ID) and
 // stamp last_ping_at (ms). The dashboard classifies a case as "Ping up" when
 // this is newer than the ticket creation time.
+// ── Wiom Hub refunds ────────────────────────────────────────────────────────
+// t_plan_refund_request is where a refund is actually raised, approved and
+// paid, so it is the system of record for the money - the tracker's own
+// Cx Action / Refund Action fields record what the desk BELIEVES happened.
+// This stamps the Hub's verdict onto each flag-era case (matched on the
+// customer's number) so every surface can read it. It never writes to
+// cx_action or refund_action: those stay the desk's, and a disagreement
+// between the two is exactly what the weekly doc reports.
+async function syncHubRefunds(apiKey) {
+  const rows = await queryMetabase(`
+    SELECT MOBILE, STATUS, REFUND_STATUS,
+           COALESCE(APPROVED_REFUND_AMOUNT, REFUND_AMOUNT) AS AMT,
+           TO_CHAR(COALESCE(APPROVED_TIME, REQUESTED_TIME), 'YYYY-MM-DD') AS WHEN_,
+           UTR
+    FROM PROD_DB.CUSTOMER_JAVA_PUBLIC.T_PLAN_REFUND_REQUEST
+    WHERE COALESCE(_FIVETRAN_ACTIVE, TRUE)`, apiKey);
+  const hub = {};
+  rows.forEach(r => {
+    const k = String(r.MOBILE || '').replace(/\D/g, '').slice(-10);
+    if (k.length !== 10) return;
+    const e = {
+      st: String(r.STATUS || '').trim(),
+      rs: String(r.REFUND_STATUS || '').trim(),
+      amt: Number(r.AMT) || 0,
+      when: String(r.WHEN_ || '').trim(),
+      utr: String(r.UTR || '').trim(),
+    };
+    if (!hub[k] || (e.when || '') >= (hub[k].when || '')) hub[k] = e;   // latest request wins
+  });
+  const all = await fbGet('/cases') || {};
+  let stamped = 0, matched = 0;
+  for (const [key, c] of Object.entries(all)) {
+    if (key.startsWith('__') || !c || !c.ticket_no) continue;
+    const ts = Number(c.added_at) || Number(c.owner_assigned_at) || 0;
+    if (ts < TAT_LAUNCH_MS) continue;
+    const h = hub[String(c.mobile || '').replace(/\D/g, '').slice(-10)];
+    if (!h) continue;
+    matched++;
+    const patch = {};
+    if (String(c.hub_refund_status || '') !== h.st) patch.hub_refund_status = h.st;
+    if (String(c.hub_refund_stage || '') !== h.rs) patch.hub_refund_stage = h.rs;
+    if (Number(c.hub_refund_amount || 0) !== h.amt) patch.hub_refund_amount = h.amt;
+    if (String(c.hub_refund_on || '') !== h.when) patch.hub_refund_on = h.when;
+    if (String(c.hub_refund_utr || '') !== h.utr) patch.hub_refund_utr = h.utr;
+    if (Object.keys(patch).length) { await fbPatch('/cases/' + key, patch); stamped++; }
+  }
+  log(`Wiom Hub refunds: ${Object.keys(hub).length} customers in the Hub, ${matched} cases matched, ${stamped} stamped.`);
+}
+
 async function syncLastPing(apiKey) {
   const all = await fbGet('/cases') || {};
   const targets = Object.entries(all).filter(([k, c]) => {
@@ -1013,6 +1062,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   try { await syncDevicePickup(apiKey); } catch (e) { log('WARN: device pickup sync failed — ' + e.message); }
   try { await purgeWiomNetQueue(apiKey); } catch (e) { log('WARN: Wiom Net purge failed — ' + e.message); }
   try { await syncLastPing(apiKey); } catch (e) { log('WARN: last-ping stamp failed — ' + e.message); }
+
+  // ── Step 2.9: Wiom Hub refund verdict (t_plan_refund_request) ──
+  try { await syncHubRefunds(apiKey); } catch (e) { log('WARN: Wiom Hub refund sync failed — ' + e.message); }
 
 
   // ── Step 3: Notify Slack (suppressed entirely during a silent backfill) ──

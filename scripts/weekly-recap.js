@@ -129,6 +129,40 @@ async function cspPayout(cycles) {
     return null;
   }
 }
+// Wiom Hub is where a refund is actually raised, approved and paid, so it is
+// the system of record for the money. The tracker and the Finance sheet record
+// what the desk BELIEVES was paid; this table records what the payment system
+// did. Keyed on the customer's number. Rows are SCD-versioned by Fivetran, so
+// only the active version of each request counts.
+async function hubRefunds() {
+  const key = process.env.METABASE_API_KEY;
+  if (!key) { console.log('METABASE_API_KEY not set - Wiom Hub refunds unavailable.'); return null; }
+  const sql = `SELECT MOBILE, STATUS, REFUND_STATUS,
+      COALESCE(APPROVED_REFUND_AMOUNT, REFUND_AMOUNT) AS AMT,
+      TO_CHAR(COALESCE(APPROVED_TIME, REQUESTED_TIME), 'YYYY-MM-DD') AS WHEN_,
+      UTR, REMARKS
+    FROM PROD_DB.CUSTOMER_JAVA_PUBLIC.T_PLAN_REFUND_REQUEST
+    WHERE COALESCE(_FIVETRAN_ACTIVE, TRUE)`;
+  try {
+    const r = await fetch(METABASE + '/api/dataset', {
+      method: 'POST', headers: { 'x-api-key': key, 'content-type': 'application/json' },
+      body: JSON.stringify({ database: 113, type: 'native', native: { query: sql } }),
+    }).then(x => x.json());
+    if (!r.data || !r.data.rows) throw new Error(JSON.stringify(r.error || r).slice(0, 200));
+    const m = {};
+    r.data.rows.forEach(([mob, st, rs, amt, when, utr, rem]) => {
+      const k = String(mob || '').replace(/\D/g, '').slice(-10);
+      if (k.length !== 10) return;
+      const e = { st: String(st || '').trim(), rs: String(rs || '').trim(), amt: Number(amt) || 0, when: when || '', utr: String(utr || '').trim(), rem: String(rem || '').trim() };
+      if (!m[k] || (e.when || '') >= (m[k].when || '')) m[k] = e;
+    });
+    console.log('Wiom Hub refund requests for', Object.keys(m).length, 'customers');
+    return m;
+  } catch (e) {
+    console.error('Wiom Hub refund query failed (non-fatal):', e.message);
+    return null;
+  }
+}
 async function cspProfile() {
   const key = process.env.METABASE_API_KEY;
   if (!key) return null;
@@ -440,6 +474,11 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     console.log('reopen RCA rows:', Object.keys(reopReason).length);
   } catch (e) { console.error('reopen RCA sheet unreadable (non-fatal):', e.message); }
 
+  const hub = await hubRefunds();
+  const hubOf = c => (hub && hub[dig(c.mobile).slice(-10)]) || null;
+  // APPROVED covers both SUCCESS (money out) and INITIATED (approved, in
+  // flight). REJECTED and PENDING are not a refund.
+  const hubPaid = c => { const h = hubOf(c); return !!h && h.st === 'APPROVED'; };
   const ptl = await ptlCallsByPartner(periods);
   const kReop = await kaptureReopens('2026-07-29');
   const kWho = await (async () => {
@@ -490,8 +529,14 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // the rate ~7x. It is reported separately instead.
   const reopTs = c => Number(c.reopened_at) || 0;
   const isReop = c => reopTs(c) > 0;
-  const amtOf = c => (c.refund_amount !== '' && c.refund_amount != null && !isNaN(Number(c.refund_amount))) ? Number(c.refund_amount) : (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : 0);
-  const isDone = c => !!sheetEntry(c) || trim(c.cx_action) === 'Refund Done' || trim(c.refund_action) === 'Refund Done';
+  const amtOf = c => (c.refund_amount !== '' && c.refund_amount != null && !isNaN(Number(c.refund_amount)))
+    ? Number(c.refund_amount)
+    : (sheetEntry(c) ? Number(sheetEntry(c).a) || 0 : (hubOf(c) ? hubOf(c).amt : 0));
+  // Three sources say a customer was paid, and Wiom Hub is the one that moved
+  // the money: a case counts as refunded if the Finance sheet, the tracker or
+  // the Hub says so. Cases the Hub paid that the tracker never marked are
+  // listed by name in the refund reconciliation section.
+  const isDone = c => !!sheetEntry(c) || trim(c.cx_action) === 'Refund Done' || trim(c.refund_action) === 'Refund Done' || hubPaid(c);
   const cameInAsReopen = c => String(c.source) === 'reopened-cron';
   const RES_REMARKS = ['resolved by old partner', 'resolved by old csp'];
   const isResRemark = c => RES_REMARKS.includes(trim(c.remarks).toLowerCase()) || trim(c.migration_date) !== '';
@@ -1058,22 +1103,27 @@ ${reopWeekRows.map(r => `<tr>` +
   // the tracker's Weekly Review tab drop the ones whose line came back on.
   // "Parked" is the card's own test - a Refund Action reason is recorded, or
   // the amount computed to zero.
+  const trackerSaysDone = c => !!sheetEntry(c) || trim(c.cx_action) === 'Refund Done' || trim(c.refund_action) === 'Refund Done';
   const parkedOf = c => {
     const ra = trim(c.refund_action);
     return (ra !== '' && ra !== 'Refund Done') ||
       (c.refund_amount !== '' && c.refund_amount != null && Number(c.refund_amount) === 0);
   };
-  const split = list => {
-    const done = list.filter(isDone);
-    const rest = list.filter(c => !isDone(c));
+  // Each row must show what that surface actually displays: the tracker and
+  // its Weekly Review tab do not read Wiom Hub, so they are split on the
+  // tracker's own test, and only this doc's rows count a Hub payment.
+  const split = (list, doneFn) => {
+    const fn = doneFn || isDone;
+    const done = list.filter(fn);
+    const rest = list.filter(c => !fn(c));
     const park = rest.filter(parkedOf);
     const pend = rest.filter(c => !parkedOf(c));
     return { n: list.length, done, park, pend };
   };
-  const cardAll = split(unresAll);        // what the tracker's Refund card counts
-  const docAll = split(eligAll);          // what this doc and the Weekly Review tab count
-  const cardWk = split(lwMat.filter(c => getStatus(c) === 'Unresolved'));
-  const docWk = split(lwElig);
+  const cardAll = split(unresAll, trackerSaysDone);   // the tracker's Refund card
+  const docAll = split(eligAll);                     // this doc, Wiom Hub included
+  const cardWk = split(lwMat.filter(c => getStatus(c) === 'Unresolved'), trackerSaysDone);
+  const docWk = split(lwElig, trackerSaysDone);      // the tracker's Weekly Review tab
   const pingedPaid = pingedBack.filter(isDone).length;
   // The desk's reason values carry both dash characters, which splits the same
   // reason into two rows wherever they are tallied. Normalised here, and the
@@ -1088,6 +1138,14 @@ ${reopWeekRows.map(r => `<tr>` +
     reasonTally[k] = (reasonTally[k] || 0) + 1;
   });
   const hyphenVariants = eligUnpaid.filter(c => /\s-\s/.test(trim(c.refund_action))).length;
+  // What the Hub says about the eligible set, and the cases where the two
+  // records disagree - paid there, never marked here.
+  const hubElig = eligAll.filter(c => hubOf(c));
+  const hubApproved = eligAll.filter(hubPaid);
+  const hubRejected = eligAll.filter(c => { const h = hubOf(c); return h && h.st === 'REJECTED'; });
+  const hubPending = eligAll.filter(c => { const h = hubOf(c); return h && h.st === 'PENDING'; });
+  const hubOnly = hubApproved.filter(c => !trackerSaysDone(c));
+  const hubAmt = list => list.reduce((a, c) => a + (hubOf(c) ? hubOf(c).amt : 0), 0);
   const surfaceRow = (name, sp, note) =>
     `<tr><td style="text-align:left;white-space:normal">${name}</td>` +
     `<td><b>${sp.n.toLocaleString('en-IN')}</b></td>` +
@@ -1098,7 +1156,7 @@ ${reopWeekRows.map(r => `<tr>` +
     `<td style="text-align:left;white-space:normal;font-weight:400">${note}</td></tr>`;
   const refundTriangleHtml = `<section>
 <h2>Refund pending \u2014 the same number on every surface</h2>
-<p class="sub">Three surfaces publish a refund-pending figure and they do not match, because they count different sets. Neither is wrong; this is the bridge between them, so the meeting can stop re-deriving it. <b>Pending</b> everywhere below means the same thing: eligible, not refunded, and <b>no reason recorded against it</b> \u2014 the genuine backlog. <b>Parked</b> means the desk has looked at it and written down why it is not being paid (Cx DNP, pickup ticket not raised, PFT process miss, 120 hrs not crossed, amount computed as \u20b90).</p>
+<p class="sub">Four records carry a refund status — the tracker's Refund card, this doc, the tracker's Weekly Review tab and Wiom Hub, where the money actually moves — and they do not match, because they count different sets. Neither is wrong; this is the bridge between them, so the meeting can stop re-deriving it. <b>Pending</b> everywhere below means the same thing: eligible, not refunded, and <b>no reason recorded against it</b> \u2014 the genuine backlog. <b>Parked</b> means the desk has looked at it and written down why it is not being paid (Cx DNP, pickup ticket not raised, PFT process miss, 120 hrs not crossed, amount computed as \u20b90).</p>
 <div class="tablewrap"><table style="min-width:900px">
 <thead><tr><th style="text-align:left">Step</th><th>Cases</th><th style="text-align:left">What it is</th></tr></thead>
 <tbody>
@@ -1110,11 +1168,33 @@ ${reopWeekRows.map(r => `<tr>` +
 <thead><tr><th style="text-align:left">Where you see it</th><th>Eligible</th><th>Refunded</th><th>Reason recorded<br><span style="font-weight:400;opacity:.85">parked + nothing payable</span></th><th>Pending<br><span style="font-weight:400;opacity:.85">no reason</span></th><th>Pending \u20b9</th><th style="text-align:left">Scope</th></tr></thead>
 <tbody>
 ${surfaceRow("Tracker \u2192 Refund card (<i>Eligible / Pending / Parked / Done</i>)", cardAll, 'Since 29 Jul, no ping filter')}
-${surfaceRow('This doc \u2014 funnel and tiles', docAll, 'Since 29 Jul, line never came back')}
+${surfaceRow('This doc \u2014 funnel and tiles', docAll, 'Since 29 Jul, line never came back, <b>Wiom Hub counted</b>')}
 ${surfaceRow("Tracker \u2192 Weekly Review tab, section 4", docWk, `${periods[LASTCOL - 1].label} only, line never came back`)}
 ${surfaceRow('The same week without the ping filter', cardWk, `${periods[LASTCOL - 1].label} only`)}
 </tbody></table></div>
-<p class="sub" style="margin-top:10px">So the honest headline is <b>${docAll.pend.length} customers, ${inr(sumA(docAll.pend))}</b>: eligible, still down, and nobody has written down why they have not been paid. The tracker's card reads ${cardAll.pend.length} because it also counts the ${pingedBack.length} whose line recovered. Everything else in the gap has a reason against it — that column is the funnel's <i>parked</i> and <i>nothing payable</i> rows added together.${hyphenVariants ? ` One cleanup at source: ${hyphenVariants} cases carry a reason typed with a plain hyphen where the dropdown uses a dash, which splits the same reason into two rows wherever it is tallied \u2014 they are merged below.` : ''}</p>
+<p class="sub" style="margin-top:10px">So the honest headline is <b>${docAll.pend.length} customers, ${inr(sumA(docAll.pend))}</b>: eligible, still down, and nobody has written down why they have not been paid. The tracker's card reads ${cardAll.pend.length} because it also counts the ${pingedBack.length} whose line recovered. Everything else in the gap has a reason against it — that column is the funnel's <i>parked</i> and <i>nothing payable</i> rows added together. This doc's row is lower than the tracker's for one more reason: it counts a refund Wiom Hub has already paid even where nobody marked it in the tracker, which is ${hubOnly.length} cases.${hyphenVariants ? ` One cleanup at source: ${hyphenVariants} cases carry a reason typed with a plain hyphen where the dropdown uses a dash, which splits the same reason into two rows wherever it is tallied \u2014 they are merged below.` : ''}</p>
+<div class="tablewrap" style="margin-bottom:14px"><table style="min-width:900px">
+<thead><tr><th style="text-align:left">Wiom Hub — <span style="font-weight:400;opacity:.85">t_plan_refund_request, where the money actually moves</span></th><th>Cases</th><th>Amount</th><th style="text-align:left">Read</th></tr></thead>
+<tbody>
+<tr><td><b>Eligible cases with a refund raised in the Hub</b></td><td><b>${hubElig.length}</b></td><td>${inr(hubAmt(hubElig))}</td><td style="text-align:left;font-weight:400">Of the ${eligAll.length} refund-eligible, matched on the customer's number</td></tr>
+<tr><td>↳ Approved — paid or in flight</td><td class="g">${hubApproved.length}</td><td class="g">${inr(hubAmt(hubApproved))}</td><td style="text-align:left;font-weight:400">Counted as refunded in every figure in this doc</td></tr>
+<tr><td>↳ Rejected in the Hub</td><td class="b">${hubRejected.length}</td><td>${inr(hubAmt(hubRejected))}</td><td style="text-align:left;font-weight:400">Raised and turned down — the customer is still owed nothing through this route</td></tr>
+<tr><td>↳ Waiting for approval</td><td>${hubPending.length}</td><td>${inr(hubAmt(hubPending))}</td><td style="text-align:left;font-weight:400">Raised, not yet approved</td></tr>
+<tr${hubOnly.length ? ' class="tot"' : ''}><td${hubOnly.length ? ' class="tot"' : ''}><b>Paid in the Hub, never marked in the tracker</b></td><td${hubOnly.length ? ' class="tot b"' : ' class="g"'}><b>${hubOnly.length}</b></td><td${hubOnly.length ? ' class="tot"' : ''}>${inr(hubAmt(hubOnly))}</td><td style="text-align:left;font-weight:400"${hubOnly.length ? ' class="tot"' : ''}>${hubOnly.length ? 'The customer has their money; the tracker still reads them as unpaid. Named below — mark them off.' : 'Every Hub refund is reflected in the tracker'}</td></tr>
+</tbody></table></div>
+${hubOnly.length ? `<div class="tablewrap" style="margin-bottom:14px"><table style="min-width:900px">
+<thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">CSP</th><th>Paid in Hub</th><th>Amount</th><th>Hub status</th><th style="text-align:left">What the tracker says</th></tr></thead>
+<tbody>
+${hubOnly.sort((a, b) => (hubOf(b).when || '').localeCompare(hubOf(a).when || '')).map(c => {
+  const h = hubOf(c);
+  return `<tr><td><a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a></td>` +
+    `<td style="font-size:12.5px">${escR(trim(c.mobile))}</td>` +
+    `<td style="text-align:left;font-weight:400;white-space:normal">${escR(trim(c.partner))}</td>` +
+    `<td>${escR(h.when)}</td><td class="g">${inr(h.amt)}</td>` +
+    `<td>${escR(h.rs || h.st)}</td>` +
+    `<td style="text-align:left;font-weight:400;white-space:normal">${escR(trim(c.refund_action)) || escR(trim(c.cx_action)) || '<span style="color:var(--muted)">nothing recorded</span>'}</td></tr>`;
+}).join(NL)}
+</tbody></table></div>` : ''}
 <div class="tablewrap"><table>
 <thead><tr><th style="text-align:left">Why an eligible case has not been paid</th><th>Cases</th><th>% of eligible</th></tr></thead>
 <tbody>
