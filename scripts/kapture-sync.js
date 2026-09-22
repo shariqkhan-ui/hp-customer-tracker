@@ -191,10 +191,19 @@ async function syncRefundSheet() {
   // Per Shariq (25 Aug): column X "Register number" is THE unique identifier
   // for refund matching — Customer Number / Registered mobile columns carry
   // form-entry junk and caused false matches, so they are no longer used.
+  // The header cell of that column is editable like any other and Finance has
+  // overwritten it before (22 Sep 2026: it read a phone number, which silently
+  // emptied the mobile index), so fall back to its position when the label is
+  // gone. REGISTER_NUMBER_COL is column X, 0-indexed.
+  const REGISTER_NUMBER_COL = 23;
   const mobCols = [];
   H.forEach((h, i) => {
     if (h.startsWith('register number')) mobCols.push(i);
   });
+  if (!mobCols.length && H.length > REGISTER_NUMBER_COL) {
+    mobCols.push(REGISTER_NUMBER_COL);
+    log(`WARNING: no "Register number" header — falling back to column ${REGISTER_NUMBER_COL} (header reads "${H[REGISTER_NUMBER_COL]}")`);
+  }
   if (iT < 0 || iS < 0) throw new Error('expected columns not found in sheet');
   const out = {}, outMob = {};
   const put = (map, key, status, amt, ts, rec) => {
@@ -216,8 +225,13 @@ async function syncRefundSheet() {
       if (m.length === 10) put(outMob, m, status, amt, ts, rec);
     }
   });
-  await fbPut('/refund_sheet', out);
-  await fbPut('/refund_sheet_mob', outMob);
+  // A PUT of {} DELETES the node, so an empty parse must never be written:
+  // that is how /refund_sheet_mob was lost on 22 Sep and every refund matched
+  // by customer number disappeared from the tracker and the weekly doc.
+  if (Object.keys(out).length) await fbPut('/refund_sheet', out);
+  else log('ERROR: refund sheet parsed 0 tickets — keeping the existing /refund_sheet');
+  if (Object.keys(outMob).length) await fbPut('/refund_sheet_mob', outMob);
+  else log('ERROR: refund sheet parsed 0 customer numbers — keeping the existing /refund_sheet_mob');
   log(`Refund sheet sync: ${Object.keys(out).length} tickets + ${Object.keys(outMob).length} customer numbers mirrored.`);
 
   // Backfill device_picked_up from the sheet's "Router Recovered" column —
