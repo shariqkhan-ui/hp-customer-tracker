@@ -129,6 +129,11 @@ async function fbPatch(path, value) {
   return httpRequest('PATCH', FIREBASE_DB + path + '.json?access_token=' + token, value, {});
 }
 
+async function fbDelete(path) {
+  const token = await getFirebaseToken();
+  return httpRequest('DELETE', FIREBASE_DB + path + '.json?access_token=' + token, null, {});
+}
+
 // Append-only write (Firebase POST generates the key) — used for audit rows.
 async function fbPost(path, value) {
   const token = await getFirebaseToken();
@@ -542,6 +547,55 @@ async function syncLastPing(apiKey) {
       GROUP BY 1`, apiKey));
   }
   log(`Last-ping stamp: updated ${stamped} case(s) (${missing.length} resolved via NAS fallback pool).`);
+}
+
+// ── Reopened cases the CSP closed again ─────────────────────────────────────
+// A reopened ticket earns its place in the tracker only while it is still
+// open. If the CSP disposes it after the reopen it is no longer a live
+// high-pain case and comes straight back out (Shariq, 24 Sep). Only cases this
+// path brought in are touched, and only while nobody has worked them - a
+// remark, a Cx action, a refund action or a proof means the case belongs to
+// the team now, so it stays and is only logged.
+async function purgeClosedAfterReopen(apiKey) {
+  const all = await fbGet('/cases') || {};
+  const mine = Object.entries(all).filter(([k, c]) =>
+    !k.startsWith('__') && c && c.ticket_no && String(c.source || '') === 'reopened-log-cron');
+  if (!mine.length) return;
+  const worked = c => String(c.remarks || '').trim() || String(c.engineer_remarks || '').trim() ||
+    String(c.cx_action || '').trim() || String(c.refund_action || '').trim() ||
+    String(c.migration_date || '').trim() || String(c.proof_recording || '').trim() ||
+    String(c.proof_screenshot || '').trim();
+  const digs = [...new Set(mine.map(([, c]) => String(c.ticket_no).replace(/\D/g, '')).filter(d => d.length >= 6))];
+  const closed = new Set();
+  for (let i = 0; i < digs.length; i += 500) {
+    const ch = digs.slice(i, i + 500);
+    const rows = await queryMetabase(`
+      WITH ev AS (
+        SELECT TRY_TO_NUMBER(TASK_ID) AS TID,
+               MAX(CASE WHEN EVENT_NAME = 'TICKET_REOPENED' THEN ADDED_TIME END) AS LAST_REOPEN,
+               MAX(CASE WHEN EVENT_NAME IN ('TICKET_RESOLVED','TICKET_CLOSED','CUSTOMER_CLOSE_TICKET') THEN ADDED_TIME END) AS LAST_CLOSE
+        FROM PROD_DB.PUBLIC.TICKET_LOGS
+        WHERE ADDED_TIME >= DATEADD(DAY,-21,CURRENT_TIMESTAMP())
+          AND EVENT_NAME IN ('TICKET_REOPENED','TICKET_RESOLVED','TICKET_CLOSED','CUSTOMER_CLOSE_TICKET')
+        GROUP BY 1)
+      SELECT REGEXP_REPLACE(t.KAPTURE_TICKET_ID,'[^0-9]','') AS TK
+      FROM PUBLIC.T_TICKETS_NEW t
+      LEFT JOIN ev ON ev.TID = t.TICKET_ID
+      WHERE REGEXP_REPLACE(t.KAPTURE_TICKET_ID,'[^0-9]','') IN (${ch.map(x => "'" + x + "'").join(',')})
+        AND (t.STATUS <> 'OPEN' OR (ev.LAST_CLOSE IS NOT NULL AND ev.LAST_CLOSE > ev.LAST_REOPEN))`, apiKey);
+    rows.forEach(r => { const d = String(r.TK || '').replace(/\D/g, ''); if (d) closed.add(d); });
+  }
+  let removed = 0, kept = 0;
+  for (const [key, c] of mine) {
+    const d = String(c.ticket_no).replace(/\D/g, '');
+    if (!closed.has(d)) continue;
+    if (worked(c)) { kept++; continue; }
+    await fbDelete('/cases/' + key);
+    await tombstone(d, 'closed-after-reopen');
+    removed++;
+  }
+  log(`Reopened-case cleanup: ${removed} closed again after the reopen and removed` +
+      (kept ? `, ${kept} left in place because the team has already worked them` : '') + '.');
 }
 
 // ── Wiom Net queue purge ─────────────────────────────────────────────────────
@@ -1148,6 +1202,10 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       console.error('ERROR querying Metabase (reopened event log):', e.message);
     }
   }
+
+  // Straight after intake, so a case the CSP closed since the last run does not
+  // sit in the tracker for a day before anyone notices.
+  try { await purgeClosedAfterReopen(apiKey); } catch (e) { log('WARN: reopened-case cleanup failed — ' + e.message); }
 
   const added    = internetAdded + chatAdded + liveAdded + reopenAdded + reLogAdded;
   const skipped  = internetSkipped + chatSkipped + liveSkipped + reopenSkipped + reLogSkipped;
