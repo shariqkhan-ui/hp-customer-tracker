@@ -549,6 +549,91 @@ async function syncLastPing(apiKey) {
   log(`Last-ping stamp: updated ${stamped} case(s) (${missing.length} resolved via NAS fallback pool).`);
 }
 
+// ── Intake audit ────────────────────────────────────────────────────────────
+// Two questions every run, because a silent miss is the failure mode that
+// keeps costing us: ticket 789875031370 sat outside the tracker for four days
+// and only a person noticed.
+//
+//  1. CONFORMANCE - is every ticket our own rules qualified actually in the
+//     tracker? A non-zero count here is a bug: a query that errored, an
+//     exclusion that misfired, a cron that did not run. It alerts.
+//  2. COVERAGE - how many tickets are we deliberately NOT taking, by reason.
+//     This is the number that would have exposed the reopened-ticket hole
+//     months earlier: "reopened, then closed again: 115/day" is a choice, and
+//     seeing it every day is what lets anyone challenge it.
+//
+// Both land in /cases/__intake_audit__ (history under /history) and the run's
+// Slack message carries the conformance line.
+async function auditIntake(apiKey, qualified) {
+  const dgt = v => String(v || '').replace(/\D/g, '');
+  const all = await fbGet('/cases') || {};
+  const tomb = await fbGet('/purged_tickets') || {};
+  const have = new Set();
+  Object.entries(all).forEach(([k, c]) => {
+    if (k.startsWith('__') || !c || !c.ticket_no) return;
+    have.add(dgt(c.ticket_no));
+  });
+  // 1. conformance
+  const misses = [];
+  for (const t of qualified) {
+    const d = dgt(t.KAPTURE_TICKET_ID);
+    if (!d || have.has(d) || tomb[d]) continue;
+    if (isExcludedPartner(t)) continue;               // Wiom Net / exited CSP: excluded by design
+    misses.push({ ticket: d, mobile: dgt(t.CUSTOMER_MOBILE), partner: String(t.PARTNER || ''), why: String(t.SUB_CATEGORY || '') });
+  }
+  // 2. coverage — what the rules chose not to take, in the same 72h-14d window
+  const INT = "(t.TITLE ILIKE '%internet%' OR t.TITLE ILIKE '%slow speed%' OR t.TITLE ILIKE '%frequent disconnection%' OR t.TITLE ILIKE '%recharge done%')";
+  let coverage = null;
+  try {
+    const rows = await queryMetabase(`
+      WITH ev AS (
+        SELECT TRY_TO_NUMBER(TASK_ID) AS TID,
+               MAX(CASE WHEN EVENT_NAME = 'TICKET_REOPENED' THEN ADDED_TIME END) AS LAST_REOPEN,
+               MAX(CASE WHEN EVENT_NAME IN ('TICKET_RESOLVED','TICKET_CLOSED','CUSTOMER_CLOSE_TICKET') THEN ADDED_TIME END) AS LAST_CLOSE
+        FROM PROD_DB.PUBLIC.TICKET_LOGS
+        WHERE ADDED_TIME >= DATEADD(DAY,-21,CURRENT_TIMESTAMP())
+          AND EVENT_NAME IN ('TICKET_REOPENED','TICKET_RESOLVED','TICKET_CLOSED','CUSTOMER_CLOSE_TICKET')
+        GROUP BY 1)
+      SELECT
+        COUNT(*)                                                                              AS WINDOW_TICKETS,
+        SUM(CASE WHEN t.STATUS = 'OPEN' THEN 1 ELSE 0 END)                                    AS STILL_OPEN,
+        SUM(CASE WHEN ev.LAST_REOPEN IS NOT NULL THEN 1 ELSE 0 END)                           AS EVER_REOPENED,
+        SUM(CASE WHEN ev.LAST_REOPEN IS NOT NULL AND ev.LAST_CLOSE > ev.LAST_REOPEN THEN 1 ELSE 0 END) AS REOPENED_THEN_CLOSED,
+        SUM(CASE WHEN ev.LAST_REOPEN IS NOT NULL AND t.STATUS = 'OPEN' THEN 1 ELSE 0 END)     AS REOPENED_STILL_OPEN
+      FROM PUBLIC.T_TICKETS_NEW t
+      LEFT JOIN ev ON ev.TID = t.TICKET_ID
+      WHERE ${INT}
+        AND t.CREATED_TIME BETWEEN DATEADD(HOUR,-96,CURRENT_TIMESTAMP()) AND DATEADD(HOUR,-72,CURRENT_TIMESTAMP())`, apiKey);
+    coverage = rows[0] || null;
+  } catch (e) { log('WARN: intake coverage query failed — ' + e.message); }
+
+  const snap = {
+    at: Date.now(),
+    checked: qualified.length,
+    rule_misses: misses.length,
+    misses: misses.slice(0, 25),
+    coverage,
+  };
+  try {
+    await fbPut('/cases/__intake_audit__/latest', snap);
+    await fbPut('/cases/__intake_audit__/history/' + new Date().toISOString().slice(0, 13), snap);
+  } catch (e) { log('WARN: intake audit write failed — ' + e.message); }
+
+  if (misses.length) {
+    log(`INTAKE AUDIT: ${misses.length} ticket(s) qualified but are NOT in the tracker — ` +
+        misses.slice(0, 10).map(m => m.ticket).join(', '));
+  } else {
+    log(`Intake audit: every one of the ${qualified.length} qualifying tickets is in the tracker.`);
+  }
+  if (coverage) {
+    log(`Intake coverage (tickets that crossed 72h in the last day): ${coverage.WINDOW_TICKETS} total, ` +
+        `${coverage.STILL_OPEN} still open, ${coverage.EVER_REOPENED} were reopened at some point, ` +
+        `${coverage.REOPENED_THEN_CLOSED} of those were closed again (not taken, by rule), ` +
+        `${coverage.REOPENED_STILL_OPEN} reopened and still open (taken).`);
+  }
+  return snap;
+}
+
 // ── Reopened cases the CSP closed again ─────────────────────────────────────
 // A reopened ticket earns its place in the tracker only while it is still
 // open. If the CSP disposes it after the reopen it is no longer a live
@@ -986,12 +1071,13 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
 
   // ── Step 1: Internet sync (SERVICE_TICKET_MODEL) ─────────────────────────
   // Skipped during a chat-only backfill so the backfill stays focused & silent.
-  let internetAdded = 0, internetSkipped = 0, internetEnriched = 0;
+  let internetAdded = 0, internetSkipped = 0, internetEnriched = 0, internetTicketsAll = [];
   if (!BACKFILL_CHAT) {
     log('Running internet-ticket query (SERVICE_TICKET_MODEL)…');
     let tickets;
     try {
       tickets = await queryMetabase(sql, apiKey);
+      internetTicketsAll = tickets;
     } catch (e) {
       console.error('ERROR querying Metabase (internet):', e.message);
       process.exit(1);
@@ -1176,11 +1262,12 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       'AND t.CREATED_TIME BETWEEN DATEADD(HOUR, -96, CURRENT_TIMESTAMP()) AND DATEADD(HOUR, -72, CURRENT_TIMESTAMP())');
 
   // ── Step 2b: LIVE-open tickets the model path can't see ──
-  let liveAdded = 0, liveSkipped = 0, liveEnriched = 0;
+  let liveAdded = 0, liveSkipped = 0, liveEnriched = 0, liveTicketsAll = [];
   if (!BACKFILL_CHAT) {
     log('Running live-open ticket query (T_TICKETS_NEW, any source)…');
     try {
       const liveTickets = await queryMetabase(liveOpenSql, apiKey);
+      liveTicketsAll = liveTickets;
       log(`Qualifying live-open tickets: ${liveTickets.length}`);
       ({ added: liveAdded, skipped: liveSkipped, enriched: liveEnriched } =
         await addTicketsToFirebase(liveTickets, 'live-open-cron'));
@@ -1190,11 +1277,12 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   }
 
   // ── Step 2c: tickets Kapture reopened, now past 72h ──
-  let reLogAdded = 0, reLogSkipped = 0, reLogEnriched = 0;
+  let reLogAdded = 0, reLogSkipped = 0, reLogEnriched = 0, reLogTicketsAll = [];
   if (!BACKFILL_CHAT) {
     log('Running reopened-from-event-log query (TICKET_LOGS TICKET_REOPENED)…');
     try {
       const reLogTickets = await queryMetabase(reopenLogSql, apiKey);
+      reLogTicketsAll = reLogTickets;
       log(`Qualifying reopened (event log) tickets: ${reLogTickets.length}`);
       ({ added: reLogAdded, skipped: reLogSkipped, enriched: reLogEnriched } =
         await addTicketsToFirebase(reLogTickets, 'reopened-log-cron'));
@@ -1206,6 +1294,13 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // Straight after intake, so a case the CSP closed since the last run does not
   // sit in the tracker for a day before anyone notices.
   try { await purgeClosedAfterReopen(apiKey); } catch (e) { log('WARN: reopened-case cleanup failed — ' + e.message); }
+
+  // Every ticket the rules qualified this run, checked back against the
+  // tracker. This is the guard against a silent miss.
+  let auditSnap = null;
+  try {
+    auditSnap = await auditIntake(apiKey, [].concat(internetTicketsAll, chatTickets || [], liveTicketsAll, reLogTicketsAll));
+  } catch (e) { log('WARN: intake audit failed — ' + e.message); }
 
   const added    = internetAdded + chatAdded + liveAdded + reopenAdded + reLogAdded;
   const skipped  = internetSkipped + chatSkipped + liveSkipped + reopenSkipped + reLogSkipped;
@@ -1244,6 +1339,8 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       if (liveAdded > 0)     parts.push(`${liveAdded} live-open`);
       if (reopenAdded > 0)   parts.push(`${reopenAdded} reopened`);
       if (reLogAdded > 0)    parts.push(`${reLogAdded} reopened-log`);
+      if (auditSnap && auditSnap.rule_misses > 0)
+        parts.push(`⚠️ ${auditSnap.rule_misses} qualified but missing — ${auditSnap.misses.slice(0, 5).map(m => m.ticket).join(', ')}`);
       const breakdown = parts.length ? ` (${parts.join(', ')})` : '';
       const slackRes = await httpRequest(
         'POST',
