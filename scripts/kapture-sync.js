@@ -1087,20 +1087,30 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // nobody. This path asks the plain question instead: was this internet ticket
   // ever reopened, and has it now passed 72 hours?
   //
-  // REOPEN_REQUIRE_OPEN narrows it to tickets Kapture still shows as open
-  // (~6/day instead of ~114/day) - the tight setting if the volume is too much.
-  const REOPEN_REQUIRE_OPEN = false;
+  // Per Shariq (24 Sep): a ticket that was closed again AFTER the reopen is
+  // not a live case and must not be added. So the log has to show the reopen
+  // as the LAST event of its kind, and the live ticket must still read OPEN.
   const reopenLogSql = chatSql
-    .replace('WITH pmob AS (', `WITH re AS (
-      SELECT DISTINCT TRY_TO_NUMBER(TASK_ID) AS TID
+    .replace('WITH pmob AS (', `WITH ev AS (
+      SELECT TRY_TO_NUMBER(TASK_ID) AS TID,
+             MAX(CASE WHEN EVENT_NAME = 'TICKET_REOPENED' THEN ADDED_TIME END) AS LAST_REOPEN,
+             MAX(CASE WHEN EVENT_NAME IN ('TICKET_RESOLVED','TICKET_CLOSED','CUSTOMER_CLOSE_TICKET') THEN ADDED_TIME END) AS LAST_CLOSE
       FROM PROD_DB.PUBLIC.TICKET_LOGS
-      WHERE EVENT_NAME = 'TICKET_REOPENED'
-        AND ADDED_TIME >= DATEADD(DAY, -21, CURRENT_TIMESTAMP())
+      WHERE ADDED_TIME >= DATEADD(DAY, -21, CURRENT_TIMESTAMP())
+        AND EVENT_NAME IN ('TICKET_REOPENED','TICKET_RESOLVED','TICKET_CLOSED','CUSTOMER_CLOSE_TICKET')
+      GROUP BY 1
+    ),
+    re AS (
+      -- Reopened and NOT closed again since: a ticket the CSP disposed after
+      -- the reopen is not a live high-pain case and must not be pulled in.
+      SELECT TID FROM ev
+      WHERE LAST_REOPEN IS NOT NULL
+        AND (LAST_CLOSE IS NULL OR LAST_CLOSE < LAST_REOPEN)
     ),
     pmob AS (`)
     .replace('FROM T_TICKETS_NEW t\n', 'FROM T_TICKETS_NEW t\n    JOIN re ON re.TID = t.TICKET_ID\n')
     .replace("WHERE t.STATUS = 'OPEN'\n      AND t.EXTRA_DATA:ticket_source::string = 'CUSTOMER_CHAT'",
-      (REOPEN_REQUIRE_OPEN ? "WHERE t.STATUS = 'OPEN'" : "WHERE t.STATUS IN ('OPEN','RESOLVED','CLOSED')") +
+      "WHERE t.STATUS = 'OPEN'" +
       "\n      AND (t.TITLE ILIKE '%internet%' OR t.TITLE ILIKE '%slow speed%' OR t.TITLE ILIKE '%frequent disconnection%' OR t.TITLE ILIKE '%recharge done%')")
     .replace("'Chat'                                            AS CHANNEL", "'Service'                                         AS CHANNEL")
     // Only tickets that crossed 72 hours in the last day. Without this the
