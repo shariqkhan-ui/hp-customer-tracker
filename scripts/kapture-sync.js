@@ -8,8 +8,25 @@
  *   4. Adds new qualifying cases to Firebase with today's date as "Case Added On"
  *
  * No browser automation needed — uses Metabase SQL API directly.
- * Runs every hour from 10 AM IST via GitHub Actions cron.
  * Required env vars: METABASE_API_KEY, SLACK_BOT_TOKEN
+ *
+ * WHERE IT RUNS — read this before changing anything here
+ * ------------------------------------------------------
+ * Railway service `kapture-sync-cron`, schedule '0,30 2-13 * * *' UTC, i.e.
+ * every 30 minutes from 07:30 to 19:00 IST.
+ *
+ * That service deploys from the **cron-release** branch, NOT master. A Railway
+ * cron does not fire while it is being redeployed, so every push to master used
+ * to eat the slot it landed on: five pushes on 24 Sep 2026 cost the 16:30 and
+ * 17:00 IST runs and looked, from the tracker, like the sync had died.
+ *
+ * So: work on master as usual. When a change here should go live, promote it
+ * deliberately and outside the run window (after 19:00 or before 07:30 IST):
+ *
+ *     npm run promote-cron        # git push origin master:cron-release
+ *
+ * Nothing else redeploys the cron. The dashboard service still follows master,
+ * so shipping UI or doc changes during the day is safe.
  */
 
 const https = require('https');
