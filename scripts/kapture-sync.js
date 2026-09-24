@@ -1074,6 +1074,43 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   const { added: chatAdded, skipped: chatSkipped, enriched: chatEnriched } =
     await addTicketsToFirebase(chatTickets, BACKFILL_CHAT ? 'chat-backfill' : 'chat-cron');
 
+  // ── Step 2c SQL: tickets Kapture REOPENED, caught as they turn 72h ────────
+  // The reopen tag lives in the event log: TICKET_LOGS.EVENT_NAME =
+  // 'TICKET_REOPENED', one event per reopen (the log repeats each row ~94
+  // times, which is why SERVICE_TICKET_MODEL.TIMES_REOPENED reads 95 for a
+  // single reopen and is useless). SERVICE_TICKET_MODEL.FIRST_REOPENED_TIME is
+  // the FIRST reopen of the ticket's life, so the old 24-hour recency filter on
+  // it could almost never fire - and it is paired with the 72-hour age floor,
+  // which a ticket reopened on day one cannot satisfy at the same time. Between
+  // them the two windows never overlap, which is how ticket 789875031370
+  // (reopened at 29 hrs, disposed 3 hrs later, 72 hrs up on 23 Sep) reached
+  // nobody. This path asks the plain question instead: was this internet ticket
+  // ever reopened, and has it now passed 72 hours?
+  //
+  // REOPEN_REQUIRE_OPEN narrows it to tickets Kapture still shows as open
+  // (~6/day instead of ~114/day) - the tight setting if the volume is too much.
+  const REOPEN_REQUIRE_OPEN = false;
+  const reopenLogSql = chatSql
+    .replace('WITH pmob AS (', `WITH re AS (
+      SELECT DISTINCT TRY_TO_NUMBER(TASK_ID) AS TID
+      FROM PROD_DB.PUBLIC.TICKET_LOGS
+      WHERE EVENT_NAME = 'TICKET_REOPENED'
+        AND ADDED_TIME >= DATEADD(DAY, -21, CURRENT_TIMESTAMP())
+    ),
+    pmob AS (`)
+    .replace('FROM T_TICKETS_NEW t\n', 'FROM T_TICKETS_NEW t\n    JOIN re ON re.TID = t.TICKET_ID\n')
+    .replace("WHERE t.STATUS = 'OPEN'\n      AND t.EXTRA_DATA:ticket_source::string = 'CUSTOMER_CHAT'",
+      (REOPEN_REQUIRE_OPEN ? "WHERE t.STATUS = 'OPEN'" : "WHERE t.STATUS IN ('OPEN','RESOLVED','CLOSED')") +
+      "\n      AND (t.TITLE ILIKE '%internet%' OR t.TITLE ILIKE '%slow speed%' OR t.TITLE ILIKE '%frequent disconnection%' OR t.TITLE ILIKE '%recharge done%')")
+    .replace("'Chat'                                            AS CHANNEL", "'Service'                                         AS CHANNEL")
+    // Only tickets that crossed 72 hours in the last day. Without this the
+    // query returns the whole 14-day backlog (~2,000 tickets) and would dump it
+    // into the tracker in one run - the failure mode that forced the 14-day and
+    // 3-day reopen rules to be rolled back in August. The cron runs every
+    // 30 minutes, so a 24-hour catch window cannot miss a ticket.
+    .replace('AND t.CREATED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())',
+      'AND t.CREATED_TIME BETWEEN DATEADD(HOUR, -96, CURRENT_TIMESTAMP()) AND DATEADD(HOUR, -72, CURRENT_TIMESTAMP())');
+
   // ── Step 2b: LIVE-open tickets the model path can't see ──
   let liveAdded = 0, liveSkipped = 0, liveEnriched = 0;
   if (!BACKFILL_CHAT) {
@@ -1088,10 +1125,24 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     }
   }
 
-  const added    = internetAdded + chatAdded + liveAdded + reopenAdded;
-  const skipped  = internetSkipped + chatSkipped + liveSkipped + reopenSkipped;
-  const enriched = internetEnriched + chatEnriched + liveEnriched + reopenEnriched;
-  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded}, live-open ${liveAdded}, reopened ${reopenAdded})  Enriched: ${enriched}  Skipped: ${skipped}`);
+  // ── Step 2c: tickets Kapture reopened, now past 72h ──
+  let reLogAdded = 0, reLogSkipped = 0, reLogEnriched = 0;
+  if (!BACKFILL_CHAT) {
+    log('Running reopened-from-event-log query (TICKET_LOGS TICKET_REOPENED)…');
+    try {
+      const reLogTickets = await queryMetabase(reopenLogSql, apiKey);
+      log(`Qualifying reopened (event log) tickets: ${reLogTickets.length}`);
+      ({ added: reLogAdded, skipped: reLogSkipped, enriched: reLogEnriched } =
+        await addTicketsToFirebase(reLogTickets, 'reopened-log-cron'));
+    } catch (e) {
+      console.error('ERROR querying Metabase (reopened event log):', e.message);
+    }
+  }
+
+  const added    = internetAdded + chatAdded + liveAdded + reopenAdded + reLogAdded;
+  const skipped  = internetSkipped + chatSkipped + liveSkipped + reopenSkipped + reLogSkipped;
+  const enriched = internetEnriched + chatEnriched + liveEnriched + reopenEnriched + reLogEnriched;
+  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded}, live-open ${liveAdded}, reopened ${reopenAdded}, reopened-log ${reLogAdded})  Enriched: ${enriched}  Skipped: ${skipped}`);
 
   // ── Step 2.5: Mirror the Finance refund sheet into /refund_sheet ──
   // Failure here must never break the ticket sync.
@@ -1124,6 +1175,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       if (chatAdded > 0)     parts.push(`${chatAdded} chat`);
       if (liveAdded > 0)     parts.push(`${liveAdded} live-open`);
       if (reopenAdded > 0)   parts.push(`${reopenAdded} reopened`);
+      if (reLogAdded > 0)    parts.push(`${reLogAdded} reopened-log`);
       const breakdown = parts.length ? ` (${parts.join(', ')})` : '';
       const slackRes = await httpRequest(
         'POST',

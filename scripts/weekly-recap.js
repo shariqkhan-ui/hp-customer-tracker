@@ -58,21 +58,38 @@ async function kaptureReopens(fromISO) {
   if (!key) { console.log('METABASE_API_KEY not set — reopens fall back to the tracker field only.'); return null; }
   const map = {};
   try {
-    for (let off = 0; off < 12000; off += 1800) {
-      const sql = `SELECT KAPTURE_TICKET_ID, TO_CHAR(FIRST_REOPENED_TIME,'YYYY-MM-DD') AS d
-        FROM PROD_DB.PUBLIC.SERVICE_TICKET_MODEL
-        WHERE FIRST_REOPENED_TIME IS NOT NULL AND FIRST_REOPENED_TIME >= '${fromISO}'
-        ORDER BY KAPTURE_TICKET_ID LIMIT 1800 OFFSET ${off}`;
+    // The reopen tag is an EVENT, not a column: TICKET_LOGS.EVENT_NAME =
+    // 'TICKET_REOPENED', one event per reopen. This used to read
+    // SERVICE_TICKET_MODEL.FIRST_REOPENED_TIME, which is only the FIRST reopen
+    // of a ticket's life - a ticket reopened three times in September still
+    // reported its July reopen - and its sibling TIMES_REOPENED is a raw count
+    // of log rows that the pipeline duplicates about 94 times (one reopen reads
+    // as 95). The log is deduplicated here by taking the LAST reopen per ticket.
+    // Metabase caps a dataset response at 2,000 rows, so this pages - a silent
+    // truncation here would quietly under-report every reopen in the doc.
+    for (let off = 0; off < 40000; off += 1800) {
+      const sql = `WITH re AS (
+          SELECT TRY_TO_NUMBER(TASK_ID) AS TID, MAX(ADDED_TIME) AS LAST_REOPEN
+          FROM PROD_DB.PUBLIC.TICKET_LOGS
+          WHERE EVENT_NAME = 'TICKET_REOPENED' AND ADDED_TIME >= '${fromISO}'
+          GROUP BY 1
+        )
+        SELECT t.KAPTURE_TICKET_ID, TO_CHAR(re.LAST_REOPEN,'YYYY-MM-DD') AS d
+        FROM re JOIN PROD_DB.PUBLIC.T_TICKETS_NEW t ON t.TICKET_ID = re.TID
+        ORDER BY t.KAPTURE_TICKET_ID LIMIT 1800 OFFSET ${off}`;
       const r = await fetch(METABASE + '/api/dataset', {
         method: 'POST',
         headers: { 'x-api-key': key, 'content-type': 'application/json' },
         body: JSON.stringify({ database: 113, type: 'native', native: { query: sql } }),
       }).then(x => x.json());
       if (!r.data || !r.data.rows) throw new Error(JSON.stringify(r.error || r).slice(0, 200));
-      r.data.rows.forEach(([t, d]) => { const k = String(t || '').replace(/\D/g, ''); if (k) map[k] = d; });
+      r.data.rows.forEach(([t, d]) => {
+        const k = String(t || '').replace(/\D/g, '');
+        if (k && (!map[k] || d > map[k])) map[k] = d;      // keep the latest reopen
+      });
       if (r.data.rows.length < 1800) break;
     }
-    console.log('Kapture reopen records:', Object.keys(map).length);
+    console.log('Kapture reopen events (from the log):', Object.keys(map).length);
     return map;
   } catch (e) {
     console.error('Kapture reopen query failed (non-fatal):', e.message);
@@ -1389,7 +1406,7 @@ ${refundTriangleHtml}
 ${momHtml}
 ${cspBlockHtml}
 ${revivedHtml}
-<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's FIRST_REOPENED_TIME (the tracker's own reopened_at field only catches a dashboard revert inside 24 hrs and misses about half of them). Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's own event log (TICKET_LOGS, EVENT_NAME = TICKET_REOPENED, latest event per ticket). The model's FIRST_REOPENED_TIME and TIMES_REOPENED columns are not used: the first is only a ticket's first-ever reopen and the second counts duplicated log rows, so a single reopen reads as 95. Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div></body></html>`;
 
   const outPath = path.join(__dirname, '..', 'recap.html');
