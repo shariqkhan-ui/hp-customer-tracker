@@ -569,18 +569,37 @@ async function auditIntake(apiKey, qualified) {
   const all = await fbGet('/cases') || {};
   const tomb = await fbGet('/purged_tickets') || {};
   const have = new Set();
+  // The duplicate guard in addTicketsToFirebase skips a ticket whose customer
+  // already has an open case, so the audit has to know about it too - on the
+  // first run all 17 "misses" were this rule, and an alarm that cries wolf is
+  // worse than no alarm.
+  const openMob = new Set();
+  const PINGKW = ['ping up', 'internet working', 'internet up', 'speed up', 'link up'];
   Object.entries(all).forEach(([k, c]) => {
     if (k.startsWith('__') || !c || !c.ticket_no) return;
     have.add(dgt(c.ticket_no));
+    const g = String(c.remarks || '').trim().toLowerCase();
+    const resolved = String(c.migration_date || '').trim() !== '' ||
+      g === 'resolved by old partner' || g === 'resolved by old csp' ||
+      PINGKW.some(kw => g.includes(kw));
+    if (resolved) return;
+    const m = String(c.mobile || '').replace(/\D/g, '').slice(-10);
+    if (m.length === 10) openMob.add(m);
   });
   // 1. conformance
-  const misses = [];
+  const missMap = new Map();      // deduped: a ticket can qualify on several paths
+  let dupSkipped = 0, excludedPartner = 0;
   for (const t of qualified) {
     const d = dgt(t.KAPTURE_TICKET_ID);
     if (!d || have.has(d) || tomb[d]) continue;
-    if (isExcludedPartner(t)) continue;               // Wiom Net / exited CSP: excluded by design
-    misses.push({ ticket: d, mobile: dgt(t.CUSTOMER_MOBILE), partner: String(t.PARTNER || ''), why: String(t.SUB_CATEGORY || '') });
+    if (isExcludedPartner(t)) { excludedPartner++; continue; }   // Wiom Net / exited CSP, by design
+    const mob = dgt(t.CUSTOMER_MOBILE).slice(-10);
+    if (mob.length === 10 && openMob.has(mob)) { dupSkipped++; continue; }  // customer already open, by design
+    if (!missMap.has(d)) {
+      missMap.set(d, { ticket: d, mobile: mob, partner: String(t.PARTNER || ''), why: String(t.SUB_CATEGORY || '') });
+    }
   }
+  const misses = [...missMap.values()];
   // 2. coverage — what the rules chose not to take, in the same 72h-14d window
   const INT = "(t.TITLE ILIKE '%internet%' OR t.TITLE ILIKE '%slow speed%' OR t.TITLE ILIKE '%frequent disconnection%' OR t.TITLE ILIKE '%recharge done%')";
   let coverage = null;
@@ -612,6 +631,8 @@ async function auditIntake(apiKey, qualified) {
     checked: qualified.length,
     rule_misses: misses.length,
     misses: misses.slice(0, 25),
+    skipped_customer_already_open: dupSkipped,
+    skipped_excluded_partner: excludedPartner,
     coverage,
   };
   try {
@@ -623,7 +644,8 @@ async function auditIntake(apiKey, qualified) {
     log(`INTAKE AUDIT: ${misses.length} ticket(s) qualified but are NOT in the tracker — ` +
         misses.slice(0, 10).map(m => m.ticket).join(', '));
   } else {
-    log(`Intake audit: every one of the ${qualified.length} qualifying tickets is in the tracker.`);
+    log(`Intake audit: every one of the ${qualified.length} qualifying tickets is accounted for ` +
+        `(${dupSkipped} skipped because the customer already has an open case, ${excludedPartner} on an excluded CSP).`);
   }
   if (coverage) {
     log(`Intake coverage (tickets that crossed 72h in the last day): ${coverage.WINDOW_TICKETS} total, ` +
