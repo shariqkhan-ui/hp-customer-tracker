@@ -802,6 +802,7 @@ ${ledgerRows}
 ${CITIES.map(k => cityGroup(k === 'Bharat' ? 'Bharat (UP cities)' : k, k)).join('\n')}
 ${cityGroup('All', 'all')}
 </tbody></table></div>
+${cityByP.some(by => by.unmapped.m) ? `<p class="sub" style="margin-top:8px">All is every matured case, the same as the week-wise table. ${periods.map((pp, i) => cityByP[i].unmapped.m ? `${pp.key}: ${cityByP[i].unmapped.m}` : '').filter(Boolean).join(' · ')} of those belong to CSPs not yet in the partner hierarchy, so they are in All but in no city row.</p>` : ''}
 </section>` : `<section><h2>Resolution status, city-wise</h2><p class="sub">The partner hierarchy did not return this run, so the city cut is not available.</p></section>`;
   const sTD = S[LASTCOL];    // since launch
 
@@ -1723,7 +1724,7 @@ ${reopSnapHtml}
 ${refundsHtml()}
 ${whyHtml}
 ${cityHtml}
-<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a resolution of ours that came back down, as stamped by the tracker (reopened_at), counted in the week it came back. Net resolved = resolved inside 48 hrs and still resolved; a case that came back down and stayed down is not counted. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = refund-eligible, not refunded, and no reason recorded; amounts pro-rata on the plan days left, or the Wiom Hub amount where it paid. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a resolution of ours that came back down, as stamped by the tracker (reopened_at), counted in the week it came back. Net resolved = resolved inside 48 hrs and still resolved; a case that came back down and stayed down is not counted. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
 </div>
 ${commentBox}
 ${commentScript}
