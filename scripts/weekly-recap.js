@@ -827,6 +827,55 @@ ${cityByP.some(by => by.unmapped.m) ? `<p class="sub" style="margin-top:8px">All
   // then the eligible cases split by the tracker's Refund Action status. Each
   // case lands in exactly one bucket, so the buckets sum back to eligible.
   const escR = v => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+  // ── CSPs that were resolving and have stopped ──────────────────────────
+  // Same matured-case arithmetic as the week-wise table, per CSP. "Earlier"
+  // is launch up to the end of Week 3; "recent" is the last two weeks. A CSP
+  // qualifies when it had a real track record (5+ matured cases, 70%+
+  // resolved) and its recent rate has fallen by 20 pp or more on 3+ cases.
+  // Ranked by the size of the drop, then by how many customers are down.
+  const stoppedHtml = (() => {
+    const recFrom = periods[LASTCOL - 2].from, recTo = periods[LASTCOL - 1].to;
+    const byCsp = {};
+    era.forEach(c => {
+      const m = maturedAt(c); if (!(m > 0 && m < CUT)) return;
+      const name = trim(c.partner) || '(unknown)';
+      const k = normName(name); if (!k) return;
+      const e = byCsp[k] || (byCsp[k] = { name, early: { n: 0, r: 0 }, rec: { n: 0, r: 0, down: [] } });
+      const res = getStatus(c) !== 'Unresolved';
+      if (m >= recFrom && m < recTo) { e.rec.n++; if (res) e.rec.r++; else e.rec.down.push(c); }
+      else if (m < recFrom) { e.early.n++; if (res) e.early.r++; }
+    });
+    const rows = Object.values(byCsp).map(e => {
+      const eR = e.early.n ? e.early.r / e.early.n * 100 : 0;
+      const rR = e.rec.n ? e.rec.r / e.rec.n * 100 : 0;
+      return Object.assign(e, { eR, rR, drop: eR - rR });
+    }).filter(e => e.early.n >= 5 && e.eR >= 70 && e.rec.n >= 3 && e.drop >= 20)
+      .sort((a, b) => b.drop - a.drop || b.rec.down.length - a.rec.down.length)
+      .slice(0, 10);
+    const ageD = c => Math.floor((NOW - startTs(c)) / 86400000);
+    const tk = c => `<a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a> <span style="color:var(--muted)">${ageD(c)}d</span>`;
+    const earlyLabel = fmtD(LAUNCH) + ' \u2013 ' + fmtD(recFrom - 1), recLabel = fmtD(recFrom) + ' \u2013 ' + fmtD(recTo - 1);
+    const body = rows.length ? rows.map((e, i) => `<tr>` +
+      `<td>${i + 1}</td>` +
+      `<td style="text-align:left;white-space:normal"><b>${escR(e.name)}</b></td>` +
+      `<td style="text-align:left;font-weight:400">${escR(cityOf({ partner: e.name }) || '\u2014')}</td>` +
+      `<td>${e.early.n}</td><td class="g">${e.early.r} (${pct(e.early.r, e.early.n)})</td>` +
+      `<td>${e.rec.n}</td><td class="b">${e.rec.r} (${pct(e.rec.r, e.rec.n)})</td>` +
+      `<td class="b"><b>\u2212${e.drop.toFixed(1)} pp</b></td>` +
+      `<td class="b"><b>${e.rec.down.length}</b></td>` +
+      `<td style="text-align:left;font-weight:400;white-space:normal;font-size:12.5px">${e.rec.down.sort((a, b) => startTs(a) - startTs(b)).map(tk).join(', ')}</td>` +
+      `</tr>`).join('\n') :
+      `<tr><td colspan="10" style="text-align:left;font-weight:400">No CSP with a 70%+ track record on 5+ cases has dropped 20 pp or more on 3+ cases in ${recLabel}.</td></tr>`;
+    return `<section>
+<h2>CSPs that were resolving and have stopped \u2014 top ${rows.length || 10}</h2>
+<p class="sub">Each CSP's resolved rate on the cases that matured up to ${fmtD(recFrom - 1)} against the last two weeks (${recLabel}), overall resolution as in the Resolved row. Listed when the CSP had a real track record \u2014 5 or more matured cases, 70% or more resolved \u2014 and the recent rate has fallen by 20 pp or more on 3 or more cases. Ranked by the size of the drop, then by customers still down. The still-down tickets are the ones to raise with the CSP.</p>
+<div class="tablewrap"><table style="min-width:1000px">
+<thead><tr><th>#</th><th style="text-align:left">CSP</th><th style="text-align:left">City</th><th>Cases<br><span style="font-weight:400;font-size:12px">${earlyLabel}</span></th><th>Resolved<br><span style="font-weight:400;font-size:12px">earlier</span></th><th>Cases<br><span style="font-weight:400;font-size:12px">${recLabel}</span></th><th>Resolved<br><span style="font-weight:400;font-size:12px">recent</span></th><th>Drop</th><th>Still down</th><th style="text-align:left">Still-down tickets</th></tr></thead>
+<tbody>
+${body}
+</tbody></table></div>
+</section>`;
+  })();
   const maturedAll = maturedTD;
   const unresAll = maturedAll.filter(c => getStatus(c) === 'Unresolved');
   const pingedBack = unresAll.filter(c => pingedAfter(c));
@@ -1723,6 +1772,7 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 ${reopSnapHtml}
 ${refundsHtml()}
 ${whyHtml}
+${stoppedHtml}
 ${cityHtml}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = refund-eligible, not refunded, and no reason recorded; amounts pro-rata on the plan days left, or the Wiom Hub amount where it paid. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a resolution of ours that came back down, as stamped by the tracker (reopened_at), counted in the week it came back. Net resolved = resolved inside 48 hrs and still resolved; a case that came back down and stayed down is not counted. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
 </div>
