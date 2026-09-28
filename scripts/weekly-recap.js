@@ -479,13 +479,13 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     const col = n => H.findIndex(h => h === n);
     const iT = col('ticket no'), iCx = col('cx remarks'), iCsp = col('csp remarks'), iP = col('last ping time');
     const iA = col('added at (time)'), iM = col('mobile'), iN = col('customer name'),
-          iC = col('csp'), iS = col('sub-category');
+          iC = col('csp'), iS = col('sub-category'), iSt = col('status');
     sh.slice(1).forEach(r => {
       const t = String(r[iT] || '').replace(/\D/g, '');
-      if (t) reopReason[t] = { cx: trim(r[iCx]), csp: trim(r[iCsp]), ping: trim(r[iP]) };
+      if (t) reopReason[t] = { cx: trim(r[iCx]), csp: trim(r[iCsp]), ping: trim(r[iP]), status: iSt >= 0 ? trim(r[iSt]) : '' };
       if (t) reopRcaRows.push({
         t, when: trim(r[iA]), mobile: trim(r[iM]), cust: trim(r[iN]), cspName: trim(r[iC]),
-        subcat: trim(r[iS]), cx: trim(r[iCx]), csp: trim(r[iCsp]),
+        subcat: trim(r[iS]), cx: trim(r[iCx]), csp: trim(r[iCsp]), status: iSt >= 0 ? trim(r[iSt]) : '',
       });
     });
     console.log('reopen RCA rows:', Object.keys(reopReason).length);
@@ -670,10 +670,11 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     const SH = sh[0].map(h => h.trim().toLowerCase());
     const col = name => SH.findIndex(h => h === name);
     const iT = col('ticket no'), iM = col('mobile'), iC = col('csp'), iCx = col('cx remarks'),
-          iCsp = col('csp remarks'), iPing = col('last ping time'), iG = col('ground remarks');
+          iCsp = col('csp remarks'), iPing = col('last ping time'), iG = col('ground remarks'), iSt = col('status');
     const rows = sh.slice(1).filter(r => trim(r[iT]));
+    const stCell = r => { const v = iSt >= 0 ? trim(r[iSt]) : ''; return `<td class="${!v ? '' : /unresolved/i.test(v) ? 'b' : 'g'}">${escH(v) || '—'}</td>`; };
     const ledgerRows = rows.map(r =>
-      `<tr><td>${escH(trim(r[iT]))}</td><td>${escH(trim(r[iM]))}</td><td>${escH(trim(r[iC]))}</td><td style="white-space:normal">${escH(trim(r[iCx]) || '—')}</td><td style="white-space:normal">${escH(trim(r[iCsp]) || '—')}</td><td style="white-space:normal">${escH(trim(r[iG]) || '—')}</td><td>${escH(trim(r[iPing]) || '—')}</td></tr>`
+      `<tr><td>${escH(trim(r[iT]))}</td><td>${escH(trim(r[iM]))}</td><td>${escH(trim(r[iC]))}</td><td style="white-space:normal">${escH(trim(r[iCx]) || '—')}</td><td style="white-space:normal">${escH(trim(r[iCsp]) || '—')}</td><td style="white-space:normal">${escH(trim(r[iG]) || '—')}</td><td>${escH(trim(r[iPing]) || '—')}</td>${stCell(r)}</tr>`
     ).join('\n');
     // Bucketize the RCA: counts + % by CX-remark bucket, CSP-side sub-buckets
     const bucketOf = (list, idx, blankLabel) => {
@@ -697,7 +698,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
 ${bucketRows}
 </tbody></table></div>
 <div class="tablewrap" style="max-height:480px;overflow:auto"><table style="min-width:900px">
-<thead><tr><th>Ticket No</th><th>Mobile</th><th>CSP</th><th style="text-align:left">CX Remarks</th><th style="text-align:left">CSP Remarks</th><th style="text-align:left">Ground Remarks</th><th>Last Ping Time</th></tr></thead>
+<thead><tr><th>Ticket No</th><th>Mobile</th><th>CSP</th><th style="text-align:left">CX Remarks</th><th style="text-align:left">CSP Remarks</th><th style="text-align:left">Ground Remarks</th><th>Last Ping Time</th><th>Status</th></tr></thead>
 <tbody>
 ${ledgerRows}
 </tbody></table></div>
@@ -1096,6 +1097,16 @@ ${Object.entries(lwTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
     return m ? Date.UTC(+m[3], +m[2] - 1, +m[1]) - IST : 0;
   };
   const reopWeekRows = reopRcaRows.filter(r => { const t = dmy(r.when); return t >= lwFrom && t < lwTo; });
+  // Status of a reopened case = the field team's Status column in the RCA
+  // sheet (Unresolved / Ping Up / Migrated), per Shariq 28 Sep.
+  const reopStatusCls = rr => !rr || !rr.status ? '' : /unresolved/i.test(rr.status) ? 'b' : 'g';
+  const reopSheetSummary = (statuses) => {
+    const known = statuses.filter(Boolean);
+    const down = known.filter(x => /unresolved/i.test(x)).length;
+    const up = known.length - down;
+    const miss = statuses.length - known.length;
+    return `Status per the RCA sheet: <b>${up}</b> back up, <b class="${down ? 'b' : ''}">${down}</b> still down${miss ? `, ${miss} not in the sheet yet` : ''}.`;
+  };
   // If the sheet has no rows for the week, say so. Silently dropping the
   // section makes an unfilled sheet look like a week with no reopens.
   const rcaLatest = reopRcaRows.map(r => dmy(r.when)).filter(Boolean).sort((x, y) => x - y).pop();
@@ -1109,7 +1120,7 @@ ${Object.entries(lwTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
 <h2>Reopened cases \u2014 ${periods[LASTCOL - 1].key}</h2>
 <p class="sub">${lwReopCases.length} resolution${lwReopCases.length === 1 ? '' : 's'} came back down in ${periods[LASTCOL - 1].label}, against ${S[LASTCOL - 1].resWeek} marked resolved that week (${pct(lwReopCases.length, S[LASTCOL - 1].resWeek)}). The remark each case was closed on is the RCA; the CX column is filled where the field team has written the case up in the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit?gid=0" style="color:var(--accent-ink)">reopen RCA sheet</a>.</p>
 <div class="tablewrap"><table style="min-width:980px">
-<thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">CSP</th><th style="text-align:left">Closed on this remark</th><th style="text-align:left">Sub-category</th><th>Status now</th><th style="text-align:left">CX remarks</th></tr></thead>
+<thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">CSP</th><th style="text-align:left">Closed on this remark</th><th style="text-align:left">Sub-category</th><th>Status (RCA sheet)</th><th style="text-align:left">CX remarks</th></tr></thead>
 <tbody>
 ${lwReopCases.map(c => {
   const t = dig(c.ticket_no);
@@ -1120,12 +1131,13 @@ ${lwReopCases.map(c => {
     `<td style="text-align:left;font-weight:400;white-space:normal">${escR(trim(c.partner))}</td>` +
     `<td style="text-align:left;white-space:normal"><b>${escR(trim(c.remarks)) || '\u2014'}</b></td>` +
     `<td style="text-align:left;font-weight:400;white-space:normal;font-size:12.5px">${escR(trim(c.subcat))}</td>` +
-    `<td class="${getStatus(c) === 'Unresolved' ? 'b' : 'g'}">${getStatus(c)}</td>` +
+    `<td class="${reopStatusCls(rr)}">${rr && rr.status ? escR(rr.status) : '<span style="color:var(--muted);font-weight:400">not in sheet</span>'}</td>` +
     `<td style="text-align:left;font-weight:400;white-space:normal">${rr && rr.cx ? escR(rr.cx) : '<span style="color:var(--muted)">not written up</span>'}</td>` +
     `</tr>`;
 }).join(NL)}
 </tbody></table></div>
-<p class="sub" style="margin-top:10px">The tracker's Weekly Review tab shows ${S[LASTCOL - 1].reopWeek + (reopPrevSpill || 0)} for this week because it counts a reopen in the week the case matured. ${reopPrevSpill ? `${reopPrevSpill} of those came back down before ${fmtD(lwFrom)} and ${reopPrevSpill === 1 ? 'was' : 'were'} already reported last Monday, so ${reopPrevSpill === 1 ? 'it is counted in its' : 'they are counted in their'} own week here.` : ''}</p>
+<p class="sub" style="margin-top:10px">${reopSheetSummary(lwReopCases.map(c => (reopReason[dig(c.ticket_no)] || {}).status))}</p>
+<p class="sub" style="margin-top:6px">The tracker's Weekly Review tab shows ${S[LASTCOL - 1].reopWeek + (reopPrevSpill || 0)} for this week because it counts a reopen in the week the case matured. ${reopPrevSpill ? `${reopPrevSpill} of those came back down before ${fmtD(lwFrom)} and ${reopPrevSpill === 1 ? 'was' : 'were'} already reported last Monday, so ${reopPrevSpill === 1 ? 'it is counted in its' : 'they are counted in their'} own week here.` : ''}</p>
 </section>`;
   } else if (!reopWeekRows.length) {
     // Say the sheet is empty. Dropping the section silently reads as "no
@@ -1139,7 +1151,7 @@ ${lwReopCases.map(c => {
 <h2>Reopened cases \u2014 ${periods[LASTCOL - 1].key}</h2>
 <p class="sub">The ${reopWeekRows.length} customers whose case reopened in ${periods[LASTCOL - 1].label}, with the reason each gave, straight from the field team's reopen RCA sheet.</p>
 <div class="tablewrap"><table style="min-width:980px">
-<thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">Customer</th><th style="text-align:left">CSP</th><th style="text-align:left">Sub-category</th><th style="text-align:left">CX remarks</th><th style="text-align:left">CSP remarks</th></tr></thead>
+<thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">Customer</th><th style="text-align:left">CSP</th><th style="text-align:left">Sub-category</th><th>Status</th><th style="text-align:left">CX remarks</th><th style="text-align:left">CSP remarks</th></tr></thead>
 <tbody>
 ${reopWeekRows.map(r => `<tr>` +
   `<td><a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(r.t)}?query=${escR(r.t)}" target="_blank" rel="noopener">${escR(r.t)}</a></td>` +
@@ -1147,11 +1159,13 @@ ${reopWeekRows.map(r => `<tr>` +
   `<td style="text-align:left;font-weight:400;white-space:normal">${escR(r.cust)}</td>` +
   `<td style="text-align:left;font-weight:400;white-space:normal">${escR(r.cspName)}</td>` +
   `<td style="text-align:left;font-weight:400;white-space:normal;font-size:12.5px">${escR(r.subcat)}</td>` +
+  `<td class="${reopStatusCls(r)}">${escR(r.status) || '<span style="color:var(--muted);font-weight:400">not filled</span>'}</td>` +
   `<td style="text-align:left;white-space:normal"><b>${escR(r.cx) || '<span style="color:var(--muted);font-weight:400">not filled</span>'}</b></td>` +
   `<td style="text-align:left;font-weight:400;white-space:normal">${escR(r.csp) || '<span style="color:var(--muted)">\u2014</span>'}</td>` +
   `</tr>`).join(NL)}
 </tbody></table></div>
-<p class="sub" style="margin-top:10px">Read the two remark columns together: the customer is reporting the fault came back or was never fixed, while the CSP has recorded <b>&ldquo;Internet Working&rdquo;</b> on ${reopWeekRows.filter(r => /internet working/i.test(r.csp)).length} of the ${reopWeekRows.length}.</p>
+<p class="sub" style="margin-top:10px">${reopSheetSummary(reopWeekRows.map(r => r.status))}</p>
+<p class="sub" style="margin-top:6px">Read the two remark columns together: the customer is reporting the fault came back or was never fixed, while the CSP has recorded <b>&ldquo;Internet Working&rdquo;</b> on ${reopWeekRows.filter(r => /internet working/i.test(r.csp)).length} of the ${reopWeekRows.length}.</p>
 </section>`;
   }
 
