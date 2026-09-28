@@ -548,8 +548,13 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // A Kapture reopen dated on or before our resolution is usually why the case
   // reached this tracker in the first place, not a failure of our fix.
   const dayOf = ms => new Date(Number(ms) + IST).toISOString().slice(0, 10);
-  const reopenedAfter = c => {
-    if (Number(c.reopened_at) > 0) return true;            // dashboard-stamped
+  // Per Shariq (28 Sep): the doc's numbers must line up with last Monday's
+  // doc, whose Reopened row counted the tracker's own reopen stamp. So the
+  // net deduction is that same stamp, and nothing else: Resolved minus the
+  // Reopened row is the Net row. Kapture's event log, which also catches
+  // reopens the tracker never stamped, is kept only as a side note.
+  const reopenedAfter = c => Number(c.reopened_at) > 0;      // dashboard-stamped
+  const reopenedInKapture = c => {
     if (!kReop) return false;
     const d = kReop[dig(c.ticket_no)];
     if (!d) return false;
