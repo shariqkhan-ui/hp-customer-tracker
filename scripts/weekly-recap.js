@@ -783,28 +783,24 @@ ${ledgerRows}
     by.all = net(stats(all), () => true);
     return by;
   };
-  const cityLW = cityStats(periods[LW]), cityTD = cityStats(periods[LASTCOL]);
-  const cityRow = (label, by, key) => {
-    const x = by[key];
-    return `<tr><td style="text-align:left"><b>${label}</b></td>` +
-      `<td>${x.m.toLocaleString('en-IN')}</td>` +
-      `<td>${x.res.toLocaleString('en-IN')} (${pct(x.res, x.m)})</td>` +
-      `<td class="g"><b>${x.resNet.toLocaleString('en-IN')} (${pct(x.resNet, x.m)})</b></td>` +
-      `<td class="b">${x.unresM.toLocaleString('en-IN')} (${pct(x.unresM, x.m)})</td></tr>`;
-  };
-  const cityTable = (title, by) => `<p class="sub" style="margin:10px 0 4px"><b>${title}</b></p>
-<div class="tablewrap"><table>
-<thead><tr><th style="text-align:left">City</th><th>Cases matured</th><th>Resolved</th><th>Net resolved</th><th>Unresolved</th></tr></thead>
-<tbody>
-${CITIES.map(k => cityRow(k === 'Bharat' ? 'Bharat (UP cities)' : k, by, k)).join('\n')}
-${by.unmapped.m ? cityRow('<span style="font-weight:400;color:var(--muted)">CSP not in hierarchy</span>', by, 'unmapped') : ''}
-${cityRow('All', by, 'all')}
-</tbody></table></div>`;
+  const cityByP = periods.map(pp => cityStats(pp));
+  const cityCols = periods.map(pp => `<th>${pp.key}<br><span style="font-weight:400;font-size:12px">(${pp.label})</span></th>`).join('');
+  const cityCell = (v, m, cls) => `<td${cls ? ` class="${cls}"` : ''}>${v.toLocaleString('en-IN')} (${pct(v, m)})</td>`;
+  const cityGroup = (label, key) => `<tr><td style="text-align:left" colspan="${periods.length + 1}"><b>${label}</b></td></tr>
+<tr><td style="text-align:left;padding-left:20px">Cases matured</td>${cityByP.map(by => `<td>${by[key].m.toLocaleString('en-IN')}</td>`).join('')}</tr>
+<tr><td style="text-align:left;padding-left:20px">Resolved</td>${cityByP.map(by => cityCell(by[key].res, by[key].m, '')).join('')}</tr>
+<tr><td style="text-align:left;padding-left:20px"><b>Net resolved</b></td>${cityByP.map(by => cityCell(by[key].resNet, by[key].m, 'g')).join('')}</tr>
+<tr><td style="text-align:left;padding-left:20px">Unresolved</td>${cityByP.map(by => cityCell(by[key].unresM, by[key].m, 'b')).join('')}</tr>`;
   const cityHtml = cspCity ? `<section>
 <h2>Resolution status, city-wise</h2>
-<p class="sub">The same matured-case arithmetic as the week-wise table, cut by the CSP's city from the partner hierarchy. Delhi/NCR includes Ghaziabad, Noida, Faridabad and Gurgaon; Bharat is every UP city (Meerut, Agra, Bareilly, Lucknow, Prayagraj, Gorakhpur). Net resolved takes out the cases that came back.</p>
-${cityTable(periods[LW].key + ' \u2014 ' + periods[LW].label, cityLW)}
-${cityTable('Since launch \u2014 ' + periods[LASTCOL].label, cityTD)}
+<p class="sub">The same matured-case arithmetic as the week-wise table, cut by the CSP's city from the partner hierarchy. Delhi/NCR includes Ghaziabad, Noida, Faridabad and Gurgaon; Bharat is every UP city (Meerut, Agra, Bareilly, Lucknow, Prayagraj, Gorakhpur). Net resolved is Resolved minus the cases that came back down in that week.</p>
+<div class="tablewrap"><table>
+<thead><tr><th style="text-align:left">City</th>${cityCols}</tr></thead>
+<tbody>
+${CITIES.map(k => cityGroup(k === 'Bharat' ? 'Bharat (UP cities)' : k, k)).join('\n')}
+${cityByP.some(by => by.unmapped.m) ? cityGroup('<span style="font-weight:400;color:var(--muted)">CSP not in hierarchy</span>', 'unmapped') : ''}
+${cityGroup('All', 'all')}
+</tbody></table></div>
 </section>` : `<section><h2>Resolution status, city-wise</h2><p class="sub">The partner hierarchy did not return this run, so the city cut is not available.</p></section>`;
   const sTD = S[LASTCOL];    // since launch
 
@@ -1683,9 +1679,8 @@ details.more h2{font-size:15px}
 <p class="meta">Generated ${fmtD(NOW)} ${new Date(NOW + IST).getUTCFullYear()} · matured cases only (completed their full 48-hour window) · auto-refreshed every Monday</p>
 <div style="background:var(--good-soft);border:1px solid var(--good);border-radius:10px;padding:12px 16px;margin-top:14px;font-size:14.5px">
 🎯 <b>Target: ${TARGET_PCT}% net resolved.</b>
-This week <b>${pct(sLW.resNet, sLW.m)}</b>, since launch <b>${pct(sTD.resNet, sTD.m)}</b> — ${(TARGET_PCT - sTD.resNet / sTD.m * 100) > 0 ? `<b style="color:var(--bad)">${(TARGET_PCT - sTD.resNet / sTD.m * 100).toFixed(1)} pp to go</b>` : '<b style="color:var(--good)">target met</b>'}.
+This week resolved <b>${pct(sLW.res, sLW.m)}</b>, net resolved <b>${pct(sLW.resNet, sLW.m)}</b> &middot; since launch resolved <b>${pct(sTD.res, sTD.m)}</b>, net resolved <b>${pct(sTD.resNet, sTD.m)}</b> — ${(TARGET_PCT - sTD.resNet / sTD.m * 100) > 0 ? `<b style="color:var(--bad)">${(TARGET_PCT - sTD.resNet / sTD.m * 100).toFixed(1)} pp to go</b>` : '<b style="color:var(--good)">target met</b>'}.
 </div>
-${headlineHtml}
 <div class="tiles">
 <div class="tile"><div class="label">Net resolved</div><div class="value" style="color:var(--good)">${sLW.resNet.toLocaleString('en-IN')} (${pct(sLW.resNet, sLW.m)})</div><div class="note">of the ${sLW.m.toLocaleString('en-IN')} cases that matured in ${periods[LW].label} &middot; closed ${sLW.res.toLocaleString('en-IN')} (${pct(sLW.res, sLW.m)}), ${sLW.res - sLW.resNet} came back &middot; since launch ${pct(sTD.resNet, sTD.m)}</div></div>
 <div class="tile"><div class="label">Unresolved</div><div class="value" style="color:var(--bad)">${sLW.unresM.toLocaleString('en-IN')} (${pct(sLW.unresM, sLW.m)})</div><div class="note">still down when the 48 hrs ran out &middot; of those, <b>${sLW.cameBack}</b> came back on later &middot; since launch ${sTD.unresM.toLocaleString('en-IN')} (${pct(sTD.unresM, sTD.m)})</div></div>
@@ -1722,7 +1717,6 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 ${reopSnapHtml}
 ${refundsHtml()}
 ${whyHtml}
-${cspBlockHtml.replace(/<\/section>\s*$/, revivedHtml + '</section>')}
 ${cityHtml}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a resolution of ours that came back afterwards, taken from Kapture's own event log (TICKET_LOGS, EVENT_NAME = TICKET_REOPENED, latest event per ticket). The model's FIRST_REOPENED_TIME and TIMES_REOPENED columns are not used: the first is only a ticket's first-ever reopen and the second counts duplicated log rows, so a single reopen reads as 95. Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div>
