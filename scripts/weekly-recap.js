@@ -800,7 +800,6 @@ ${ledgerRows}
 <thead><tr><th style="text-align:left">City</th>${cityCols}</tr></thead>
 <tbody>
 ${CITIES.map(k => cityGroup(k === 'Bharat' ? 'Bharat (UP cities)' : k, k)).join('\n')}
-${cityByP.some(by => by.unmapped.m) ? cityGroup('<span style="font-weight:400;color:var(--muted)">CSP not in hierarchy</span>', 'unmapped') : ''}
 ${cityGroup('All', 'all')}
 </tbody></table></div>
 </section>` : `<section><h2>Resolution status, city-wise</h2><p class="sub">The partner hierarchy did not return this run, so the city cut is not available.</p></section>`;
