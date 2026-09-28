@@ -460,9 +460,9 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // is [label, first day inclusive, first day AFTER the window]. The current
   // part-week is deliberately absent: only completed weeks are compared.
   const WEEKS = [
-    ['Week 3', istMs(2026, 7, 31), istMs(2026, 8, 7)],
-    ['Week 2', istMs(2026, 8, 7), istMs(2026, 8, 14)],
-    ['Week 1', istMs(2026, 8, 14), istMs(2026, 8, 21)],
+    ['Week 3', istMs(2026, 8, 7), istMs(2026, 8, 14)],
+    ['Week 2', istMs(2026, 8, 14), istMs(2026, 8, 21)],
+    ['Week 1', istMs(2026, 8, 21), istMs(2026, 8, 28)],
   ];
   const periods = WEEKS.map(([key, from, to]) => ({ key, from, to }))
     .concat([{ key: 'Since launch', from: LAUNCH, to: CUT }]);
@@ -1328,6 +1328,109 @@ ${aiItems.length ? aiItems.map(([, v], i) =>
 </tbody></table></div>
 </section>`;
 
+
+  // ── Comment / action-item box ───────────────────────────────────────────
+  // The doc is read in the meeting, and until now anything raised there had to
+  // be typed into the tracker afterwards - which is how items went missing.
+  // This posts straight into the same Firebase nodes the tracker reads, so an
+  // action item raised here shows up in the Action Items tab immediately and in
+  // next Monday's doc, and a comment is visible to whoever opens the page next.
+  const commentBox = [
+    '<button id="fabBtn" title="Add an action item or a comment">&#128172; Add action item / comment</button>',
+    '<div id="fabPanel" role="dialog" aria-label="Add an action item or comment">',
+    '  <div class="fabHead"><b>Raise it here</b><button id="fabClose" aria-label="Close">&times;</button></div>',
+    '  <div class="fabTabs"><button class="fabTab on" data-kind="action">Action item</button><button class="fabTab" data-kind="comment">Comment</button></div>',
+    '  <label>Your name<input id="fabWho" placeholder="who is raising this"></label>',
+    '  <label id="fabTextLbl">The action<textarea id="fabText" rows="3" placeholder="what needs to be done"></textarea></label>',
+    '  <div class="fabRow" id="fabActionOnly">',
+    '    <label>Owner<input id="fabOwner" placeholder="who owns it"></label>',
+    '    <label>Due<input id="fabDue" type="date"></label>',
+    '  </div>',
+    '  <button id="fabSave">Save</button>',
+    '  <div id="fabMsg"></div>',
+    '  <div id="fabList"></div>',
+    '</div>',
+  ].join('\n');
+  const commentScript = [
+    '<script>(function(){',
+    '  var FB = "' + FIREBASE_DB + '";',
+    '  var kind = "action";',
+    '  var $ = function(id){ return document.getElementById(id); };',
+    '  var panel = $("fabPanel"), btn = $("fabBtn");',
+    '  function show(v){ panel.style.display = v ? "flex" : "none"; if (v) { $("fabWho").value = localStorage.getItem("hpRecapWho") || ""; loadList(); } }',
+    '  btn.onclick = function(){ show(panel.style.display !== "flex"); };',
+    '  $("fabClose").onclick = function(){ show(false); };',
+    '  Array.prototype.forEach.call(document.querySelectorAll(".fabTab"), function(t){',
+    '    t.onclick = function(){',
+    '      Array.prototype.forEach.call(document.querySelectorAll(".fabTab"), function(x){ x.className = "fabTab"; });',
+    '      t.className = "fabTab on"; kind = t.getAttribute("data-kind");',
+    '      $("fabActionOnly").style.display = kind === "action" ? "flex" : "none";',
+    '      $("fabTextLbl").firstChild.nodeValue = kind === "action" ? "The action" : "Your comment";',
+    '      $("fabText").placeholder = kind === "action" ? "what needs to be done" : "what you want to flag";',
+    '      loadList();',
+    '    };',
+    '  });',
+    '  function esc(v){ return String(v == null ? "" : v).replace(/&/g, "&amp;").replace(/</g, "&lt;"); }',
+    '  function loadList(){',
+    '    var node = kind === "action" ? "/cases/__action_items__.json" : "/cases/__recap_comments__.json";',
+    '    fetch(FB + node).then(function(r){ return r.json(); }).then(function(j){',
+    '      var rows = Object.keys(j || {}).map(function(k){ return j[k]; })',
+    '        .filter(function(v){ return v && (v.item || v.text); })',
+    '        .sort(function(a, b){ return (b.created_at || 0) - (a.created_at || 0); }).slice(0, 6);',
+    '      $("fabList").innerHTML = rows.length',
+    '        ? "<div class=\'fabListHd\'>Latest</div>" + rows.map(function(v){',
+    '            return "<div class=\'fabItem\'><b>" + esc(v.item || v.text) + "</b><span>" + esc(v.owner || v.by || "") +',
+    '              (v.status ? " &middot; " + esc(v.status) : "") + "</span></div>"; }).join("")',
+    '        : "<div class=\'fabListHd\'>Nothing yet</div>";',
+    '    }).catch(function(){ $("fabList").innerHTML = ""; });',
+    '  }',
+    '  $("fabSave").onclick = function(){',
+    '    var text = $("fabText").value.trim(), who = $("fabWho").value.trim();',
+    '    if (!text) { $("fabMsg").textContent = "Write something first."; return; }',
+    '    if (!who)  { $("fabMsg").textContent = "Add your name so the owner knows who raised it."; return; }',
+    '    localStorage.setItem("hpRecapWho", who);',
+    '    $("fabSave").disabled = true; $("fabMsg").textContent = "Saving...";',
+    '    var node, body;',
+    '    if (kind === "action") {',
+    '      node = "/cases/__action_items__.json";',
+    '      body = { item: text, owner: $("fabOwner").value.trim() || who, due: $("fabDue").value || "",',
+    '               status: "Open", notes: "", created_at: Date.now(), created_by: who, source: "weekly doc" };',
+    '    } else {',
+    '      node = "/cases/__recap_comments__.json";',
+    '      body = { text: text, by: who, created_at: Date.now(), week: "WEEKLABEL" };',
+    '    }',
+    '    fetch(FB + node, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) })',
+    '      .then(function(r){ if (!r.ok) throw new Error("HTTP " + r.status); return r.json(); })',
+    '      .then(function(){',
+    '        $("fabMsg").textContent = kind === "action" ? "Saved - it is in the tracker\'s Action Items tab now." : "Saved.";',
+    '        $("fabText").value = ""; $("fabSave").disabled = false; loadList();',
+    '      })',
+    '      .catch(function(e){ $("fabMsg").textContent = "Could not save (" + e.message + ") - tell Shariq."; $("fabSave").disabled = false; });',
+    '  };',
+    '})();<\/script>',
+  ].join('\n').replace('WEEKLABEL', periods[LASTCOL - 1].label);
+  const commentCss = [
+    '#fabBtn{position:fixed;right:22px;bottom:22px;z-index:60;background:var(--head);color:#fff;border:none;border-radius:999px;padding:13px 20px;font:600 14px/1 "Segoe UI",system-ui,sans-serif;box-shadow:0 6px 20px rgba(0,0,0,.18);cursor:pointer}',
+    '#fabBtn:hover{background:var(--head2)}',
+    '#fabPanel{display:none;position:fixed;right:22px;bottom:78px;z-index:60;width:330px;max-height:78vh;overflow:auto;flex-direction:column;gap:9px;background:var(--surface);border:1px solid var(--border);border-radius:14px;padding:15px;box-shadow:0 14px 40px rgba(0,0,0,.18)}',
+    '#fabPanel label{display:flex;flex-direction:column;gap:4px;font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;flex:1}',
+    '#fabPanel input,#fabPanel textarea{font:14px/1.45 "Segoe UI",system-ui,sans-serif;padding:8px 10px;border:1px solid var(--border);border-radius:8px;background:var(--bg);color:var(--ink);width:100%}',
+    '.fabHead{display:flex;justify-content:space-between;align-items:center;font-size:15px}',
+    '.fabHead button{background:none;border:none;font-size:20px;line-height:1;cursor:pointer;color:var(--muted)}',
+    '.fabTabs{display:flex;gap:6px}',
+    '.fabTab{flex:1;padding:7px;border:1px solid var(--border);background:var(--bg);border-radius:8px;font:600 12.5px "Segoe UI",system-ui,sans-serif;color:var(--ink2);cursor:pointer}',
+    '.fabTab.on{background:var(--good-soft);border-color:var(--good);color:var(--good)}',
+    '.fabRow{display:flex;gap:8px}',
+    '#fabSave{background:var(--head);color:#fff;border:none;border-radius:9px;padding:10px;font:700 14px "Segoe UI",system-ui,sans-serif;cursor:pointer}',
+    '#fabSave:disabled{opacity:.6}',
+    '#fabMsg{font-size:12.5px;color:var(--ink2);min-height:16px}',
+    '.fabListHd{font-size:11px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--muted);margin-top:4px}',
+    '.fabItem{font-size:12.5px;border-top:1px solid var(--border);padding:6px 0;color:var(--ink2)}',
+    '.fabItem b{display:block;font-weight:600;color:var(--ink)}',
+    '.fabItem span{color:var(--muted)}',
+    '@media print{#fabBtn,#fabPanel{display:none !important}}',
+  ].join('\n');
+
   // ── HTML doc ──
   const row = (label, f, cls) =>
     `<tr><td>${label}</td>` + S.map((st, i) =>
@@ -1356,7 +1459,7 @@ th:first-child{text-align:left}th.tot{background:var(--head2)}
 td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td:first-child{text-align:left;color:var(--ink);font-weight:600;white-space:normal}
 tr:last-child td{border-bottom:none}td.g{color:var(--good);font-weight:750}td.b{color:var(--bad);font-weight:750}td.tot{background:var(--surface2);font-weight:700}
-.pillmg{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--good-soft);color:var(--good);font-size:11px;font-weight:700}\n.notes{border-top:1px solid var(--border);margin-top:40px;padding-top:14px;font-size:12.5px;color:var(--muted)}
+.pillmg{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--good-soft);color:var(--good);font-size:11px;font-weight:700}\n${commentCss}\n.notes{border-top:1px solid var(--border);margin-top:40px;padding-top:14px;font-size:12.5px;color:var(--muted)}
 </style></head><body><div class="wrap">
 <header>
 <p class="eyebrow">HP Customer Tracker · 48-Hour TAT Flag</p>
@@ -1407,7 +1510,10 @@ ${momHtml}
 ${cspBlockHtml}
 ${revivedHtml}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's own event log (TICKET_LOGS, EVENT_NAME = TICKET_REOPENED, latest event per ticket). The model's FIRST_REOPENED_TIME and TIMES_REOPENED columns are not used: the first is only a ticket's first-ever reopen and the second counts duplicated log rows, so a single reopen reads as 95. Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
-</div></body></html>`;
+</div>
+${commentBox}
+${commentScript}
+</body></html>`;
 
   const outPath = path.join(__dirname, '..', 'recap.html');
   // Park the figures the dashboard cannot compute itself (they need Metabase)
