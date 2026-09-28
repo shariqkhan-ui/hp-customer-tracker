@@ -729,13 +729,13 @@ ${ledgerRows}
   const sLW = S[LW];         // last week
   const sTD = S[LASTCOL];    // since launch
 
-  const wowRes = (sLW.m && sWB.m) ? (sLW.resNet / sLW.m - sWB.resNet / sWB.m) * 100 : 0;
+  const wowRes = (sLW.m && sWB.m) ? (sLW.w48 / sLW.m - sWB.w48 / sWB.m) * 100 : 0;
   // The tracker's tab compares against the previous TWO weeks pooled, so the
   // doc states that figure too rather than quietly disagreeing with the tab.
   const pooledPrev = [S[LW - 2], S[LW - 1]].filter(Boolean);
   const pooledM = pooledPrev.reduce((a, x) => a + x.m, 0);
-  const pooledR = pooledPrev.reduce((a, x) => a + x.resNet, 0);
-  const wowPooled = (pooledM && sLW.m) ? (sLW.resNet / sLW.m - pooledR / pooledM) * 100 : 0;
+  const pooledR = pooledPrev.reduce((a, x) => a + x.w48, 0);
+  const wowPooled = (pooledM && sLW.m) ? (sLW.w48 / sLW.m - pooledR / pooledM) * 100 : 0;
   const addedTD = era.length;
   const addedLW = era.filter(c => { const t = startTs(c); return t >= periods[LW].from && t < periods[LW].to; }).length;
   const avgPerDay = Math.round(addedTD / Math.max(1, Math.ceil((NOW - LAUNCH) / 86400000)));
@@ -1516,8 +1516,8 @@ ${aiItems.length ? aiItems.map(([, v], i) =>
   // what it means; everything below is the evidence for them.
   const stillDown = breachedLW.length - fixedLW.length;
   const headlines = [
-    [pct(sLW.resNet, sLW.m),
-     `of the ${sLW.m.toLocaleString('en-IN')} cases that matured this week were resolved and stayed resolved \u2014 ${wowRes >= 0 ? 'up' : 'down'} ${Math.abs(wowRes).toFixed(1)} pp on the week before. ${sLW.res - sLW.resNet} came back down and are not counted; ${sLW.unresM} customers were still down when the 48 hours ran out.`,
+    [pct(sLW.w48, sLW.m),
+     `of the ${sLW.m.toLocaleString('en-IN')} cases that matured this week were fixed inside the 48-hour promise and stayed fixed \u2014 ${wowRes >= 0 ? 'up' : 'down'} ${Math.abs(wowRes).toFixed(1)} pp on the week before, against the 80% target. Another ${sLW.resNet - sLW.w48} were fixed late, and ${sLW.unresM} customers were still down when the clock ran out.`,
      wowRes >= 0 ? 'good' : 'bad'],
     [stillDown.toLocaleString('en-IN'),
      `customers from LAST week are still down today. Their CSPs have gone back for only ${fixedLW.length} of ${breachedLW.length}, and ${quietCsps} of the ${trackRows.length} CSPs holding them took no new case this week at all.`,
@@ -1588,27 +1588,25 @@ This week <b>${pct(sLW.w48, sLW.m)}</b>, since launch <b>${pct(sTD.w48, sTD.m)}<
 </div>
 ${headlineHtml}
 <div class="tiles">
-<div class="tile"><div class="label">Resolved <span style="font-weight:400;text-transform:none;letter-spacing:0">(net of reopened)</span></div><div class="value" style="color:var(--good)">${sLW.resNet.toLocaleString('en-IN')} (${pct(sLW.resNet, sLW.m)})</div><div class="note">of the ${sLW.m.toLocaleString('en-IN')} cases that matured in ${periods[LW].label} &middot; inside the 48 hrs: <b>${sLW.w48.toLocaleString('en-IN')} (${pct(sLW.w48, sLW.m)})</b> &middot; since launch ${pct(sTD.resNet, sTD.m)}</div></div>
+<div class="tile"><div class="label">Resolved inside 48 hrs <span style="font-weight:400;text-transform:none;letter-spacing:0">(net of reopened)</span></div><div class="value" style="color:var(--good)">${sLW.w48.toLocaleString('en-IN')} (${pct(sLW.w48, sLW.m)})</div><div class="note">of the ${sLW.m.toLocaleString('en-IN')} cases that matured in ${periods[LW].label} &middot; fixed late as well: <b>${sLW.resNet.toLocaleString('en-IN')} (${pct(sLW.resNet, sLW.m)})</b> &middot; since launch ${pct(sTD.w48, sTD.m)}</div></div>
 <div class="tile"><div class="label">Unresolved</div><div class="value" style="color:var(--bad)">${sLW.unresM.toLocaleString('en-IN')} (${pct(sLW.unresM, sLW.m)})</div><div class="note">still down when the 48 hrs ran out &middot; of those, <b>${sLW.cameBack}</b> came back on later &middot; since launch ${sTD.unresM.toLocaleString('en-IN')} (${pct(sTD.unresM, sTD.m)})</div></div>
 <div class="tile"><div class="label">Cases matured last week</div><div class="value">${sLW.m.toLocaleString('en-IN')}</div><div class="note">crossed the 48-hr mark in ${periods[LW].label} &middot; <b>${addedLW} added</b> that week &middot; since launch ${addedTD.toLocaleString('en-IN')} added, avg <b>~${avgPerDay}/day</b></div></div>
 <div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending</div><div class="value" style="color:var(--bad)">${inr(grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].amt : 0)}</div><div class="note"><b>${grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].n : 0} cases (${pct(grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].n : 0, E)})</b> of the ${E} refund-eligible, not yet paid</div></div>
 <div class="tile" style="border-color:var(--good)"><div class="label">Refunded to eligible customers</div><div class="value" style="color:var(--good)">${inr(sumA(eligPaid))}</div><div class="note"><b>${eligPaid.length} cases (${pct(eligPaid.length, E)})</b> of the ${E} refund-eligible &middot; <b>last week: ${sLW.eligPaidN} (${inr(sLW.eligPaidAmt)})</b></div></div>
 <div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened</div><div class="value" style="color:var(--accent-ink)">${sLW.reopWeek} (${pct(sLW.reopWeek, sLW.resWeek)})</div><div class="note">resolutions that came back down in ${periods[LW].label}, against ${sLW.resWeek} marked resolved that week &middot; since launch ${reopens.length}</div></div>
-<div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Resolved net of reopened: <b>${pct(sWB.resNet, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.resNet, sLW.m)}</b> (${lwLabel}) &middot; ${wowPooled >= 0 ? '+' : ''}${wowPooled.toFixed(1)} pp against the previous two weeks pooled, which is the comparison the tracker's tab makes</div></div>
+<div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Resolved inside 48 hrs, net of reopened: <b>${pct(sWB.w48, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.w48, sLW.m)}</b> (${lwLabel}) &middot; ${wowPooled >= 0 ? '+' : ''}${wowPooled.toFixed(1)} pp against the previous two weeks pooled, which is the comparison the tracker's tab makes</div></div>
 </div>
 </header>
 ${aiHtml}
 <section>
 <h2>Week-wise numbers</h2>
-<p class="sub">Counted in the week each case's 48-hour window closed. <b>Every resolution figure here is net of reopened</b>: a case we closed that the customer had to raise again is not counted as resolved, which is why these read lower than the tracker's Weekly Review tab, where resolution is gross. The <i>Reopened</i> row counts reopen events dated in that week; the deduction above it counts this week's own resolutions that came back at any point, so the two are different numbers by design. Cases maturing after ${cutLabel} are not in yet.</p>
+<p class="sub">Counted in the week each case's 48-hour window closed. <b>Every resolution figure here is net of reopened</b>: a case we closed that the customer had to raise again is not counted as resolved, which is why these read lower than the tracker's Weekly Review tab, where resolution is gross. <b>Every column is restated on this basis</b>, including the earlier weeks, so the trend is like-for-like — they read lower here than in last Monday's doc, which quoted resolution gross (14–20 Sep was 71.6% inside 48 hrs there, 67.4% here). Cases maturing after ${cutLabel} are not in yet.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>Metric</th>${cols}</tr></thead>
 <tbody>
 ${row('<b>Cases matured — crossed 48 hrs</b>', s => s.m.toLocaleString('en-IN'))}
-${row('<b>Resolved</b> <span style="font-weight:400;color:var(--muted)">(net of reopened)</span>', s => s.resNet.toLocaleString('en-IN') + ' (' + pct(s.resNet, s.m) + ')', 'g')}
-${row('— of those, resolved inside the 48 hrs', s => s.w48.toLocaleString('en-IN') + ' (' + pct(s.w48, s.m) + ')')}
-${row('<span style="font-weight:400;color:var(--muted)">Before taking reopens out</span>', s => '<span style="color:var(--muted)">' + s.res.toLocaleString('en-IN') + ' (' + pct(s.res, s.m) + ')</span>')}
-${row('<span style="font-weight:400;color:var(--muted)">— of those, the customer had to raise it again</span>', s => '<span style="color:var(--muted)">' + (s.res - s.resNet).toLocaleString('en-IN') + '</span>')}
+${row('<b>Resolved inside 48 hrs</b> <span style="font-weight:400;color:var(--muted)">(net of reopened — the target metric)</span>', s => s.w48.toLocaleString('en-IN') + ' (' + pct(s.w48, s.m) + ')', 'g')}
+${row('Resolved eventually, net of reopened', s => s.resNet.toLocaleString('en-IN') + ' (' + pct(s.resNet, s.m) + ')')}
 ${row('<b>Reopened</b> <span style="font-weight:400;color:var(--muted)">(came back down in this week)</span>', s => s.reopWeek + ' (' + pct(s.reopWeek, s.resWeek) + ')', 'b')}
 ${row('<b>Unresolved</b>', s => s.unresM.toLocaleString('en-IN') + ' (' + pct(s.unresM, s.m) + ')', 'b')}
 ${row('— of those, the line came back on later', s => s.cameBack.toLocaleString('en-IN') + ' (' + pct(s.cameBack, s.unresM) + ')')}
@@ -1654,7 +1652,7 @@ ${commentScript}
   const text =
     `📊 *48h TAT — Weekly Recap* (${lwLabel}) — full funnel\n` +
     `• Received since 29 Jul: *${sTD.n.toLocaleString('en-IN')}* → matured ${sTD.m.toLocaleString('en-IN')} → resolved ≤48h (net) *${sTD.w48.toLocaleString('en-IN')}* (${pct(sTD.w48, sTD.m)}) → breached ${breached.length} (${pct(breached.length, sTD.m)})\n` +
-    `• Last week: *${pct(sLW.resNet, sLW.m)}* resolved net of reopened vs ${pct(sWB.resNet, sWB.m)} the week before (${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp)\n` +
+    `• Last week: *${pct(sLW.w48, sLW.m)}* fixed inside 48 hrs net of reopened vs ${pct(sWB.w48, sWB.m)} the week before (${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp)\n` +
     `• Refund on breached: done ${breachedDone.length} (${inr(breachedDoneAmt)}) · pending *${breachedPend.length}* (*${inr(breachedPendAmt)}*)\n` +
     `• Reopened: *${reopensAllTime}* in the tracker all-time, ${reopens.length} since launch, ${sTD.w48g - sTD.w48} of them within-48hr resolutions that came back · top reason: ${reopReasons[0] ? reopReasons[0][0] + ' (' + reopReasons[0][1] + ')' : '—'} · re-resolved & PFT-confirmed ${reopPftDone}, still open ${reopStillOpen}\n` +
     `🎯 Target: ${TARGET_PCT}% resolved inside 48 hrs net of reopened — this week ${pct(sLW.w48, sLW.m)}, since launch ${pct(sTD.w48, sTD.m)}${(TARGET_PCT - sTD.w48 / sTD.m * 100) > 0 ? ' (' + (TARGET_PCT - sTD.w48 / sTD.m * 100).toFixed(1) + ' pp to go)' : ' — met ✅'}\n` +
