@@ -763,7 +763,7 @@ ${ledgerRows}
   // arithmetic a reader can check from the table.
   const S = periods.map(pp => {
     const x = Object.assign(stats(inRange(pp)), reopStats(pp));
-    x.resNet = Math.max(0, x.w48g - x.reopWeek);   // inside 48 hrs, minus the ones that came back
+    x.resNet = x.w48g;   // resolved inside 48 hrs and still resolved: a case that came back down and stayed down is already not counted
     return x;
   });
 
@@ -779,7 +779,7 @@ ${ledgerRows}
     const all = inRange(pp);
     const by = {};
     const reopIn = f => era.filter(c => { const t = reopTs(c); return t >= pp.from && t < pp.to && f(c); }).length;
-    const net = (x, f) => { x.resNet = Math.max(0, x.w48g - reopIn(f)); return x; };
+    const net = (x, f) => { x.resNet = x.w48g; return x; };
     CITIES.forEach(k => { by[k] = net(stats(all.filter(c => cityOf(c) === k)), c => cityOf(c) === k); });
     by.unmapped = net(stats(all.filter(c => !cityOf(c))), c => !cityOf(c));
     by.all = net(stats(all), () => true);
@@ -791,12 +791,11 @@ ${ledgerRows}
   const cityGroup = (label, key) => `<tr><td style="text-align:left" colspan="${periods.length + 1}"><b>${label}</b></td></tr>
 <tr><td style="text-align:left;padding-left:20px">Cases matured</td>${cityByP.map(by => `<td>${by[key].m.toLocaleString('en-IN')}</td>`).join('')}</tr>
 <tr><td style="text-align:left;padding-left:20px">Resolved</td>${cityByP.map(by => cityCell(by[key].res, by[key].m, '')).join('')}</tr>
-<tr><td style="text-align:left;padding-left:20px">— of those, inside the 48 hrs</td>${cityByP.map(by => cityCell(by[key].w48g, by[key].m, '')).join('')}</tr>
 <tr><td style="text-align:left;padding-left:20px"><b>Net resolved</b></td>${cityByP.map(by => cityCell(by[key].resNet, by[key].m, 'g')).join('')}</tr>
 <tr><td style="text-align:left;padding-left:20px">Unresolved</td>${cityByP.map(by => cityCell(by[key].unresM, by[key].m, 'b')).join('')}</tr>`;
   const cityHtml = cspCity ? `<section>
 <h2>Resolution status, city-wise</h2>
-<p class="sub">The same matured-case arithmetic as the week-wise table, cut by the CSP's city from the partner hierarchy. Delhi/NCR includes Ghaziabad, Noida, Faridabad and Gurgaon; Bharat is every UP city (Meerut, Agra, Bareilly, Lucknow, Prayagraj, Gorakhpur). Net resolved is the cases resolved inside the 48 hrs minus the ones that came back down in that week, exactly as in the week-wise table.</p>
+<p class="sub">The same matured-case arithmetic as the week-wise table, cut by the CSP's city from the partner hierarchy. Delhi/NCR includes Ghaziabad, Noida, Faridabad and Gurgaon; Bharat is every UP city (Meerut, Agra, Bareilly, Lucknow, Prayagraj, Gorakhpur). Net resolved is the cases resolved inside the 48 hrs and still resolved, exactly as in the week-wise table.</p>
 <div class="tablewrap"><table>
 <thead><tr><th style="text-align:left">City</th>${cityCols}</tr></thead>
 <tbody>
@@ -1204,7 +1203,7 @@ ${Object.entries(lwTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
     // own account where the field team has written it up.
     reopSnapHtml = `<section>
 <h2>Reopened cases \u2014 ${periods[LASTCOL - 1].key}</h2>
-<p class="sub">${lwReopCases.length} resolution${lwReopCases.length === 1 ? '' : 's'} came back down in ${periods[LASTCOL - 1].label}, of the ${S[LASTCOL - 1].w48g} resolved inside 48 hrs that week (${pct(lwReopCases.length, S[LASTCOL - 1].w48g)}). The Reopened RCA is the reason recorded against the case: the remark it was closed on where that is a reason, otherwise the customer's own account from the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit?gid=0" style="color:var(--accent-ink)">reopen RCA sheet</a>.</p>
+<p class="sub">${lwReopCases.length} resolution${lwReopCases.length === 1 ? '' : 's'} came back down in ${periods[LASTCOL - 1].label}, of the ${S[LASTCOL - 1].w48g} net resolved that week (${pct(lwReopCases.length, S[LASTCOL - 1].w48g)}). The Reopened RCA is the reason recorded against the case: the remark it was closed on where that is a reason, otherwise the customer's own account from the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit?gid=0" style="color:var(--accent-ink)">reopen RCA sheet</a>.</p>
 <div class="tablewrap"><table style="min-width:980px">
 <thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">CSP</th><th style="text-align:left">Sub-category</th><th>Status (RCA sheet)</th><th style="text-align:left">Reopened RCA</th></tr></thead>
 <tbody>
@@ -1620,7 +1619,7 @@ ${aiItems.length ? aiItems.map(([, v], i) =>
   const stillDown = breachedLW.length - fixedLW.length;
   const headlines = [
     [pct(sLW.resNet, sLW.m),
-     `net resolved of the ${sLW.m.toLocaleString('en-IN')} cases that matured this week \u2014 ${wowRes >= 0 ? 'up' : 'down'} ${Math.abs(wowRes).toFixed(1)} pp on the week before, against the ${TARGET_PCT}% target. ${sLW.w48g} were resolved inside 48 hrs and ${sLW.reopWeek} came back, so they do not count; ${sLW.unresM} customers are still down.`,
+     `net resolved of the ${sLW.m.toLocaleString('en-IN')} cases that matured this week \u2014 ${wowRes >= 0 ? 'up' : 'down'} ${Math.abs(wowRes).toFixed(1)} pp on the week before, against the ${TARGET_PCT}% target. ${sLW.reopWeek} came back down in the week and a case that stays down is not counted as resolved; ${sLW.unresM} customers are still down.`,
      wowRes >= 0 ? 'good' : 'bad'],
     [stillDown.toLocaleString('en-IN'),
      `customers from LAST week are still down today. Their CSPs have gone back for only ${fixedLW.length} of ${breachedLW.length}, and ${quietCsps} of the ${trackRows.length} CSPs holding them took no new case this week at all.`,
@@ -1690,26 +1689,25 @@ details.more h2{font-size:15px}
 This week resolved <b>${pct(sLW.res, sLW.m)}</b>, net resolved <b>${pct(sLW.resNet, sLW.m)}</b> &middot; since launch resolved <b>${pct(sTD.res, sTD.m)}</b>, net resolved <b>${pct(sTD.resNet, sTD.m)}</b> — ${(TARGET_PCT - sTD.resNet / sTD.m * 100) > 0 ? `<b style="color:var(--bad)">${(TARGET_PCT - sTD.resNet / sTD.m * 100).toFixed(1)} pp to go</b>` : '<b style="color:var(--good)">target met</b>'}.
 </div>
 <div class="tiles">
-<div class="tile"><div class="label">Net resolved</div><div class="value" style="color:var(--good)">${sLW.resNet.toLocaleString('en-IN')} (${pct(sLW.resNet, sLW.m)})</div><div class="note">of the ${sLW.m.toLocaleString('en-IN')} cases that matured in ${periods[LW].label} &middot; resolved ${sLW.res.toLocaleString('en-IN')} (${pct(sLW.res, sLW.m)}), inside 48 hrs ${sLW.w48g.toLocaleString('en-IN')} (${pct(sLW.w48g, sLW.m)}), ${sLW.reopWeek} came back &middot; since launch ${pct(sTD.resNet, sTD.m)}</div></div>
+<div class="tile"><div class="label">Net resolved</div><div class="value" style="color:var(--good)">${sLW.resNet.toLocaleString('en-IN')} (${pct(sLW.resNet, sLW.m)})</div><div class="note">of the ${sLW.m.toLocaleString('en-IN')} cases that matured in ${periods[LW].label} &middot; overall resolved ${sLW.res.toLocaleString('en-IN')} (${pct(sLW.res, sLW.m)}) &middot; ${sLW.reopWeek} came back down in the week &middot; since launch ${pct(sTD.resNet, sTD.m)}</div></div>
 <div class="tile"><div class="label">Unresolved</div><div class="value" style="color:var(--bad)">${sLW.unresM.toLocaleString('en-IN')} (${pct(sLW.unresM, sLW.m)})</div><div class="note">still down when the 48 hrs ran out &middot; of those, <b>${sLW.cameBack}</b> came back on later &middot; since launch ${sTD.unresM.toLocaleString('en-IN')} (${pct(sTD.unresM, sTD.m)})</div></div>
 <div class="tile"><div class="label">Cases matured last week</div><div class="value">${sLW.m.toLocaleString('en-IN')}</div><div class="note">crossed the 48-hr mark in ${periods[LW].label} &middot; <b>${addedLW} added</b> that week &middot; since launch ${addedTD.toLocaleString('en-IN')} added, avg <b>~${avgPerDay}/day</b></div></div>
 <div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending</div><div class="value" style="color:var(--bad)">${inr(grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].amt : 0)}</div><div class="note"><b>${grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].n : 0} cases (${pct(grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].n : 0, E)})</b> of the ${E} refund-eligible, not yet paid</div></div>
 <div class="tile" style="border-color:var(--good)"><div class="label">Refunded to eligible customers</div><div class="value" style="color:var(--good)">${inr(sumA(eligPaid))}</div><div class="note"><b>${eligPaid.length} cases (${pct(eligPaid.length, E)})</b> of the ${E} refund-eligible &middot; <b>${periods[LW].key}: ${sLW.eligPaidN} (${inr(sLW.eligPaidAmt)})</b></div></div>
-<div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened</div><div class="value" style="color:var(--accent-ink)">${sLW.reopWeek} (${pct(sLW.reopWeek, sLW.w48g)})</div><div class="note">resolutions that came back down in ${periods[LW].label}, of the ${sLW.w48g} resolved inside 48 hrs &middot; since launch ${sTD.reopWeek}</div></div>
+<div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened</div><div class="value" style="color:var(--accent-ink)">${sLW.reopWeek} (${pct(sLW.reopWeek, sLW.w48g)})</div><div class="note">resolutions that came back down in ${periods[LW].label}, of the ${sLW.w48g} net resolved &middot; since launch ${sTD.reopWeek}</div></div>
 <div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:${wowRes >= 0 ? 'var(--good)' : 'var(--bad)'}">${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp</div><div class="note">Net resolved: <b>${pct(sWB.resNet, sWB.m)}</b> (${wbLabel}) → <b>${pct(sLW.resNet, sLW.m)}</b> (${lwLabel}) &middot; ${wowPooled >= 0 ? '+' : ''}${wowPooled.toFixed(1)} pp against the previous two weeks pooled, which is the comparison the tracker's tab makes</div></div>
 </div>
 </header>
 ${aiHtml}
 <section>
 <h2>Week-wise numbers</h2>
-<p class="sub">Counted in the week each case's 48-hour window closed. <b>Resolved</b> is the overall rate, whenever the case was closed. <b>Net resolved</b> is the cases resolved inside the 48 hrs minus the ones that came back down that week. Net is what every headline on this page carries, and every column including the earlier weeks is on that basis, so the trend is like-for-like. Cases maturing after ${cutLabel} are not in yet.</p>
+<p class="sub">Counted in the week each case's 48-hour window closed. <b>Resolved</b> is the overall rate, whenever the case was closed. <b>Net resolved</b> is the cases resolved inside the 48 hrs that are still resolved: a case that came back down and stayed down is not counted. Net is what every headline on this page carries, and every column including the earlier weeks is on that basis, so the trend is like-for-like. Cases maturing after ${cutLabel} are not in yet.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>Metric</th>${cols}</tr></thead>
 <tbody>
 ${row('<b>Cases matured — crossed 48 hrs</b>', s => s.m.toLocaleString('en-IN'))}
 ${row('Resolved', s => s.res.toLocaleString('en-IN') + ' (' + pct(s.res, s.m) + ')')}
-${row('— of those, resolved inside the 48 hrs', s => s.w48g.toLocaleString('en-IN') + ' (' + pct(s.w48g, s.m) + ')')}
-${row('<b>Net resolved</b> <span style="font-weight:400;color:var(--muted)">(inside 48 hrs, minus the ones that came back)</span>', s => s.resNet.toLocaleString('en-IN') + ' (' + pct(s.resNet, s.m) + ')', 'g')}
+${row('<b>Net resolved</b> <span style="font-weight:400;color:var(--muted)">(resolved inside 48 hrs and still resolved)</span>', s => s.resNet.toLocaleString('en-IN') + ' (' + pct(s.resNet, s.m) + ')', 'g')}
 ${row('<b>Reopened</b> <span style="font-weight:400;color:var(--muted)">(came back down in this week)</span>', s => s.reopWeek + ' (' + pct(s.reopWeek, s.w48g) + ')', 'b')}
 ${row('<b>Unresolved</b>', s => s.unresM.toLocaleString('en-IN') + ' (' + pct(s.unresM, s.m) + ')', 'b')}
 ${row('— of those, the line came back on later', s => s.cameBack.toLocaleString('en-IN') + ' (' + pct(s.cameBack, s.unresM) + ')')}
@@ -1726,7 +1724,7 @@ ${reopSnapHtml}
 ${refundsHtml()}
 ${whyHtml}
 ${cityHtml}
-<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a resolution of ours that came back down, as stamped by the tracker (reopened_at), counted in the week it came back. Net resolved = resolved inside 48 hrs minus those reopens. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a resolution of ours that came back down, as stamped by the tracker (reopened_at), counted in the week it came back. Net resolved = resolved inside 48 hrs and still resolved; a case that came back down and stayed down is not counted. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
 </div>
 ${commentBox}
 ${commentScript}
@@ -1754,7 +1752,7 @@ ${commentScript}
   if (!token) { console.log('SLACK_BOT_TOKEN not set — skipping DM.'); return; }
   const text =
     `📊 *48h TAT — Weekly Recap* (${lwLabel}) — full funnel\n` +
-    `• Received since 29 Jul: *${sTD.n.toLocaleString('en-IN')}* → matured ${sTD.m.toLocaleString('en-IN')} → resolved *${sTD.res.toLocaleString('en-IN')}* (${pct(sTD.res, sTD.m)}) → inside 48 hrs ${sTD.w48g.toLocaleString('en-IN')} (${pct(sTD.w48g, sTD.m)}) → net resolved *${sTD.resNet.toLocaleString('en-IN')}* (${pct(sTD.resNet, sTD.m)}) → breached ${breached.length} (${pct(breached.length, sTD.m)})\n` +
+    `• Received since 29 Jul: *${sTD.n.toLocaleString('en-IN')}* → matured ${sTD.m.toLocaleString('en-IN')} → resolved *${sTD.res.toLocaleString('en-IN')}* (${pct(sTD.res, sTD.m)}) → net resolved *${sTD.resNet.toLocaleString('en-IN')}* (${pct(sTD.resNet, sTD.m)}) → breached ${breached.length} (${pct(breached.length, sTD.m)})\n` +
     `• Last week: *${pct(sLW.resNet, sLW.m)}* net resolved vs ${pct(sWB.resNet, sWB.m)} the week before (${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp)\n` +
     `• Refund on breached: done ${breachedDone.length} (${inr(breachedDoneAmt)}) · pending *${breachedPend.length}* (*${inr(breachedPendAmt)}*)\n` +
     `• Reopened: *${reopensAllTime}* in the tracker all-time, ${reopens.length} since launch, ${sTD.reopWeek} of them since-launch resolutions that came back · top reason: ${reopReasons[0] ? reopReasons[0][0] + ' (' + reopReasons[0][1] + ')' : '—'} · re-resolved & PFT-confirmed ${reopPftDone}, still open ${reopStillOpen}\n` +
