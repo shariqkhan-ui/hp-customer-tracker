@@ -1280,23 +1280,32 @@ ${Object.entries(reasonTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
   // to audit it.
   const refundsHtml = () => {
     const wk = split(lwElig), td = docAll;
-    const line = (label, f, cls, note) =>
-      `<tr><td class="${cls || ''}">${label}</td>` +
-      `<td class="${cls || ''}">${f(wk)}</td><td class="${cls || ''}">${f(td)}</td>` +
-      `<td style="text-align:left;font-weight:400">${note || ''}</td></tr>`;
+    // Cases and money on the same row: a count alone does not tell the meeting
+    // what is owed, and an amount alone hides how many customers it is spread
+    // across. The average is what one customer actually gets back.
+    const avg = list => (list.length ? inr(sumA(list) / list.length) : '\u2014');
+    const line = (label, pick, cls, note) => {
+      const cell = x => {
+        const l = pick(x);
+        return `<td class="${cls || ''}">${l.length.toLocaleString('en-IN')}${x.n ? ' <span style="color:var(--muted)">(' + pct(l.length, x.n) + ')</span>' : ''}</td>` +
+               `<td class="${cls || ''}">${inr(sumA(l))}</td>`;
+      };
+      return `<tr><td class="${cls || ''}">${label}</td>${cell(wk)}${cell(td)}` +
+             `<td style="text-align:left;font-weight:400">${note || ''}</td></tr>`;
+    };
     return `<section>
 <h2>Refunds</h2>
 <p class="sub">A customer is owed money when their case breached the 48 hours and the line never came back. <b>Pending</b> below means exactly one thing: owed, unpaid, and nobody has written down why.</p>
-<div class="tablewrap"><table style="min-width:760px">
-<thead><tr><th style="text-align:left">&nbsp;</th><th>${periods[LASTCOL - 1].key}<br><span style="font-weight:400;opacity:.85">${periods[LASTCOL - 1].label}</span></th><th>Since launch<br><span style="font-weight:400;opacity:.85">29 Jul – ${cutLabel}</span></th><th style="text-align:left">Read</th></tr></thead>
+<div class="tablewrap"><table style="min-width:900px">
+<thead><tr><th style="text-align:left">&nbsp;</th><th>${periods[LASTCOL - 1].key} <span style="font-weight:400;opacity:.85">customers</span></th><th>${periods[LASTCOL - 1].key} <span style="font-weight:400;opacity:.85">amount</span></th><th>Since launch <span style="font-weight:400;opacity:.85">customers</span></th><th>Since launch <span style="font-weight:400;opacity:.85">amount</span></th><th style="text-align:left">Read</th></tr></thead>
 <tbody>
-${line('<b>Owed a refund</b>', x => `<b>${x.n.toLocaleString('en-IN')}</b>`, '', 'Breached and the line never came back')}
-${line('Paid', x => `${x.done.length.toLocaleString('en-IN')} (${pct(x.done.length, x.n)})`, 'g', 'Wiom Hub, the Finance sheet or the tracker')}
-${line('Parked with a reason', x => `${x.park.length.toLocaleString('en-IN')} (${pct(x.park.length, x.n)})`, '', 'Cx DNP, pickup not raised, PFT miss, amount ₹0')}
-${line('<b>Pending — no reason recorded</b>', x => `<b>${x.pend.length.toLocaleString('en-IN')} (${pct(x.pend.length, x.n)})</b>`, 'b', 'The backlog to work')}
-${line('Pending amount', x => inr(sumA(x.pend)), 'b', '')}
+${line('<b>Owed a refund</b>', x => [].concat(x.done, x.park, x.pend), '', 'Breached and the line never came back')}
+${line('Paid', x => x.done, 'g', 'Wiom Hub, the Finance sheet or the tracker')}
+${line('Parked with a reason', x => x.park, '', 'Cx DNP, pickup not raised, PFT miss, amount \u20b90')}
+${line('<b>Pending \u2014 no reason recorded</b>', x => x.pend, 'b', 'The backlog to work')}
+<tr><td><b>Average paid per customer</b></td><td></td><td><b>${avg(wk.done)}</b></td><td></td><td><b>${avg(td.done)}</b></td><td style="text-align:left;font-weight:400">Pro-rata on the days of plan left when the customer complained</td></tr>
 </tbody></table></div>
-<p class="sub" style="margin-top:10px">Of the ${refundedAll.length} paid since launch, <b>${srcHub.length}</b> came through Wiom Hub, which is where the money actually moves; ${srcSheet.length} are recorded by Finance with no request in the Hub, and ${srcTracker.length} were marked by hand in the tracker. ${hubOnly.length ? `<b>${hubOnly.length}</b> case${hubOnly.length === 1 ? '' : 's'} the Hub had already paid ${hubOnly.length === 1 ? 'was' : 'were'} never marked here — they are listed in the detail below.` : 'Every Hub payment is reflected here.'}</p>
+<p class="sub" style="margin-top:10px">Of the ${refundedAll.length} paid since launch, <b>${srcHub.length}</b> came through Wiom Hub, which is where the money actually moves; ${srcSheet.length} are recorded by Finance with no request in the Hub, and ${srcTracker.length} were marked by hand in the tracker. ${hubOnly.length ? `<b>${hubOnly.length}</b> case${hubOnly.length === 1 ? '' : 's'} the Hub had already paid ${hubOnly.length === 1 ? 'was' : 'were'} never marked here \u2014 ${hubOnly.length === 1 ? 'it is' : 'they are'} listed in the detail below.` : 'Every Hub payment is reflected here.'}</p>
 <details class="more"><summary>The full funnel, the per-surface reconciliation and the month-on-month reasons</summary>
 ${refundFunnel}
 ${refundTriangleHtml}
