@@ -819,7 +819,30 @@ ${ledgerRows}
   const partnerOf = c => trim(c.partner) || '(unknown)';
   const isResolvedNow = c => getStatus(c) !== 'Unresolved';
   const ageD = c => Math.round((NOW - clockTs(c)) / 86400000);
-  const STOP_MIN_BEFORE = 5, STOP_MIN_NOW = 2, STOP_WAS = 0.75, STOP_NOW = 0.5;
+  // A CSP with two cases and one pending is not a CSP that has stopped working
+  // - at that volume it is the coin landing tails (Shariq, 28 Sep). So instead
+  // of a flat threshold, ask the only question worth asking: if this CSP were
+  // still working at its own historical rate, how likely is a week this bad?
+  // binomTail gives that probability; anything a quiet week could produce by
+  // chance (p >= 0.05) is not listed at all.
+  //
+  // Worked: 1 of 2 against a 90% record is a 1-in-5 fluke - not listed.
+  //         1 of 5 against the same record is 1-in-2,000 - listed.
+  const binomAtMost = (k, n, p) => {
+    const q = Math.min(0.99, Math.max(0.01, p));
+    let term = Math.pow(1 - q, n), acc = 0;
+    for (let i = 0; i <= k; i++) {
+      if (i > 0) term *= ((n - i + 1) / i) * (q / (1 - q));
+      acc += term;
+    }
+    return Math.min(1, acc);
+  };
+  const binomAtLeast = (k, n, p) => 1 - (k > 0 ? binomAtMost(k - 1, n, p) : 0);
+  const odds = pv => (pv <= 0 ? 'certain' : '1 in ' + Math.round(1 / pv).toLocaleString('en-IN'));
+  const STOP_MIN_BEFORE = 8;      // enough history to have a rate worth testing
+  const STOP_MIN_NOW = 3;         // enough cases this week to judge
+  const STOP_MIN_DOWN = 2;        // and at least two customers actually waiting
+  const STOP_P = 0.05;
   // What is being done about them - agreed in the meeting, not a tracker field.
   const STOP_ACTION = 'With transition team';
   const tally = (list) => {
@@ -836,8 +859,9 @@ ${ledgerRows}
   const stopped = Object.keys(weekG)
     .filter(k => beforeG[k] && beforeG[k].n >= STOP_MIN_BEFORE && weekG[k].n >= STOP_MIN_NOW)
     .map(k => ({ k, b: beforeG[k], w: weekG[k], rb: beforeG[k].r / beforeG[k].n, rw: weekG[k].r / weekG[k].n }))
-    .filter(x => x.rb >= STOP_WAS && x.rw <= STOP_NOW)
-    .sort((a, b) => b.w.open.length - a.w.open.length || (b.rb - b.rw) - (a.rb - a.rw));
+    .map(x => Object.assign(x, { pv: binomAtMost(x.w.r, x.w.n, x.rb) }))
+    .filter(x => x.rw < x.rb && x.w.open.length >= STOP_MIN_DOWN && x.pv < STOP_P)
+    .sort((a, b) => a.pv - b.pv || b.w.open.length - a.w.open.length);
   const stopOpen = stopped.reduce((a, x) => a + x.w.open.length, 0);
   const stopTix = list => list.sort((x, y) => ageD(y) - ageD(x))
     .map(c => `<a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a> <span style="color:var(--muted)">${ageD(c)}d</span>`).join(', ');
@@ -856,6 +880,7 @@ ${ledgerRows}
       `<td class="g">${x.b.r} / ${x.b.n} <span style="color:var(--muted)">(${(x.rb * 100).toFixed(0)}%)</span></td>` +
       `<td class="b">${x.w.r} / ${x.w.n} <span style="color:var(--muted)">(${(x.rw * 100).toFixed(0)}%)</span></td>` +
       `<td class="b"><b>\u2212${((x.rb - x.rw) * 100).toFixed(0)} pp</b></td>` +
+      `<td>${odds(x.pv)}</td>` +
       `<td style="text-align:left;white-space:normal;font-weight:400">${reasonTxt || '<span style="color:var(--muted)">\u2014</span>'}</td>` +
       `<td>${calls == null ? '\u2014' : calls}</td>` +
       `<td>${stx ? `<span class="${stx.open ? 'b' : ''}">${stx.open}</span> / ${stx.closed}` : '\u2014'}</td>` +
@@ -869,12 +894,12 @@ ${ledgerRows}
   const estateCyc = [0, 1].map(i => cspPay ? Object.values(cspPay).filter(v => v.cyc[i] > 0).length : 0);
   const cspBlockHtml = `<section>
 <h2>CSPs that were resolving and have stopped</h2>
-<p class="sub">These are not the biggest failures on the list \u2014 they are the ones whose own record turned. Each had <b>at least ${STOP_MIN_BEFORE} cases mature before ${fmtD(lwFrom)} and resolved ${(STOP_WAS * 100).toFixed(0)}% or more of them</b>, then took at least ${STOP_MIN_NOW} cases in ${periods[LASTCOL - 1].label} and resolved half or fewer. <b>${stopped.length} CSPs</b> fit that this week, holding <b>${stopOpen} customers still down</b>. A CSP that never resolved is a known quantity; one that resolved all summer and stopped last week is a new fault, and the meeting can still ask what changed. <b>All of them are with the transition team.</b></p>
+<p class="sub">These are not the biggest failures on the list \u2014 they are the ones whose own record turned, and only where the week is too bad to be luck. One pending ticket out of two proves nothing at that volume, so each CSP here is measured against <b>its own</b> earlier rate: at least ${STOP_MIN_BEFORE} cases before ${fmtD(lwFrom)}, at least ${STOP_MIN_NOW} this week, at least ${STOP_MIN_DOWN} customers still waiting, and a week this bad happening by chance less often than 1 in 20. <b>${stopped.length} CSP${stopped.length === 1 ? '' : 's'}</b> clear that bar, holding <b>${stopOpen} customers still down</b>. A CSP that never resolved is a known quantity; one that resolved all summer and stopped last week is a new fault, and the meeting can still ask what changed. <b>All of them are with the transition team.</b></p>
 <div class="tablewrap"><table style="min-width:1280px">
-<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Before ${fmtD(lwFrom)}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>${periods[LASTCOL - 1].key}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>Drop</th><th style="text-align:left">What the ground said on the open ones</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[0][0]} cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[1][0]} cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Action</th><th style="text-align:left">Customers still down</th></tr></thead>
+<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Before ${fmtD(lwFrom)}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>${periods[LASTCOL - 1].key}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>Drop</th><th>Chance it is<br><span style="font-weight:400;opacity:.85">a quiet week</span></th><th style="text-align:left">What the ground said on the open ones</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[0][0]} cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[1][0]} cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Action</th><th style="text-align:left">Customers still down</th></tr></thead>
 <tbody>
-${stopped.length ? stopRows : '<tr><td colspan="14" style="text-align:left">No CSP crossed from a good record to a failing one this week.</td></tr>'}
-${stopped.length ? `<tr class="tot"><td class="tot" style="text-align:left"><b>These ${stopped.length} together</b></td><td class="tot"><b>${stopped.reduce((a, x) => { const q = cspProf && cspProf[normName(x.k)]; return a + (q ? q.paying : 0); }, 0).toLocaleString('en-IN')}</b></td><td class="tot"><b>${stopped.filter(x => { const q = cspProf && cspProf[normName(x.k)]; return q && q.mg; }).length} enrolled</b></td><td class="tot g"><b>${stopped.reduce((a, x) => a + x.b.r, 0)} / ${stopped.reduce((a, x) => a + x.b.n, 0)} (${pct(stopped.reduce((a, x) => a + x.b.r, 0), stopped.reduce((a, x) => a + x.b.n, 0))})</b></td><td class="tot b"><b>${stopped.reduce((a, x) => a + x.w.r, 0)} / ${stopped.reduce((a, x) => a + x.w.n, 0)} (${pct(stopped.reduce((a, x) => a + x.w.r, 0), stopped.reduce((a, x) => a + x.w.n, 0))})</b></td><td class="tot"></td><td class="tot" style="text-align:left"><b>${stopOpen} customers still down</b></td><td class="tot"><b>${stopped.reduce((a, x) => a + ((ptl && ptl[normName(x.k)]) ? ptl[normName(x.k)][LASTCOL] : 0), 0)}</b></td><td class="tot"></td><td class="tot"><b>${inr(stopped.reduce((a, x) => a + ((cspPay && cspPay[normName(x.k)]) ? cspPay[normName(x.k)].cyc[0] : 0), 0))}</b></td><td class="tot"><b>${inr(stopped.reduce((a, x) => a + ((cspPay && cspPay[normName(x.k)]) ? cspPay[normName(x.k)].cyc[1] : 0), 0))}</b></td><td class="tot" style="text-align:left"><b>${STOP_ACTION}</b></td><td class="tot"></td></tr>` : ''}
+${stopped.length ? stopRows : '<tr><td colspan="15" style="text-align:left">No CSP\'s week was bad enough to rule out ordinary variation. Nothing to escalate.</td></tr>'}
+${stopped.length ? `<tr class="tot"><td class="tot" style="text-align:left"><b>These ${stopped.length} together</b></td><td class="tot"><b>${stopped.reduce((a, x) => { const q = cspProf && cspProf[normName(x.k)]; return a + (q ? q.paying : 0); }, 0).toLocaleString('en-IN')}</b></td><td class="tot"><b>${stopped.filter(x => { const q = cspProf && cspProf[normName(x.k)]; return q && q.mg; }).length} enrolled</b></td><td class="tot g"><b>${stopped.reduce((a, x) => a + x.b.r, 0)} / ${stopped.reduce((a, x) => a + x.b.n, 0)} (${pct(stopped.reduce((a, x) => a + x.b.r, 0), stopped.reduce((a, x) => a + x.b.n, 0))})</b></td><td class="tot b"><b>${stopped.reduce((a, x) => a + x.w.r, 0)} / ${stopped.reduce((a, x) => a + x.w.n, 0)} (${pct(stopped.reduce((a, x) => a + x.w.r, 0), stopped.reduce((a, x) => a + x.w.n, 0))})</b></td><td class="tot"></td><td class="tot"></td><td class="tot" style="text-align:left"><b>${stopOpen} customers still down</b></td><td class="tot"><b>${stopped.reduce((a, x) => a + ((ptl && ptl[normName(x.k)]) ? ptl[normName(x.k)][LASTCOL] : 0), 0)}</b></td><td class="tot"></td><td class="tot"><b>${inr(stopped.reduce((a, x) => a + ((cspPay && cspPay[normName(x.k)]) ? cspPay[normName(x.k)].cyc[0] : 0), 0))}</b></td><td class="tot"><b>${inr(stopped.reduce((a, x) => a + ((cspPay && cspPay[normName(x.k)]) ? cspPay[normName(x.k)].cyc[1] : 0), 0))}</b></td><td class="tot" style="text-align:left"><b>${STOP_ACTION}</b></td><td class="tot"></td></tr>` : ''}
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">Bonus paid is what actually reached the CSP's settlement wallet (BONUS_CREDIT on the payment-settlement ledger, current to the hour): the ${PAY_CYCLES[0][0]} cycle is the credit dated ${fmtD(Date.parse(PAY_CYCLES[0][1] + 'T00:00:00+05:30'))}, the ${PAY_CYCLES[1][0]} cycle the credit dated ${fmtD(Date.parse(PAY_CYCLES[1][1] + 'T00:00:00+05:30'))}. The analytics bonus tables stopped feeding in June, so this reads the ledger the money moved through. ${cspPay ? `<b>${stopPayUnpaid} of these ${stopped.length} have had nothing credited in either cycle.</b> Across the estate the ${PAY_CYCLES[1][0]} cycle has credited ${estateCyc[1].toLocaleString('en-IN')} CSPs so far against ${estateCyc[0].toLocaleString('en-IN')} for the cycle before.` : 'Bonus figures are unavailable this run \u2014 the ledger query did not return.'}</p>
 </section>`;
@@ -888,7 +913,14 @@ ${stopped.length ? `<tr class="tot"><td class="tot" style="text-align:left"><b>T
   // column so a one-week bounce cannot pass as a fixed CSP. The last column is
   // the honest test - whether it also went back for the customers it had
   // already left down.
-  const REV_MIN = 2, REV_WAS = 0.5, REV_NOW = 0.8;
+  // Same test in the other direction: a CSP that scrapes 2 out of 2 after a bad
+  // week has done nothing a coin could not do. To be called revived, the week
+  // has to be too good to come from its own earlier rate.
+  const REV_MIN_BEFORE = 8;   // a failing RECORD, not one unlucky week
+  const REV_WAS = 0.5;        // was resolving half or fewer of them
+  const REV_MIN = 3;          // enough cases this week to judge
+  const REV_NOW = 0.8;        // and a genuinely clean week
+  const REV_P = 0.05;
   const prevWeekG = tally(maturedAll.filter(c => {
     const m = maturedAt(c);
     return m >= periods[LASTCOL - 2].from && m < periods[LASTCOL - 2].to;
@@ -900,10 +932,11 @@ ${stopped.length ? `<tr class="tot"><td class="tot" style="text-align:left"><b>T
     e.b++; if (!isResolvedNow(c)) e.down.push(c);
   });
   const revived = Object.keys(weekG)
-    .filter(k => prevWeekG[k] && prevWeekG[k].n >= REV_MIN && weekG[k].n >= REV_MIN)
-    .map(k => ({ k, l: prevWeekG[k], w: weekG[k], b: beforeG[k] || { n: 0, r: 0 }, old: oldBreach[k] || { b: 0, down: [] } }))
-    .filter(x => x.l.r / x.l.n <= REV_WAS && x.w.r / x.w.n >= REV_NOW)
-    .sort((a, b) => b.w.n - a.w.n || (b.w.r / b.w.n - b.l.r / b.l.n) - (a.w.r / a.w.n - a.l.r / a.l.n));
+    .filter(k => beforeG[k] && beforeG[k].n >= REV_MIN_BEFORE && weekG[k].n >= REV_MIN)
+    .map(k => ({ k, l: prevWeekG[k] || { n: 0, r: 0 }, w: weekG[k], b: beforeG[k], old: oldBreach[k] || { b: 0, down: [] } }))
+    .map(x => Object.assign(x, { pv: binomAtLeast(x.w.r, x.w.n, x.b.r / x.b.n) }))
+    .filter(x => x.b.r / x.b.n <= REV_WAS && x.w.r / x.w.n >= REV_NOW && x.pv < REV_P)
+    .sort((a, b) => a.pv - b.pv || b.w.n - a.w.n);
   const revCases = revived.reduce((a, x) => a + x.w.n, 0);
   const revRes = revived.reduce((a, x) => a + x.w.r, 0);
   const revOldDown = revived.reduce((a, x) => a + x.old.down.length, 0);
@@ -916,10 +949,11 @@ ${stopped.length ? `<tr class="tot"><td class="tot" style="text-align:left"><b>T
     return `<tr><td style="text-align:left;white-space:normal"><b>${escR(x.k)}</b></td>` +
       `<td>${prof ? prof.paying.toLocaleString('en-IN') : '\u2014'}</td>` +
       `<td>${prof ? (prof.mg ? '<span class="pillmg">Enrolled</span>' : '<span style="color:var(--muted)">Not enrolled</span>') : '\u2014'}</td>` +
-      `<td class="b">${x.l.r} / ${x.l.n} <span style="color:var(--muted)">(${(x.l.r / x.l.n * 100).toFixed(0)}%)</span></td>` +
+      `<td class="b">${x.b.r} / ${x.b.n} <span style="color:var(--muted)">(${pct(x.b.r, x.b.n)})</span></td>` +
       `<td class="g">${x.w.r} / ${x.w.n} <span style="color:var(--muted)">(${(x.w.r / x.w.n * 100).toFixed(0)}%)</span></td>` +
-      `<td class="g"><b>+${((x.w.r / x.w.n - x.l.r / x.l.n) * 100).toFixed(0)} pp</b></td>` +
-      `<td>${x.b.n ? x.b.r + ' / ' + x.b.n + ' <span style="color:var(--muted)">(' + pct(x.b.r, x.b.n) + ')</span>' : '\u2014'}</td>` +
+      `<td class="g"><b>+${((x.w.r / x.w.n - x.b.r / x.b.n) * 100).toFixed(0)} pp</b></td>` +
+      `<td>${odds(x.pv)}</td>` +
+      `<td>${x.l.n ? x.l.r + ' / ' + x.l.n : '\u2014'}</td>` +
       `<td class="${down ? 'b' : 'g'}">${x.old.b ? (x.old.b - down) + ' / ' + x.old.b : '\u2014'}</td>` +
       `<td>${calls == null ? '\u2014' : calls}</td>` +
       `<td class="${cspPay && cspPay[nk] && !cspPay[nk].cyc[0] ? 'b' : ''}">${inr(cspPay && cspPay[nk] ? cspPay[nk].cyc[0] : 0)}</td>` +
@@ -932,14 +966,13 @@ ${stopped.length ? `<tr class="tot"><td class="tot" style="text-align:left"><b>T
   }).join(NL);
   const revivedHtml = `<section>
 <h2>CSPs that were failing and have come back</h2>
-<p class="sub">The mirror of the table above. Each of these took at least ${REV_MIN} cases in ${periods[LASTCOL - 2].label} and resolved <b>half or fewer</b>, then took at least ${REV_MIN} in ${periods[LASTCOL - 1].label} and resolved <b>${(REV_NOW * 100).toFixed(0)}% or more</b>. <b>${revived.length} CSPs</b> did that, resolving <b>${revRes} of ${revCases}</b> cases between them this week. Their longer record is in its own column so a single good week cannot pass as a CSP that has been fixed \u2014 and the column after it is the real test: whether they also went back for the customers they had already left down.</p>
-<div class="tablewrap"><table style="min-width:1280px">
-<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>${periods[LASTCOL - 2].key}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>${periods[LASTCOL - 1].key}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>Move</th><th>Whole record<br><span style="font-weight:400;opacity:.85">before ${fmtD(lwFrom)}</span></th><th>Old breached cases<br><span style="font-weight:400;opacity:.85">fixed since</span></th><th>PTL calls</th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[0][0]} cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[1][0]} cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Where they stand</th><th style="text-align:left">Older customers still down</th></tr></thead>
+<p class="sub">The mirror of the table above, held to the same test and the same volumes: a CSP that had <b>at least ${REV_MIN_BEFORE} cases before ${fmtD(lwFrom)} and was resolving half or fewer of them</b>, then took at least ${REV_MIN} this week and cleared ${(REV_NOW * 100).toFixed(0)}% — a week too good to come from the rate it was running at, not a lucky 2 out of 2.${revived.length ? ` <b>${revived.length} CSP${revived.length === 1 ? '' : 's'}</b> cleared it, resolving <b>${revCases ? revRes + ' of ' + revCases : '0'}</b> cases between them. The column on the right is the real test: whether they also went back for the customers they had already left down.` : ' <b>No CSP cleared it this week.</b> Nobody on the failing list had both the volume and the week to show a real turn — which is its own answer when the meeting asks whether the push is working.'}</p>
+${revived.length ? `<div class="tablewrap"><table style="min-width:1280px">
+<thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Record before<br><span style="font-weight:400;opacity:.85">${fmtD(lwFrom)}</span></th><th>${periods[LASTCOL - 1].key}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>Move</th><th>Chance it is<br><span style="font-weight:400;opacity:.85">a lucky week</span></th><th>Last week</th><th>Old breached cases<br><span style="font-weight:400;opacity:.85">fixed since</span></th><th>PTL calls</th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[0][0]} cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[1][0]} cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Where they stand</th><th style="text-align:left">Older customers still down</th></tr></thead>
 <tbody>
-${revived.length ? revRows : '<tr><td colspan="14" style="text-align:left">No CSP came back from a failing week to a clean one this week.</td></tr>'}
-${revived.length ? `<tr class="tot"><td class="tot" style="text-align:left"><b>These ${revived.length} together</b></td><td class="tot"><b>${revived.reduce((a, x) => { const q = cspProf && cspProf[normName(x.k)]; return a + (q ? q.paying : 0); }, 0).toLocaleString('en-IN')}</b></td><td class="tot"><b>${revived.filter(x => { const q = cspProf && cspProf[normName(x.k)]; return q && q.mg; }).length} enrolled</b></td><td class="tot b"><b>${revived.reduce((a, x) => a + x.l.r, 0)} / ${revived.reduce((a, x) => a + x.l.n, 0)} (${pct(revived.reduce((a, x) => a + x.l.r, 0), revived.reduce((a, x) => a + x.l.n, 0))})</b></td><td class="tot g"><b>${revRes} / ${revCases} (${pct(revRes, revCases)})</b></td><td class="tot"></td><td class="tot"></td><td class="tot ${revOldDown ? 'b' : 'g'}"><b>${revOldB - revOldDown} / ${revOldB}</b></td><td class="tot"><b>${revived.reduce((a, x) => a + ((ptl && ptl[normName(x.k)]) ? ptl[normName(x.k)][LASTCOL] : 0), 0)}</b></td><td class="tot"><b>${inr(revived.reduce((a, x) => a + ((cspPay && cspPay[normName(x.k)]) ? cspPay[normName(x.k)].cyc[0] : 0), 0))}</b></td><td class="tot"><b>${inr(revived.reduce((a, x) => a + ((cspPay && cspPay[normName(x.k)]) ? cspPay[normName(x.k)].cyc[1] : 0), 0))}</b></td><td class="tot"></td><td class="tot" style="text-align:left"><b>${revOldDown ? revOldDown + ' older customers still down between them' : 'Nothing left behind'}</b></td><td class="tot"></td></tr>` : ''}
+${revRows}
 </tbody></table></div>
-${revived.length ? `<p class="sub" style="margin-top:10px">Read the last two columns together before calling any of these fixed: on this week's work they are clean, but of the ${revOldB} cases they had already breached before ${fmtD(lwFrom)} they have gone back and fixed ${revOldB - revOldDown}. ${revOldDown ? `${revOldDown} of those customers are still down today, and they are named on the row.` : ''} A CSP is worth taking off the watchlist when both columns are clean two weeks running.</p>` : ''}
+<p class="sub" style="margin-top:10px">Read the last two columns together before calling any of these fixed: on this week's work they are clean, but of the ${revOldB} cases they had already breached before ${fmtD(lwFrom)} they have gone back and fixed ${revOldB - revOldDown}. ${revOldDown ? `${revOldDown} of those customers are still down today, and they are named on the row.` : ''} A CSP is worth taking off the watchlist when both columns are clean two weeks running.</p>` : ''}
 </section>`;
 
   // ── Last week's CSPs, followed forward ──────────────────────────────────
