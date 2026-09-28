@@ -1464,6 +1464,30 @@ ${aiItems.length ? aiItems.map(([, v], i) =>
     '@media print{#fabBtn,#fabPanel{display:none !important}}',
   ].join('\n');
 
+  // ── Headlines ───────────────────────────────────────────────────────────
+  // The doc is read in a big room now. Four lines at the top, each a number and
+  // what it means; everything below is the evidence for them.
+  const stillDown = breachedLW.length - fixedLW.length;
+  const headlines = [
+    [pct(sLW.res, sLW.m),
+     `of the ${sLW.m.toLocaleString('en-IN')} cases that matured this week were resolved \u2014 ${wowRes >= 0 ? 'up' : 'down'} ${Math.abs(wowRes).toFixed(1)} pp on the week before, and ${sLW.unresM} customers were still down when the 48 hours ran out.`,
+     wowRes >= 0 ? 'good' : 'bad'],
+    [stillDown.toLocaleString('en-IN'),
+     `customers from LAST week are still down today. Their CSPs have gone back for only ${fixedLW.length} of ${breachedLW.length}, and ${quietCsps} of the ${trackRows.length} CSPs holding them took no new case this week at all.`,
+     'bad'],
+    [docAll.pend.length.toLocaleString('en-IN'),
+     `refund-eligible customers (${inr(sumA(docAll.pend))}) have nothing written against them \u2014 the real backlog. Everything else unpaid has a reason recorded.`,
+     docAll.pend.length ? 'bad' : 'good'],
+    [stopped.length ? String(stopped.length) : 'None',
+     stopped.length
+       ? `CSP${stopped.length === 1 ? '' : 's'} stopped resolving at a rate luck cannot explain \u2014 ${stopped.map(x => escR(x.k)).join(', ')}. ${revived.length ? revived.length + ' came back.' : 'None came back.'}`
+       : `CSP stopped resolving at a rate luck cannot explain this week${revived.length ? ', and ' + revived.length + ' came back' : ', and none came back'}.`,
+     stopped.length ? 'bad' : 'good'],
+  ];
+  const headlineHtml = `<section class="heads">
+${headlines.map(([n, txt, tone]) => `<div class="head ${tone}"><div class="headn">${n}</div><div class="headt">${txt}</div></div>`).join(NL)}
+</section>`;
+
   // ── HTML doc ──
   const row = (label, f, cls) =>
     `<tr><td>${label}</td>` + S.map((st, i) =>
@@ -1492,6 +1516,12 @@ th:first-child{text-align:left}th.tot{background:var(--head2)}
 td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td:first-child{text-align:left;color:var(--ink);font-weight:600;white-space:normal}
 tr:last-child td{border-bottom:none}td.g{color:var(--good);font-weight:750}td.b{color:var(--bad);font-weight:750}td.tot{background:var(--surface2);font-weight:700}
+.heads{margin:20px 0 4px;display:grid;gap:10px}
+.head{display:flex;gap:16px;align-items:baseline;background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--muted);border-radius:10px;padding:13px 17px}
+.head.good{border-left-color:var(--good)}.head.bad{border-left-color:var(--bad)}
+.headn{font-size:27px;font-weight:750;font-variant-numeric:tabular-nums;min-width:112px;color:var(--ink)}
+.head.good .headn{color:var(--good)}.head.bad .headn{color:var(--bad)}
+.headt{font-size:14.5px;color:var(--ink2);line-height:1.5}
 .pillmg{display:inline-block;padding:2px 8px;border-radius:999px;background:var(--good-soft);color:var(--good);font-size:11px;font-weight:700}\n${commentCss}\n.notes{border-top:1px solid var(--border);margin-top:40px;padding-top:14px;font-size:12.5px;color:var(--muted)}
 </style></head><body><div class="wrap">
 <header>
@@ -1499,9 +1529,10 @@ tr:last-child td{border-bottom:none}td.g{color:var(--good);font-weight:750}td.b{
 <h1>Weekly metrics recap</h1>
 <p class="meta">Generated ${fmtD(NOW)} ${new Date(NOW + IST).getUTCFullYear()} · matured cases only (completed their full 48-hour window) · auto-refreshed every Monday</p>
 <div style="background:var(--good-soft);border:1px solid var(--good);border-radius:10px;padding:12px 16px;margin-top:14px;font-size:14.5px">
-🎯 <b>Target: ${TARGET_PCT}% resolution within 48 hrs by end of August.</b>
-Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m * 100) > 0 ? `<b style="color:var(--bad)">${(TARGET_PCT - sTD.w48 / sTD.m * 100).toFixed(1)} pp to go</b>` : '<b style="color:var(--good)">target met</b>'}.
+🎯 <b>Target: ${TARGET_PCT}% of cases resolved inside 48 hrs.</b>
+This week <b>${pct(sLW.w48g, sLW.m)}</b>, since launch <b>${pct(sTD.w48g, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48g / sTD.m * 100) > 0 ? `<b style="color:var(--bad)">${(TARGET_PCT - sTD.w48g / sTD.m * 100).toFixed(1)} pp to go</b>` : '<b style="color:var(--good)">target met</b>'}.
 </div>
+${headlineHtml}
 <div class="tiles">
 <div class="tile"><div class="label">Resolved</div><div class="value" style="color:var(--good)">${sLW.res.toLocaleString('en-IN')} (${pct(sLW.res, sLW.m)})</div><div class="note">of the ${sLW.m.toLocaleString('en-IN')} cases that matured in ${periods[LW].label} &middot; inside the 48 hrs: <b>${sLW.w48g.toLocaleString('en-IN')} (${pct(sLW.w48g, sLW.m)})</b> &middot; since launch ${pct(sTD.res, sTD.m)}</div></div>
 <div class="tile"><div class="label">Unresolved</div><div class="value" style="color:var(--bad)">${sLW.unresM.toLocaleString('en-IN')} (${pct(sLW.unresM, sLW.m)})</div><div class="note">still down when the 48 hrs ran out &middot; of those, <b>${sLW.cameBack}</b> came back on later &middot; since launch ${sTD.unresM.toLocaleString('en-IN')} (${pct(sTD.unresM, sTD.m)})</div></div>
@@ -1515,7 +1546,7 @@ Currently at <b>${pct(sTD.w48, sTD.m)}</b> — ${(TARGET_PCT - sTD.w48 / sTD.m *
 ${aiHtml}
 <section>
 <h2>Week-wise numbers</h2>
-<p class="sub">Weeks are Monday-anchored (Mon–Sun, IST) and cases are cohorted by <b>when they matured</b> — the week their 48-hour window closed — which is how the tracker's own Weekly Review tab counts them, so the doc and the tab always agree. A case added on a Friday matures on the Sunday and belongs to that week. Reopened is the exception: it is an event, counted in the week the case actually came back down. Each cell shows the absolute number with its share in brackets; cases maturing after ${cutLabel} are not in yet.</p>
+<p class="sub">Counted in the week each case's 48-hour window closed — the same basis as the tracker's Weekly Review tab. Reopened is an event, counted in the week the case came back down. Cases maturing after ${cutLabel} are not in yet.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>Metric</th>${cols}</tr></thead>
 <tbody>
@@ -1574,7 +1605,7 @@ ${commentScript}
     `• Last week: *${pct(sLW.w48, sLW.m)}* net resolution vs ${pct(sWB.w48, sWB.m)} week before (${wowRes >= 0 ? '+' : ''}${wowRes.toFixed(1)} pp)\n` +
     `• Refund on breached: done ${breachedDone.length} (${inr(breachedDoneAmt)}) · pending *${breachedPend.length}* (*${inr(breachedPendAmt)}*)\n` +
     `• Reopened: *${reopensAllTime}* in the tracker all-time, ${reopens.length} since launch, ${sTD.w48g - sTD.w48} of them within-48hr resolutions that came back · top reason: ${reopReasons[0] ? reopReasons[0][0] + ' (' + reopReasons[0][1] + ')' : '—'} · re-resolved & PFT-confirmed ${reopPftDone}, still open ${reopStillOpen}\n` +
-    `🎯 Target: ${TARGET_PCT}% within-48h resolution by end of Aug — ${(TARGET_PCT - sTD.w48 / sTD.m * 100) > 0 ? (TARGET_PCT - sTD.w48 / sTD.m * 100).toFixed(1) + ' pp to go' : 'met ✅'}\n` +
+    `🎯 Target: ${TARGET_PCT}% resolved inside 48 hrs — this week ${pct(sLW.w48g, sLW.m)}, since launch ${pct(sTD.w48g, sTD.m)}${(TARGET_PCT - sTD.w48g / sTD.m * 100) > 0 ? ' (' + (TARGET_PCT - sTD.w48g / sTD.m * 100).toFixed(1) + ' pp to go)' : ' — met ✅'}\n` +
     `📄 Full funnel doc: ${DOC_URL}`;
   const res = await fetch('https://slack.com/api/chat.postMessage', {
     method: 'POST',
