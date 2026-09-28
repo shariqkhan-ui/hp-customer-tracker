@@ -852,6 +852,11 @@ ${cityByP.some(by => by.unmapped.m) ? `<p class="sub" style="margin-top:8px">All
     }).filter(e => e.early.n >= 5 && e.eR >= 70 && e.rec.n >= 3 && e.drop >= 20)
       .sort((a, b) => b.drop - a.drop || b.rec.down.length - a.rec.down.length)
       .slice(0, 10);
+    const T = rows.reduce((a, e) => ({ en: a.en + e.early.n, er: a.er + e.early.r, rn: a.rn + e.rec.n, rr: a.rr + e.rec.r, down: a.down + e.rec.down.length }), { en: 0, er: 0, rn: 0, rr: 0, down: 0 });
+    const estate = era.filter(c => { const m = maturedAt(c); return m >= recFrom && m < recTo; });
+    const estRes = estate.filter(c => getStatus(c) !== 'Unresolved').length;
+    const estDown = estate.length - estRes;
+    const restN = estate.length - T.rn, restR = estRes - T.rr;
     const ageD = c => Math.floor((NOW - startTs(c)) / 86400000);
     const tk = c => `<a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a> <span style="color:var(--muted)">${ageD(c)}d</span>`;
     const earlyLabel = fmtD(LAUNCH) + ' \u2013 ' + fmtD(recFrom - 1), recLabel = fmtD(recFrom) + ' \u2013 ' + fmtD(recTo - 1);
@@ -873,7 +878,9 @@ ${cityByP.some(by => by.unmapped.m) ? `<p class="sub" style="margin-top:8px">All
 <thead><tr><th>#</th><th style="text-align:left">CSP</th><th style="text-align:left">City</th><th>Cases<br><span style="font-weight:400;font-size:12px">${earlyLabel}</span></th><th>Resolved<br><span style="font-weight:400;font-size:12px">earlier</span></th><th>Cases<br><span style="font-weight:400;font-size:12px">${recLabel}</span></th><th>Resolved<br><span style="font-weight:400;font-size:12px">recent</span></th><th>Drop</th><th>Still down</th><th style="text-align:left">Still-down tickets</th></tr></thead>
 <tbody>
 ${body}
+${rows.length ? `<tr class="tot"><td class="tot"></td><td class="tot" style="text-align:left"><b>These ${rows.length} together</b></td><td class="tot"></td><td class="tot"><b>${T.en}</b></td><td class="tot"><b>${T.er} (${pct(T.er, T.en)})</b></td><td class="tot"><b>${T.rn}</b></td><td class="tot"><b>${T.rr} (${pct(T.rr, T.rn)})</b></td><td class="tot"><b>−${(T.er / T.en * 100 - T.rr / T.rn * 100).toFixed(1)} pp</b></td><td class="tot"><b>${T.down}</b></td><td class="tot" style="text-align:left;font-weight:400">${pct(T.down, estDown)} of the ${estDown} customers still down from ${recLabel}</td></tr>` : ''}
 </tbody></table></div>
+${rows.length ? `<p class="sub" style="margin-top:10px"><b>Overall impact.</b> In ${recLabel} the estate resolved <b>${estRes} of ${estate.length} (${pct(estRes, estate.length)})</b>. These ${rows.length} CSPs account for ${T.rn} of those cases and <b>${T.down} of the ${estDown} customers still down (${pct(T.down, estDown)})</b>. Without them the rest of the estate resolved ${restR} of ${restN} (${pct(restR, restN)}); had they kept their earlier rate of ${pct(T.er, T.en)}, roughly <b>${Math.max(0, Math.round(T.rn * T.er / T.en) - T.rr)} more customers</b> would be up and the estate would read about <b>${pct(estRes + Math.max(0, Math.round(T.rn * T.er / T.en) - T.rr), estate.length)}</b> instead of ${pct(estRes, estate.length)}.</p>` : ''}
 </section>`;
   })();
   const maturedAll = maturedTD;
