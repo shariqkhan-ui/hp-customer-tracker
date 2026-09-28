@@ -754,7 +754,16 @@ ${ledgerRows}
     const intake = era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to && cameInAsReopen(c); });
     return { reopWeek: back.length, resWeek: resMarked.length, intake: intake.length };
   }
-  const S = periods.map(pp => Object.assign(stats(inRange(pp)), reopStats(pp)));
+  // Per Shariq (28 Sep): the three rows must add up on the page. Net resolved
+  // IS Resolved minus the Reopened row - the reopens that came back down in
+  // that week - and nothing subtler. The same rule feeds the headline, tiles,
+  // banner, Slack line and the city cut, so every net figure on the doc is the
+  // arithmetic a reader can check from the table.
+  const S = periods.map(pp => {
+    const x = Object.assign(stats(inRange(pp)), reopStats(pp));
+    x.resNet = Math.max(0, x.res - x.reopWeek);
+    return x;
+  });
 
   // "Last week" is the week that just ended for the review — the current
   // slice up to yesterday (index 3), not the last fully-closed calendar slice.
@@ -767,9 +776,11 @@ ${ledgerRows}
   const cityStats = (pp) => {
     const all = inRange(pp);
     const by = {};
-    CITIES.forEach(k => { by[k] = stats(all.filter(c => cityOf(c) === k)); });
-    by.unmapped = stats(all.filter(c => !cityOf(c)));
-    by.all = stats(all);
+    const reopIn = f => era.filter(c => { const t = reopTs(c); return t >= pp.from && t < pp.to && f(c); }).length;
+    const net = (x, f) => { x.resNet = Math.max(0, x.res - reopIn(f)); return x; };
+    CITIES.forEach(k => { by[k] = net(stats(all.filter(c => cityOf(c) === k)), c => cityOf(c) === k); });
+    by.unmapped = net(stats(all.filter(c => !cityOf(c))), c => !cityOf(c));
+    by.all = net(stats(all), () => true);
     return by;
   };
   const cityLW = cityStats(periods[LW]), cityTD = cityStats(periods[LASTCOL]);
