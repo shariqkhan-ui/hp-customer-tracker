@@ -212,6 +212,33 @@ async function cspProfile() {
     return null;
   }
 }
+// Which city a CSP belongs to, from hierarchy_base CLUSTER: Delhi covers
+// NCR (Ghaziabad, Noida, Faridabad, Gurgaon), Mumbai is Mumbai, and every
+// other cluster is a UP city (Meerut, Agra, Bareilly, Lucknow, Prayagraj,
+// Gorakhpur) — Bharat.
+async function cspCityByName() {
+  const key = process.env.METABASE_API_KEY;
+  if (!key) return null;
+  const sql = `SELECT DISTINCT PARTNER_NAME, CLUSTER FROM hierarchy_base WHERE dedup_flag = 1 AND PARTNER_NAME IS NOT NULL`;
+  try {
+    const r = await fetch(METABASE + '/api/dataset', {
+      method: 'POST', headers: { 'x-api-key': key, 'content-type': 'application/json' },
+      body: JSON.stringify({ database: 113, type: 'native', native: { query: sql } }),
+    }).then(x => x.json());
+    if (!r.data || !r.data.rows) throw new Error(JSON.stringify(r.error || r).slice(0, 200));
+    const m = {};
+    r.data.rows.forEach(([name, cluster]) => {
+      const k = normName(name); if (!k) return;
+      const cl = String(cluster || '').trim().toLowerCase();
+      m[k] = cl === 'delhi' ? 'Delhi/NCR' : cl === 'mumbai' ? 'Mumbai' : cl ? 'Bharat' : '';
+    });
+    console.log('CSP city map for', Object.keys(m).length, 'CSPs');
+    return m;
+  } catch (e) {
+    console.error('CSP city query failed (non-fatal):', e.message);
+    return null;
+  }
+}
 async function ptlStatusByPartner(from, to) {
   const key = process.env.METABASE_API_KEY;
   if (!key) return null;
@@ -532,6 +559,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const ptlWhy = await ptlReasonsByPartner(LAUNCH, CUT);
   const ptlSt = await ptlStatusByPartner(LAUNCH, CUT);
   const cspProf = await cspProfile();
+  const cspCity = await cspCityByName();
   // The two fortnightly cycles the review compares.
   // Bonus is credited on the 1st and the 16th, so the credit DATE is the payout date,
   // not the earning window: the 16-31 Aug cycle lands on 1 Sep and the 1-15 Sep
@@ -728,6 +756,40 @@ ${ledgerRows}
   const LW = LASTCOL - 1;   // Week 1, the week just reviewed
   const sWB = S[LW - 1];     // the week before it
   const sLW = S[LW];         // last week
+  // ── Resolution status by city: Delhi/NCR, Mumbai, Bharat (UP cities) ──
+  const CITIES = ['Delhi/NCR', 'Mumbai', 'Bharat'];
+  const cityOf = c => (cspCity && cspCity[normName(c.partner)]) || '';
+  const cityStats = (pp) => {
+    const all = inRange(pp);
+    const by = {};
+    CITIES.forEach(k => { by[k] = stats(all.filter(c => cityOf(c) === k)); });
+    by.unmapped = stats(all.filter(c => !cityOf(c)));
+    by.all = stats(all);
+    return by;
+  };
+  const cityLW = cityStats(periods[LW]), cityTD = cityStats(periods[LASTCOL]);
+  const cityRow = (label, by, key) => {
+    const x = by[key];
+    return `<tr><td style="text-align:left"><b>${label}</b></td>` +
+      `<td>${x.m.toLocaleString('en-IN')}</td>` +
+      `<td>${x.res.toLocaleString('en-IN')} (${pct(x.res, x.m)})</td>` +
+      `<td class="g"><b>${x.resNet.toLocaleString('en-IN')} (${pct(x.resNet, x.m)})</b></td>` +
+      `<td class="b">${x.unresM.toLocaleString('en-IN')} (${pct(x.unresM, x.m)})</td></tr>`;
+  };
+  const cityTable = (title, by) => `<p class="sub" style="margin:10px 0 4px"><b>${title}</b></p>
+<div class="tablewrap"><table>
+<thead><tr><th style="text-align:left">City</th><th>Cases matured</th><th>Resolved</th><th>Net resolved</th><th>Unresolved</th></tr></thead>
+<tbody>
+${CITIES.map(k => cityRow(k === 'Bharat' ? 'Bharat (UP cities)' : k, by, k)).join('\n')}
+${by.unmapped.m ? cityRow('<span style="font-weight:400;color:var(--muted)">CSP not in hierarchy</span>', by, 'unmapped') : ''}
+${cityRow('All', by, 'all')}
+</tbody></table></div>`;
+  const cityHtml = cspCity ? `<section>
+<h2>Resolution status, city-wise</h2>
+<p class="sub">The same matured-case arithmetic as the week-wise table, cut by the CSP's city from the partner hierarchy. Delhi/NCR includes Ghaziabad, Noida, Faridabad and Gurgaon; Bharat is every UP city (Meerut, Agra, Bareilly, Lucknow, Prayagraj, Gorakhpur). Net resolved takes out the cases that came back.</p>
+${cityTable(periods[LW].key + ' \u2014 ' + periods[LW].label, cityLW)}
+${cityTable('Since launch \u2014 ' + periods[LASTCOL].label, cityTD)}
+</section>` : `<section><h2>Resolution status, city-wise</h2><p class="sub">The partner hierarchy did not return this run, so the city cut is not available.</p></section>`;
   const sTD = S[LASTCOL];    // since launch
 
   const wowRes = (sLW.m && sWB.m) ? (sLW.resNet / sLW.m - sWB.resNet / sWB.m) * 100 : 0;
@@ -1100,6 +1162,15 @@ ${Object.entries(lwTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
   // Status of a reopened case = the field team's Status column in the RCA
   // sheet (Unresolved / Ping Up / Migrated), per Shariq 28 Sep.
   const reopStatusCls = rr => !rr || !rr.status ? '' : /unresolved/i.test(rr.status) ? 'b' : 'g';
+  // The Reopened RCA: the remark the case was closed on when that is a reason
+  // (SmartFiber: no router / inventory); a resolution remark such as 'Resolved
+  // by Old CSP' says nothing about why it came back, so then the customer's
+  // own account from the RCA sheet is used.
+  const reopRcaOf = (c, rr) => {
+    const closed = trim(c.remarks);
+    if (closed && !isResRemark(c)) return closed;
+    return rr && rr.cx ? rr.cx : '';
+  };
   const reopSheetSummary = (statuses) => {
     const known = statuses.filter(Boolean);
     const down = known.filter(x => /unresolved/i.test(x)).length;
@@ -1118,9 +1189,9 @@ ${Object.entries(lwTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
     // own account where the field team has written it up.
     reopSnapHtml = `<section>
 <h2>Reopened cases \u2014 ${periods[LASTCOL - 1].key}</h2>
-<p class="sub">${lwReopCases.length} resolution${lwReopCases.length === 1 ? '' : 's'} came back down in ${periods[LASTCOL - 1].label}, against ${S[LASTCOL - 1].resWeek} marked resolved that week (${pct(lwReopCases.length, S[LASTCOL - 1].resWeek)}). The remark each case was closed on is the RCA; the CX column is filled where the field team has written the case up in the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit?gid=0" style="color:var(--accent-ink)">reopen RCA sheet</a>.</p>
+<p class="sub">${lwReopCases.length} resolution${lwReopCases.length === 1 ? '' : 's'} came back down in ${periods[LASTCOL - 1].label}, against ${S[LASTCOL - 1].resWeek} marked resolved that week (${pct(lwReopCases.length, S[LASTCOL - 1].resWeek)}). The Reopened RCA is the reason recorded against the case: the remark it was closed on where that is a reason, otherwise the customer's own account from the <a href="https://docs.google.com/spreadsheets/d/1cXCnazjjLfzxG4-Uyr9nrGGo4qgGbbQ-zjFZ6xG_9vk/edit?gid=0" style="color:var(--accent-ink)">reopen RCA sheet</a>.</p>
 <div class="tablewrap"><table style="min-width:980px">
-<thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">CSP</th><th style="text-align:left">Closed on this remark</th><th style="text-align:left">Sub-category</th><th>Status (RCA sheet)</th><th style="text-align:left">CX remarks</th></tr></thead>
+<thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">CSP</th><th style="text-align:left">Sub-category</th><th>Status (RCA sheet)</th><th style="text-align:left">Reopened RCA</th></tr></thead>
 <tbody>
 ${lwReopCases.map(c => {
   const t = dig(c.ticket_no);
@@ -1129,10 +1200,9 @@ ${lwReopCases.map(c => {
     `<td><a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(c.ticket_no))}?query=${escR(trim(c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(c.ticket_no))}</a></td>` +
     `<td style="font-size:12.5px">${escR(trim(c.mobile))}</td>` +
     `<td style="text-align:left;font-weight:400;white-space:normal">${escR(trim(c.partner))}</td>` +
-    `<td style="text-align:left;white-space:normal"><b>${escR(trim(c.remarks)) || '\u2014'}</b></td>` +
     `<td style="text-align:left;font-weight:400;white-space:normal;font-size:12.5px">${escR(trim(c.subcat))}</td>` +
     `<td class="${reopStatusCls(rr)}">${rr && rr.status ? escR(rr.status) : '<span style="color:var(--muted);font-weight:400">not in sheet</span>'}</td>` +
-    `<td style="text-align:left;font-weight:400;white-space:normal">${rr && rr.cx ? escR(rr.cx) : '<span style="color:var(--muted)">not written up</span>'}</td>` +
+    `<td style="text-align:left;white-space:normal"><b>${escR(reopRcaOf(c, rr)) || '<span style="color:var(--muted);font-weight:400">not written up</span>'}</b></td>` +
     `</tr>`;
 }).join(NL)}
 </tbody></table></div>
@@ -1151,7 +1221,7 @@ ${lwReopCases.map(c => {
 <h2>Reopened cases \u2014 ${periods[LASTCOL - 1].key}</h2>
 <p class="sub">The ${reopWeekRows.length} customers whose case reopened in ${periods[LASTCOL - 1].label}, with the reason each gave, straight from the field team's reopen RCA sheet.</p>
 <div class="tablewrap"><table style="min-width:980px">
-<thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">Customer</th><th style="text-align:left">CSP</th><th style="text-align:left">Sub-category</th><th>Status</th><th style="text-align:left">CX remarks</th><th style="text-align:left">CSP remarks</th></tr></thead>
+<thead><tr><th>Ticket</th><th>Mobile</th><th style="text-align:left">Customer</th><th style="text-align:left">CSP</th><th style="text-align:left">Sub-category</th><th>Status</th><th style="text-align:left">Reopened RCA</th></tr></thead>
 <tbody>
 ${reopWeekRows.map(r => `<tr>` +
   `<td><a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(r.t)}?query=${escR(r.t)}" target="_blank" rel="noopener">${escR(r.t)}</a></td>` +
@@ -1160,12 +1230,11 @@ ${reopWeekRows.map(r => `<tr>` +
   `<td style="text-align:left;font-weight:400;white-space:normal">${escR(r.cspName)}</td>` +
   `<td style="text-align:left;font-weight:400;white-space:normal;font-size:12.5px">${escR(r.subcat)}</td>` +
   `<td class="${reopStatusCls(r)}">${escR(r.status) || '<span style="color:var(--muted);font-weight:400">not filled</span>'}</td>` +
-  `<td style="text-align:left;white-space:normal"><b>${escR(r.cx) || '<span style="color:var(--muted);font-weight:400">not filled</span>'}</b></td>` +
-  `<td style="text-align:left;font-weight:400;white-space:normal">${escR(r.csp) || '<span style="color:var(--muted)">\u2014</span>'}</td>` +
+  `<td style="text-align:left;white-space:normal"><b>${escR(r.cx || r.csp) || '<span style="color:var(--muted);font-weight:400">not filled</span>'}</b></td>` +
   `</tr>`).join(NL)}
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">${reopSheetSummary(reopWeekRows.map(r => r.status))}</p>
-<p class="sub" style="margin-top:6px">Read the two remark columns together: the customer is reporting the fault came back or was never fixed, while the CSP has recorded <b>&ldquo;Internet Working&rdquo;</b> on ${reopWeekRows.filter(r => /internet working/i.test(r.csp)).length} of the ${reopWeekRows.length}.</p>
+<p class="sub" style="margin-top:6px">The RCA is the customer's own account from the sheet, or the CSP's where the customer's is not filled. The CSP has recorded <b>&ldquo;Internet Working&rdquo;</b> on ${reopWeekRows.filter(r => /internet working/i.test(r.csp)).length} of the ${reopWeekRows.length}.</p>
 </section>`;
   }
 
@@ -1633,10 +1702,11 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">A further ${S.slice(0, 3).map(x => x.intake).join(' / ')} cases (Week 3 / Week 2 / Week 1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
 </section>
-${whyHtml}
 ${reopSnapHtml}
 ${refundsHtml()}
+${whyHtml}
 ${cspBlockHtml.replace(/<\/section>\s*$/, revivedHtml + '</section>')}
+${cityHtml}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a resolution of ours that came back afterwards, taken from Kapture's own event log (TICKET_LOGS, EVENT_NAME = TICKET_REOPENED, latest event per ticket). The model's FIRST_REOPENED_TIME and TIMES_REOPENED columns are not used: the first is only a ticket's first-ever reopen and the second counts duplicated log rows, so a single reopen reads as 95. Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div>
 ${commentBox}
