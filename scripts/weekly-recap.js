@@ -893,7 +893,7 @@ ${ledgerRows}
   const stopPayUnpaid = stopped.filter(x => { const q = cspPay && cspPay[normName(x.k)]; return !q || (!q.cyc[0] && !q.cyc[1]); }).length;
   const estateCyc = [0, 1].map(i => cspPay ? Object.values(cspPay).filter(v => v.cyc[i] > 0).length : 0);
   const cspBlockHtml = `<section>
-<h2>CSPs that were resolving and have stopped</h2>
+<h2>CSP watchlist: who stopped, who came back</h2>
 <p class="sub">These are not the biggest failures on the list \u2014 they are the ones whose own record turned, and only where the week is too bad to be luck. One pending ticket out of two proves nothing at that volume, so each CSP here is measured against <b>its own</b> earlier rate: at least ${STOP_MIN_BEFORE} cases before ${fmtD(lwFrom)}, at least ${STOP_MIN_NOW} this week, at least ${STOP_MIN_DOWN} customers still waiting, and a week this bad happening by chance less often than 1 in 20. <b>${stopped.length} CSP${stopped.length === 1 ? '' : 's'}</b> clear that bar, holding <b>${stopOpen} customers still down</b>. A CSP that never resolved is a known quantity; one that resolved all summer and stopped last week is a new fault, and the meeting can still ask what changed. <b>All of them are with the transition team.</b></p>
 <div class="tablewrap"><table style="min-width:1280px">
 <thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Before ${fmtD(lwFrom)}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>${periods[LASTCOL - 1].key}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>Drop</th><th>Chance it is<br><span style="font-weight:400;opacity:.85">a quiet week</span></th><th style="text-align:left">What the ground said on the open ones</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[0][0]} cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[1][0]} cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Action</th><th style="text-align:left">Customers still down</th></tr></thead>
@@ -964,8 +964,8 @@ ${stopped.length ? `<tr class="tot"><td class="tot" style="text-align:left"><b>T
         : '<span style="color:var(--good)">Clean week, nothing left behind</span>'}</td>` +
       `<td style="text-align:left;white-space:normal;font-weight:400;font-size:12px">${down ? stopTix(x.old.down) : '<span style="color:var(--muted)">\u2014</span>'}</td></tr>`;
   }).join(NL);
-  const revivedHtml = `<section>
-<h2>CSPs that were failing and have come back</h2>
+  const revivedHtml = `<div style="margin-top:26px">
+<h3 style="font-size:15.5px;margin:0 0 5px">The other way: CSPs that were failing and have come back</h3>
 <p class="sub">The mirror of the table above, held to the same test and the same volumes: a CSP that had <b>at least ${REV_MIN_BEFORE} cases before ${fmtD(lwFrom)} and was resolving half or fewer of them</b>, then took at least ${REV_MIN} this week and cleared ${(REV_NOW * 100).toFixed(0)}% — a week too good to come from the rate it was running at, not a lucky 2 out of 2.${revived.length ? ` <b>${revived.length} CSP${revived.length === 1 ? '' : 's'}</b> cleared it, resolving <b>${revCases ? revRes + ' of ' + revCases : '0'}</b> cases between them. The column on the right is the real test: whether they also went back for the customers they had already left down.` : ' <b>No CSP cleared it this week.</b> Nobody on the failing list had both the volume and the week to show a real turn — which is its own answer when the meeting asks whether the push is working.'}</p>
 ${revived.length ? `<div class="tablewrap"><table style="min-width:1280px">
 <thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Record before<br><span style="font-weight:400;opacity:.85">${fmtD(lwFrom)}</span></th><th>${periods[LASTCOL - 1].key}<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>Move</th><th>Chance it is<br><span style="font-weight:400;opacity:.85">a lucky week</span></th><th>Last week</th><th>Old breached cases<br><span style="font-weight:400;opacity:.85">fixed since</span></th><th>PTL calls</th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[0][0]} cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">${PAY_CYCLES[1][0]} cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Where they stand</th><th style="text-align:left">Older customers still down</th></tr></thead>
@@ -973,7 +973,7 @@ ${revived.length ? `<div class="tablewrap"><table style="min-width:1280px">
 ${revRows}
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">Read the last two columns together before calling any of these fixed: on this week's work they are clean, but of the ${revOldB} cases they had already breached before ${fmtD(lwFrom)} they have gone back and fixed ${revOldB - revOldDown}. ${revOldDown ? `${revOldDown} of those customers are still down today, and they are named on the row.` : ''} A CSP is worth taking off the watchlist when both columns are clean two weeks running.</p>` : ''}
-</section>`;
+</div>`;
 
   // ── Last week's CSPs, followed forward ──────────────────────────────────
   // The question on the table is whether the CSPs that were not resolving have
@@ -1271,6 +1271,40 @@ ${Object.entries(reasonTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
 </tbody></table></div>
 </section>`;
 
+  // ── Refunds, in one section ─────────────────────────────────────────────
+  // Four refund sections ran down the page - the week, the funnel, the
+  // reconciliation, the month-on-month. In a big meeting that reads as noise
+  // (Shariq, 28 Sep). One table now answers it: of the customers owed money,
+  // how many were paid, how many are parked with a reason, and how many are a
+  // genuine backlog. The rest is folded behind a disclosure for whoever wants
+  // to audit it.
+  const refundsHtml = () => {
+    const wk = split(lwElig), td = docAll;
+    const line = (label, f, cls, note) =>
+      `<tr><td class="${cls || ''}">${label}</td>` +
+      `<td class="${cls || ''}">${f(wk)}</td><td class="${cls || ''}">${f(td)}</td>` +
+      `<td style="text-align:left;font-weight:400">${note || ''}</td></tr>`;
+    return `<section>
+<h2>Refunds</h2>
+<p class="sub">A customer is owed money when their case breached the 48 hours and the line never came back. <b>Pending</b> below means exactly one thing: owed, unpaid, and nobody has written down why.</p>
+<div class="tablewrap"><table style="min-width:760px">
+<thead><tr><th style="text-align:left">&nbsp;</th><th>${periods[LASTCOL - 1].key}<br><span style="font-weight:400;opacity:.85">${periods[LASTCOL - 1].label}</span></th><th>Since launch<br><span style="font-weight:400;opacity:.85">29 Jul – ${cutLabel}</span></th><th style="text-align:left">Read</th></tr></thead>
+<tbody>
+${line('<b>Owed a refund</b>', x => `<b>${x.n.toLocaleString('en-IN')}</b>`, '', 'Breached and the line never came back')}
+${line('Paid', x => `${x.done.length.toLocaleString('en-IN')} (${pct(x.done.length, x.n)})`, 'g', 'Wiom Hub, the Finance sheet or the tracker')}
+${line('Parked with a reason', x => `${x.park.length.toLocaleString('en-IN')} (${pct(x.park.length, x.n)})`, '', 'Cx DNP, pickup not raised, PFT miss, amount ₹0')}
+${line('<b>Pending — no reason recorded</b>', x => `<b>${x.pend.length.toLocaleString('en-IN')} (${pct(x.pend.length, x.n)})</b>`, 'b', 'The backlog to work')}
+${line('Pending amount', x => inr(sumA(x.pend)), 'b', '')}
+</tbody></table></div>
+<p class="sub" style="margin-top:10px">Of the ${refundedAll.length} paid since launch, <b>${srcHub.length}</b> came through Wiom Hub, which is where the money actually moves; ${srcSheet.length} are recorded by Finance with no request in the Hub, and ${srcTracker.length} were marked by hand in the tracker. ${hubOnly.length ? `<b>${hubOnly.length}</b> case${hubOnly.length === 1 ? '' : 's'} the Hub had already paid ${hubOnly.length === 1 ? 'was' : 'were'} never marked here — they are listed in the detail below.` : 'Every Hub payment is reflected here.'}</p>
+<details class="more"><summary>The full funnel, the per-surface reconciliation and the month-on-month reasons</summary>
+${refundFunnel}
+${refundTriangleHtml}
+${momHtml}
+</details>
+</section>`;
+  };
+
   // Month-on-month view of why a refund has not been paid. Cohorted by the
   // month the case was added, over every eligible case that is still unpaid.
   const monthsBack = [];
@@ -1516,6 +1550,13 @@ th:first-child{text-align:left}th.tot{background:var(--head2)}
 td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td:first-child{text-align:left;color:var(--ink);font-weight:600;white-space:normal}
 tr:last-child td{border-bottom:none}td.g{color:var(--good);font-weight:750}td.b{color:var(--bad);font-weight:750}td.tot{background:var(--surface2);font-weight:700}
+details.more{margin-top:14px;border-top:1px solid var(--border);padding-top:10px}
+details.more>summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--accent-ink);list-style:none}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::before{content:'▸ ';}
+details.more[open]>summary::before{content:'▾ ';}
+details.more section{margin-top:18px}
+details.more h2{font-size:15px}
 .heads{margin:20px 0 4px;display:grid;gap:10px}
 .head{display:flex;gap:16px;align-items:baseline;background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--muted);border-radius:10px;padding:13px 17px}
 .head.good{border-left-color:var(--good)}.head.bad{border-left-color:var(--bad)}
@@ -1567,12 +1608,8 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 </section>
 ${whyHtml}
 ${reopSnapHtml}
-${weekRefundHtml}
-${refundFunnel}
-${refundTriangleHtml}
-${momHtml}
-${cspBlockHtml}
-${revivedHtml}
+${refundsHtml()}
+${cspBlockHtml.replace(/<\/section>\s*$/, revivedHtml + '</section>')}
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's own event log (TICKET_LOGS, EVENT_NAME = TICKET_REOPENED, latest event per ticket). The model's FIRST_REOPENED_TIME and TIMES_REOPENED columns are not used: the first is only a ticket's first-ever reopen and the second counts duplicated log rows, so a single reopen reads as 95. Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div>
 ${commentBox}

@@ -20,6 +20,13 @@ th:first-child{text-align:left}th.tot{background:var(--head2)}
 td{padding:9px 14px;border-bottom:1px solid var(--border);color:var(--ink2);text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
 td:first-child{text-align:left;color:var(--ink);font-weight:600;white-space:normal}
 tr:last-child td{border-bottom:none}td.g{color:var(--good);font-weight:750}td.b{color:var(--bad);font-weight:750}td.tot{background:var(--surface2);font-weight:700}
+details.more{margin-top:14px;border-top:1px solid var(--border);padding-top:10px}
+details.more>summary{cursor:pointer;font-size:13px;font-weight:700;color:var(--accent-ink);list-style:none}
+details.more>summary::-webkit-details-marker{display:none}
+details.more>summary::before{content:'▸ ';}
+details.more[open]>summary::before{content:'▾ ';}
+details.more section{margin-top:18px}
+details.more h2{font-size:15px}
 .heads{margin:20px 0 4px;display:grid;gap:10px}
 .head{display:flex;gap:16px;align-items:baseline;background:var(--surface);border:1px solid var(--border);border-left:5px solid var(--muted);border-radius:10px;padding:13px 17px}
 .head.good{border-left-color:var(--good)}.head.bad{border-left-color:var(--bad)}
@@ -59,15 +66,15 @@ This week <b>70.5%</b>, since launch <b>72.5%</b> — <b style="color:var(--bad)
 <section class="heads">
 <div class="head bad"><div class="headn">77.2%</div><div class="headt">of the 369 cases that matured this week were resolved — down 1.0 pp on the week before, and 84 customers were still down when the 48 hours ran out.</div></div>
 <div class="head bad"><div class="headn">114</div><div class="headt">customers from LAST week are still down today. Their CSPs have gone back for only 35 of 149, and 61 of the 110 CSPs holding them took no new case this week at all.</div></div>
-<div class="head bad"><div class="headn">29</div><div class="headt">refund-eligible customers (₹6,045) have nothing written against them — the real backlog. Everything else unpaid has a reason recorded.</div></div>
+<div class="head bad"><div class="headn">29</div><div class="headt">refund-eligible customers (₹6,279) have nothing written against them — the real backlog. Everything else unpaid has a reason recorded.</div></div>
 <div class="head bad"><div class="headn">1</div><div class="headt">CSP stopped resolving at a rate luck cannot explain — Omkar Electronics. None came back.</div></div>
 </section>
 <div class="tiles">
 <div class="tile"><div class="label">Resolved</div><div class="value" style="color:var(--good)">285 (77.2%)</div><div class="note">of the 369 cases that matured in 21 Sep – 27 Sep &middot; inside the 48 hrs: <b>260 (70.5%)</b> &middot; since launch 77.2%</div></div>
-<div class="tile"><div class="label">Unresolved</div><div class="value" style="color:var(--bad)">84 (22.8%)</div><div class="note">still down when the 48 hrs ran out &middot; of those, <b>25</b> came back on later &middot; since launch 1,023 (22.8%)</div></div>
+<div class="tile"><div class="label">Unresolved</div><div class="value" style="color:var(--bad)">84 (22.8%)</div><div class="note">still down when the 48 hrs ran out &middot; of those, <b>26</b> came back on later &middot; since launch 1,023 (22.8%)</div></div>
 <div class="tile"><div class="label">Cases matured last week</div><div class="value">369</div><div class="note">crossed the 48-hr mark in 21 Sep – 27 Sep &middot; <b>350 added</b> that week &middot; since launch 4,583 added, avg <b>~74/day</b></div></div>
-<div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending</div><div class="value" style="color:var(--bad)">₹6,045</div><div class="note"><b>29 cases (4.3%)</b> of the 681 refund-eligible, not yet paid</div></div>
-<div class="tile" style="border-color:var(--good)"><div class="label">Refunded to eligible customers</div><div class="value" style="color:var(--good)">₹92,167</div><div class="note"><b>346 cases (50.8%)</b> of the 681 refund-eligible &middot; <b>last week: 24 (₹5,459)</b></div></div>
+<div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending</div><div class="value" style="color:var(--bad)">₹6,279</div><div class="note"><b>29 cases (4.3%)</b> of the 680 refund-eligible, not yet paid</div></div>
+<div class="tile" style="border-color:var(--good)"><div class="label">Refunded to eligible customers</div><div class="value" style="color:var(--good)">₹92,167</div><div class="note"><b>346 cases (50.9%)</b> of the 680 refund-eligible &middot; <b>last week: 24 (₹5,459)</b></div></div>
 <div class="tile" style="border-color:var(--accent-ink)"><div class="label">Reopened</div><div class="value" style="color:var(--accent-ink)">2 (0.7%)</div><div class="note">resolutions that came back down in 21 Sep – 27 Sep, against 268 marked resolved that week &middot; since launch 31</div></div>
 <div class="tile"><div class="label">Week-over-week</div><div class="value" style="color:var(--bad)">-1.0 pp</div><div class="note">Resolved: <b>78.2%</b> (Week 2 (14 Sep – 20 Sep)) → <b>77.2%</b> (Week 1 (21 Sep – 27 Sep)) &middot; +1.4 pp against the previous two weeks pooled, which is the comparison the tracker's tab makes</div></div>
 </div>
@@ -92,9 +99,9 @@ This week <b>70.5%</b>, since launch <b>72.5%</b> — <b style="color:var(--bad)
 <tr><td>— of those, resolved inside the 48 hrs</td><td class="">324 (64.7%)</td><td class="">375 (71.6%)</td><td class="">260 (70.5%)</td><td class="tot ">3,253 (72.5%)</td></tr>
 <tr><td><b>Reopened</b> <span style="font-weight:400;color:var(--muted)">(came back down in this week)</span></td><td class="b">3 (0.8%)</td><td class="b">1 (0.3%)</td><td class="b">2 (0.7%)</td><td class="tot b">31 (0.9%)</td></tr>
 <tr><td><b>Unresolved</b></td><td class="b">134 (26.7%)</td><td class="b">114 (21.8%)</td><td class="b">84 (22.8%)</td><td class="tot b">1,023 (22.8%)</td></tr>
-<tr><td>— of those, the line came back on later</td><td class="">46 (34.3%)</td><td class="">32 (28.1%)</td><td class="">25 (29.8%)</td><td class="tot ">351 (34.3%)</td></tr>
-<tr><td><b>Refund-eligible</b> <span style="font-weight:400;color:var(--muted)">(still down, no ping since the complaint)</span></td><td class="b">88 (17.6%)</td><td class="b">82 (15.6%)</td><td class="b">59 (16.0%)</td><td class="tot b">672 (15.0%)</td></tr>
-<tr><td>Customers refunded <span style="font-weight:400;color:var(--muted)">(of those eligible)</span></td><td class="g">71 (80.7%)</td><td class="g">66 (80.5%)</td><td class="g">24 (40.7%)</td><td class="tot g">345 (51.3%)</td></tr>
+<tr><td>— of those, the line came back on later</td><td class="">46 (34.3%)</td><td class="">32 (28.1%)</td><td class="">26 (31.0%)</td><td class="tot ">352 (34.4%)</td></tr>
+<tr><td><b>Refund-eligible</b> <span style="font-weight:400;color:var(--muted)">(still down, no ping since the complaint)</span></td><td class="b">88 (17.6%)</td><td class="b">82 (15.6%)</td><td class="b">58 (15.7%)</td><td class="tot b">671 (15.0%)</td></tr>
+<tr><td>Customers refunded <span style="font-weight:400;color:var(--muted)">(of those eligible)</span></td><td class="g">71 (80.7%)</td><td class="g">66 (80.5%)</td><td class="g">24 (41.4%)</td><td class="tot g">345 (51.4%)</td></tr>
 <tr><td><b>Average amount paid to a customer</b></td><td class="">₹343</td><td class="">₹273</td><td class="">₹227</td><td class="tot ">₹266</td></tr>
 <tr><td><b>Total amount refunded to eligible customers</b></td><td class="g">₹24,351</td><td class="g">₹18,034</td><td class="g">₹5,459</td><td class="tot g">₹91,672</td></tr>
 <tr><td>Refunds paid on cases that had already recovered</td><td class="">0 (₹0)</td><td class="">0 (₹0)</td><td class="">0 (₹0)</td><td class="tot ">45 (₹0)</td></tr>
@@ -140,18 +147,19 @@ This week <b>70.5%</b>, since launch <b>72.5%</b> — <b style="color:var(--bad)
 <p class="sub" style="margin-top:10px">The tracker's Weekly Review tab shows 2 for this week because it counts a reopen in the week the case matured. </p>
 </section>
 <section>
-<h2>Refund status — Week 1</h2>
-<p class="sub">The 59 refund-eligible cases out of the 369 that matured in 21 Sep – 27 Sep. Refunded plus not refunded add back to that number exactly, and every unpaid case carries the reason the desk recorded against it.</p>
-<div class="tablewrap"><table>
-<thead><tr><th style="text-align:left">Status</th><th>Cases</th><th>%</th><th>Amount</th></tr></thead>
+<h2>Refunds</h2>
+<p class="sub">A customer is owed money when their case breached the 48 hours and the line never came back. <b>Pending</b> below means exactly one thing: owed, unpaid, and nobody has written down why.</p>
+<div class="tablewrap"><table style="min-width:760px">
+<thead><tr><th style="text-align:left">&nbsp;</th><th>Week 1<br><span style="font-weight:400;opacity:.85">21 Sep – 27 Sep</span></th><th>Since launch<br><span style="font-weight:400;opacity:.85">29 Jul – 27 Sep</span></th><th style="text-align:left">Read</th></tr></thead>
 <tbody>
-<tr><td><b>Refund-eligible</b></td><td><b>59</b></td><td><b>100%</b></td><td></td></tr>
-<tr><td>Refunded</td><td class="g">25</td><td class="g">42.4%</td><td class="g">₹5,954</td></tr>
-<tr><td>Not refunded</td><td class="b">34</td><td class="b">57.6%</td><td></td></tr>
-<tr><td style="padding-left:34px;font-weight:400">No reason recorded</td><td>24</td><td>40.7%</td><td></td></tr>
-<tr><td style="padding-left:34px;font-weight:400">Amount 0 — refund not possible</td><td>10</td><td>16.9%</td><td></td></tr>
+<tr><td class=""><b>Owed a refund</b></td><td class=""><b>58</b></td><td class=""><b>680</b></td><td style="text-align:left;font-weight:400">Breached and the line never came back</td></tr>
+<tr><td class="g">Paid</td><td class="g">25 (43.1%)</td><td class="g">346 (50.9%)</td><td style="text-align:left;font-weight:400">Wiom Hub, the Finance sheet or the tracker</td></tr>
+<tr><td class="">Parked with a reason</td><td class="">10 (17.2%)</td><td class="">305 (44.9%)</td><td style="text-align:left;font-weight:400">Cx DNP, pickup not raised, PFT miss, amount ₹0</td></tr>
+<tr><td class="b"><b>Pending — no reason recorded</b></td><td class="b"><b>23 (39.7%)</b></td><td class="b"><b>29 (4.3%)</b></td><td style="text-align:left;font-weight:400">The backlog to work</td></tr>
+<tr><td class="b">Pending amount</td><td class="b">₹5,165</td><td class="b">₹6,279</td><td style="text-align:left;font-weight:400"></td></tr>
 </tbody></table></div>
-</section>
+<p class="sub" style="margin-top:10px">Of the 346 paid since launch, <b>122</b> came through Wiom Hub, which is where the money actually moves; 215 are recorded by Finance with no request in the Hub, and 9 were marked by hand in the tracker. <b>1</b> case the Hub had already paid was never marked here — they are listed in the detail below.</p>
+<details class="more"><summary>The full funnel, the per-surface reconciliation and the month-on-month reasons</summary>
 <section>
 <h2>Refund cases funnel</h2>
 <p class="sub">Reads straight down from the Since-launch column above: received &rarr; matured &rarr; unresolved &rarr; refund-eligible, then whether the eligible customers were paid. Refunded plus not-refunded add back to the eligible line exactly.</p>
@@ -159,21 +167,21 @@ This week <b>70.5%</b>, since launch <b>72.5%</b> — <b style="color:var(--bad)
 <thead><tr><th style="text-align:left">Stage</th><th>Cases</th><th>%</th><th>Amount</th><th style="text-align:left">What happened</th></tr></thead>
 <tbody>
 <tr><td class=""><b>Cases received</b></td><td class=""><b>4,583</b></td><td class="">100%</td><td></td><td style="text-align:left;font-weight:400">Since 29 Jul, up to 27 Sep</td></tr>
-<tr><td class=""><b>Matured</b></td><td class=""><b>4,513</b></td><td class="">98.5%</td><td></td><td style="text-align:left;font-weight:400">Completed the full 48-hour window</td></tr>
-<tr><td class="b"><b>Unresolved at 48 hrs</b></td><td class="b"><b>1,033</b></td><td class="b">22.9%</td><td></td><td style="text-align:left;font-weight:400">Breached the promise</td></tr>
-<tr><td style="padding-left:34px;font-weight:400">&#8627; Line came back later (ping seen)</td><td>352</td><td>34.1%</td><td></td><td style="text-align:left;font-weight:400">Recovered after the breach, nothing owed</td></tr>
-<tr><td class="b"><b>Refund-eligible &mdash; no ping since the complaint</b></td><td class="b"><b>681</b></td><td class="b">65.9%</td><td></td><td style="text-align:left;font-weight:400">The customer is still down and is owed money</td></tr>
-<tr><td class="g" style="padding-left:20px"><b>Refunded</b></td><td class="g"><b>346</b></td><td class="g"><b>50.8%</b></td><td>₹92,167</td><td style="text-align:left;font-weight:400">Paid, per the tracker or the Finance sheet</td></tr>
-<tr><td class="b" style="padding-left:20px"><b>Not refunded</b></td><td class="b"><b>335</b></td><td class="b"><b>49.2%</b></td><td>₹38,416</td><td style="text-align:left;font-weight:400">Split below by what is blocking it</td></tr>
-<tr><td style="padding-left:38px"><b>Refund pending — no reason recorded</b></td><td><b>29</b></td><td><b>4.3%</b></td><td>₹6,045</td><td></td></tr>
-<tr><td style="padding-left:64px;font-weight:400">Refund Pending</td><td>29</td><td>4.3%</td><td>₹6,045</td><td style="text-align:left;font-weight:400"></td></tr>
+<tr><td class=""><b>Matured</b></td><td class=""><b>4,515</b></td><td class="">98.5%</td><td></td><td style="text-align:left;font-weight:400">Completed the full 48-hour window</td></tr>
+<tr><td class="b"><b>Unresolved at 48 hrs</b></td><td class="b"><b>1,034</b></td><td class="b">22.9%</td><td></td><td style="text-align:left;font-weight:400">Breached the promise</td></tr>
+<tr><td style="padding-left:34px;font-weight:400">&#8627; Line came back later (ping seen)</td><td>354</td><td>34.2%</td><td></td><td style="text-align:left;font-weight:400">Recovered after the breach, nothing owed</td></tr>
+<tr><td class="b"><b>Refund-eligible &mdash; no ping since the complaint</b></td><td class="b"><b>680</b></td><td class="b">65.8%</td><td></td><td style="text-align:left;font-weight:400">The customer is still down and is owed money</td></tr>
+<tr><td class="g" style="padding-left:20px"><b>Refunded</b></td><td class="g"><b>346</b></td><td class="g"><b>50.9%</b></td><td>₹92,167</td><td style="text-align:left;font-weight:400">Paid, per the tracker or the Finance sheet</td></tr>
+<tr><td class="b" style="padding-left:20px"><b>Not refunded</b></td><td class="b"><b>334</b></td><td class="b"><b>49.1%</b></td><td>₹38,650</td><td style="text-align:left;font-weight:400">Split below by what is blocking it</td></tr>
+<tr><td style="padding-left:38px"><b>Refund pending — no reason recorded</b></td><td><b>29</b></td><td><b>4.3%</b></td><td>₹6,279</td><td></td></tr>
+<tr><td style="padding-left:64px;font-weight:400">Refund Pending</td><td>29</td><td>4.3%</td><td>₹6,279</td><td style="text-align:left;font-weight:400"></td></tr>
 <tr><td style="padding-left:38px"><b>Parked with a reason recorded</b></td><td><b>85</b></td><td><b>12.5%</b></td><td>₹18,172</td><td></td></tr>
 <tr><td style="padding-left:64px;font-weight:400">Cx DNP 3</td><td>52</td><td>7.6%</td><td>₹11,043</td><td style="text-align:left;font-weight:400"></td></tr>
 <tr><td style="padding-left:64px;font-weight:400">Pickup ticket not created by Cx</td><td>20</td><td>2.9%</td><td>₹4,544</td><td style="text-align:left;font-weight:400"></td></tr>
 <tr><td style="padding-left:64px;font-weight:400">PFT process miss</td><td>9</td><td>1.3%</td><td>₹1,744</td><td style="text-align:left;font-weight:400"></td></tr>
-<tr><td style="padding-left:64px;font-weight:400">120 hr not crossed</td><td>4</td><td>0.6%</td><td>₹841</td><td style="text-align:left;font-weight:400"><b>Flag is stale</b> — 4 of 4 are now past 120 hrs (oldest 844 hrs). The 120-hr wait is a separate clock from the 48-hr promise, but these have long since crossed it</td></tr>
-<tr><td style="padding-left:38px"><b>Nothing payable</b></td><td><b>221</b></td><td><b>32.5%</b></td><td>₹14,199</td><td></td></tr>
-<tr><td style="padding-left:64px;font-weight:400">Amount 0 — refund not possible</td><td>142</td><td>20.9%</td><td>₹115</td><td style="text-align:left;font-weight:400"></td></tr>
+<tr><td style="padding-left:64px;font-weight:400">120 hr not crossed</td><td>4</td><td>0.6%</td><td>₹841</td><td style="text-align:left;font-weight:400"><b>Flag is stale</b> — 4 of 4 are now past 120 hrs (oldest 845 hrs). The 120-hr wait is a separate clock from the 48-hr promise, but these have long since crossed it</td></tr>
+<tr><td style="padding-left:38px"><b>Nothing payable</b></td><td><b>220</b></td><td><b>32.4%</b></td><td>₹14,199</td><td></td></tr>
+<tr><td style="padding-left:64px;font-weight:400">Amount 0 — refund not possible</td><td>141</td><td>20.7%</td><td>₹115</td><td style="text-align:left;font-weight:400"></td></tr>
 <tr><td style="padding-left:64px;font-weight:400">Ping up</td><td>15</td><td>2.2%</td><td>₹1,330</td><td style="text-align:left;font-weight:400"></td></tr>
 <tr><td style="padding-left:64px;font-weight:400">EXIT partner — refund by Kapil</td><td>13</td><td>1.9%</td><td>₹4,535</td><td style="text-align:left;font-weight:400"></td></tr>
 <tr><td style="padding-left:64px;font-weight:400">Duplicate ticket</td><td>12</td><td>1.8%</td><td>₹1,849</td><td style="text-align:left;font-weight:400"></td></tr>
@@ -190,23 +198,23 @@ This week <b>70.5%</b>, since launch <b>72.5%</b> — <b style="color:var(--bad)
 <div class="tablewrap"><table style="min-width:900px">
 <thead><tr><th style="text-align:left">Step</th><th>Cases</th><th style="text-align:left">What it is</th></tr></thead>
 <tbody>
-<tr><td><b>Unresolved past 48 hrs, since 29 Jul</b></td><td><b>1,033</b></td><td style="text-align:left;font-weight:400">Every breached case. The tracker's Refund card calls all of these eligible</td></tr>
-<tr><td>− line came back on after the complaint</td><td>352</td><td style="text-align:left;font-weight:400">Recovered after the breach, so nothing is owed — 62 of them were refunded anyway</td></tr>
-<tr class="tot"><td class="tot"><b>= Refund-eligible</b></td><td class="tot"><b>681</b></td><td class="tot" style="text-align:left;font-weight:400"><b>What this doc and the tracker's Weekly Review tab call eligible</b></td></tr>
+<tr><td><b>Unresolved past 48 hrs, since 29 Jul</b></td><td><b>1,034</b></td><td style="text-align:left;font-weight:400">Every breached case. The tracker's Refund card calls all of these eligible</td></tr>
+<tr><td>− line came back on after the complaint</td><td>354</td><td style="text-align:left;font-weight:400">Recovered after the breach, so nothing is owed — 62 of them were refunded anyway</td></tr>
+<tr class="tot"><td class="tot"><b>= Refund-eligible</b></td><td class="tot"><b>680</b></td><td class="tot" style="text-align:left;font-weight:400"><b>What this doc and the tracker's Weekly Review tab call eligible</b></td></tr>
 </tbody></table></div>
 <div class="tablewrap" style="margin-top:14px"><table style="min-width:1020px">
 <thead><tr><th style="text-align:left">Where you see it</th><th>Eligible</th><th>Refunded</th><th>Reason recorded<br><span style="font-weight:400;opacity:.85">parked + nothing payable</span></th><th>Pending<br><span style="font-weight:400;opacity:.85">no reason</span></th><th>Pending ₹</th><th style="text-align:left">Scope</th></tr></thead>
 <tbody>
-<tr><td style="text-align:left;white-space:normal">Tracker → Refund card (<i>Eligible / Pending / Parked / Done</i>)</td><td><b>1,033</b></td><td class="g">406 (39.3%)</td><td>502 (48.6%)</td><td class="b"><b>125 (12.1%)</b></td><td class="b">₹31,175</td><td style="text-align:left;white-space:normal;font-weight:400">Since 29 Jul, no ping filter</td></tr>
-<tr><td style="text-align:left;white-space:normal">This doc — funnel and tiles</td><td><b>681</b></td><td class="g">346 (50.8%)</td><td>306 (44.9%)</td><td class="b"><b>29 (4.3%)</b></td><td class="b">₹6,045</td><td style="text-align:left;white-space:normal;font-weight:400">Since 29 Jul, line never came back, <b>Wiom Hub counted</b></td></tr>
-<tr><td style="text-align:left;white-space:normal">Tracker → Weekly Review tab, section 4</td><td><b>59</b></td><td class="g">24 (40.7%)</td><td>10 (16.9%)</td><td class="b"><b>25 (42.4%)</b></td><td class="b">₹5,763</td><td style="text-align:left;white-space:normal;font-weight:400">21 Sep – 27 Sep only, line never came back</td></tr>
+<tr><td style="text-align:left;white-space:normal">Tracker → Refund card (<i>Eligible / Pending / Parked / Done</i>)</td><td><b>1,034</b></td><td class="g">406 (39.3%)</td><td>502 (48.5%)</td><td class="b"><b>126 (12.2%)</b></td><td class="b">₹31,512</td><td style="text-align:left;white-space:normal;font-weight:400">Since 29 Jul, no ping filter</td></tr>
+<tr><td style="text-align:left;white-space:normal">This doc — funnel and tiles</td><td><b>680</b></td><td class="g">346 (50.9%)</td><td>305 (44.9%)</td><td class="b"><b>29 (4.3%)</b></td><td class="b">₹6,279</td><td style="text-align:left;white-space:normal;font-weight:400">Since 29 Jul, line never came back, <b>Wiom Hub counted</b></td></tr>
+<tr><td style="text-align:left;white-space:normal">Tracker → Weekly Review tab, section 4</td><td><b>58</b></td><td class="g">24 (41.4%)</td><td>10 (17.2%)</td><td class="b"><b>24 (41.4%)</b></td><td class="b">₹5,660</td><td style="text-align:left;white-space:normal;font-weight:400">21 Sep – 27 Sep only, line never came back</td></tr>
 <tr><td style="text-align:left;white-space:normal">The same week without the ping filter</td><td><b>84</b></td><td class="g">27 (32.1%)</td><td>18 (21.4%)</td><td class="b"><b>39 (46.4%)</b></td><td class="b">₹9,775</td><td style="text-align:left;white-space:normal;font-weight:400">21 Sep – 27 Sep only</td></tr>
 </tbody></table></div>
-<p class="sub" style="margin-top:10px">So the honest headline is <b>29 customers, ₹6,045</b>: eligible, still down, and nobody has written down why they have not been paid. The tracker's card reads 125 because it also counts the 352 whose line recovered. Everything else in the gap has a reason against it — that column is the funnel's <i>parked</i> and <i>nothing payable</i> rows added together. This doc's row is lower than the tracker's for one more reason: it counts a refund Wiom Hub has already paid even where nobody marked it in the tracker, which is 1 cases.</p>
+<p class="sub" style="margin-top:10px">So the honest headline is <b>29 customers, ₹6,279</b>: eligible, still down, and nobody has written down why they have not been paid. The tracker's card reads 126 because it also counts the 354 whose line recovered. Everything else in the gap has a reason against it — that column is the funnel's <i>parked</i> and <i>nothing payable</i> rows added together. This doc's row is lower than the tracker's for one more reason: it counts a refund Wiom Hub has already paid even where nobody marked it in the tracker, which is 1 cases.</p>
 <div class="tablewrap" style="margin-bottom:14px"><table style="min-width:820px">
 <thead><tr><th style="text-align:left">Where each refund is recorded</th><th>Cases</th><th>Amount</th><th style="text-align:left">Read</th></tr></thead>
 <tbody>
-<tr><td><b>Refunded, of the 681 eligible</b></td><td><b>346</b></td><td><b>₹92,167</b></td><td></td></tr>
+<tr><td><b>Refunded, of the 680 eligible</b></td><td><b>346</b></td><td><b>₹92,167</b></td><td></td></tr>
 <tr><td>↳ <b>Wiom Hub</b> — the payment itself</td><td class="g">122</td><td class="g">₹42,192</td><td style="text-align:left;font-weight:400">The source of truth: raised, approved and sent in t_plan_refund_request</td></tr>
 <tr><td>↳ Finance sheet only <span style="font-weight:400;color:var(--muted)">(fallback)</span></td><td>215</td><td>₹49,116</td><td style="text-align:left;font-weight:400">Finance records it as paid and the Hub has no matching request — worth confirming the money went out</td></tr>
 <tr><td>↳ Tracker field only <span style="font-weight:400;color:var(--muted)">(fallback)</span></td><td>9</td><td>₹859</td><td style="text-align:left;font-weight:400">Marked by hand in the tracker; neither the Hub nor Finance carries it</td></tr>
@@ -214,10 +222,10 @@ This week <b>70.5%</b>, since launch <b>72.5%</b> — <b style="color:var(--bad)
 <div class="tablewrap" style="margin-bottom:14px"><table style="min-width:900px">
 <thead><tr><th style="text-align:left">Wiom Hub — <span style="font-weight:400;opacity:.85">t_plan_refund_request, where the money actually moves</span></th><th>Cases</th><th>Amount</th><th style="text-align:left">Read</th></tr></thead>
 <tbody>
-<tr><td><b>Eligible cases with a refund raised in the Hub</b></td><td><b>133</b></td><td>₹45,405</td><td style="text-align:left;font-weight:400">Of the 681 refund-eligible, matched on the customer's number</td></tr>
+<tr><td><b>Eligible cases with a refund raised in the Hub</b></td><td><b>133</b></td><td>₹45,617</td><td style="text-align:left;font-weight:400">Of the 680 refund-eligible, matched on the customer's number</td></tr>
 <tr><td>↳ Approved — paid or in flight</td><td class="g">122</td><td class="g">₹42,192</td><td style="text-align:left;font-weight:400">Counted as refunded in every figure in this doc</td></tr>
 <tr><td>↳ Rejected in the Hub</td><td class="b">0</td><td>₹0</td><td style="text-align:left;font-weight:400">Raised and turned down — the customer is still owed nothing through this route</td></tr>
-<tr><td>↳ Waiting for approval</td><td>11</td><td>₹3,213</td><td style="text-align:left;font-weight:400">Raised, not yet approved</td></tr>
+<tr><td>↳ Waiting for approval</td><td>11</td><td>₹3,426</td><td style="text-align:left;font-weight:400">Raised, not yet approved</td></tr>
 <tr class="tot"><td class="tot"><b>Paid in the Hub, never marked in the tracker</b></td><td class="tot b"><b>1</b></td><td class="tot">₹495</td><td style="text-align:left;font-weight:400" class="tot">The customer has their money; the tracker still reads them as unpaid. Named below — mark them off.</td></tr>
 </tbody></table></div>
 <div class="tablewrap" style="margin-bottom:14px"><table style="min-width:900px">
@@ -228,7 +236,7 @@ This week <b>70.5%</b>, since launch <b>72.5%</b> — <b style="color:var(--bad)
 <div class="tablewrap"><table>
 <thead><tr><th style="text-align:left">Why an eligible case has not been paid</th><th>Cases</th><th>% of eligible</th></tr></thead>
 <tbody>
-<tr><td style="text-align:left;white-space:normal">Amount 0 — refund not possible</td><td>142</td><td>20.9%</td></tr>
+<tr><td style="text-align:left;white-space:normal">Amount 0 — refund not possible</td><td>141</td><td>20.7%</td></tr>
 <tr><td style="text-align:left;white-space:normal">Cx DNP 3</td><td>52</td><td>7.6%</td></tr>
 <tr><td style="text-align:left;white-space:normal" class="b">No reason recorded</td><td class="b">29</td><td>4.3%</td></tr>
 <tr><td style="text-align:left;white-space:normal">Pickup ticket not created by Cx</td><td>20</td><td>2.9%</td></tr>
@@ -249,7 +257,7 @@ This week <b>70.5%</b>, since launch <b>72.5%</b> — <b style="color:var(--bad)
 <div class="tablewrap"><table style="min-width:560px">
 <thead><tr><th style="text-align:left">Reason</th><th>Jul 26</th><th>Aug 26</th><th>Sep 26</th><th class="tot">Total</th></tr></thead>
 <tbody>
-<tr><td style="text-align:left">Amount 0 — refund not possible</td><td>15</td><td>77</td><td>50</td><td class="tot"><b>142</b></td></tr>
+<tr><td style="text-align:left">Amount 0 — refund not possible</td><td>15</td><td>77</td><td>49</td><td class="tot"><b>141</b></td></tr>
 <tr><td style="text-align:left">Cx DNP 3</td><td>8</td><td>42</td><td>2</td><td class="tot"><b>52</b></td></tr>
 <tr><td style="text-align:left">Refund Pending</td><td>-</td><td>-</td><td>29</td><td class="tot"><b>29</b></td></tr>
 <tr><td style="text-align:left">Pickup ticket not created by Cx</td><td>8</td><td>12</td><td>-</td><td class="tot"><b>20</b></td></tr>
@@ -262,11 +270,13 @@ This week <b>70.5%</b>, since launch <b>72.5%</b> — <b style="color:var(--bad)
 <tr><td style="text-align:left">Refund not demanded by Cx</td><td>2</td><td>6</td><td>-</td><td class="tot"><b>8</b></td></tr>
 <tr><td style="text-align:left">Amount &lt;10 — refund not possible</td><td>1</td><td>6</td><td>-</td><td class="tot"><b>7</b></td></tr>
 <tr><td style="text-align:left">120 hr not crossed</td><td>-</td><td>4</td><td>-</td><td class="tot"><b>4</b></td></tr>
-<tr class="tot"><td class="tot" style="text-align:left"><b>Total</b></td><td class="tot"><b>47</b></td><td class="tot"><b>198</b></td><td class="tot"><b>90</b></td><td class="tot"><b>335</b></td></tr>
+<tr class="tot"><td class="tot" style="text-align:left"><b>Total</b></td><td class="tot"><b>47</b></td><td class="tot"><b>198</b></td><td class="tot"><b>89</b></td><td class="tot"><b>334</b></td></tr>
 </tbody></table></div>
 </section>
+</details>
+</section>
 <section>
-<h2>CSPs that were resolving and have stopped</h2>
+<h2>CSP watchlist: who stopped, who came back</h2>
 <p class="sub">These are not the biggest failures on the list — they are the ones whose own record turned, and only where the week is too bad to be luck. One pending ticket out of two proves nothing at that volume, so each CSP here is measured against <b>its own</b> earlier rate: at least 8 cases before 21 Sep, at least 3 this week, at least 2 customers still waiting, and a week this bad happening by chance less often than 1 in 20. <b>1 CSP</b> clear that bar, holding <b>2 customers still down</b>. A CSP that never resolved is a known quantity; one that resolved all summer and stopped last week is a new fault, and the meeting can still ask what changed. <b>All of them are with the transition team.</b></p>
 <div class="tablewrap"><table style="min-width:1280px">
 <thead><tr><th style="text-align:left">CSP</th><th>Userbase<br><span style="font-weight:400;opacity:.85">paying</span></th><th>MG<br><span style="font-weight:400;opacity:.85">enrolment</span></th><th>Before 21 Sep<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>Week 1<br><span style="font-weight:400;opacity:.85">resolved</span></th><th>Drop</th><th>Chance it is<br><span style="font-weight:400;opacity:.85">a quiet week</span></th><th style="text-align:left">What the ground said on the open ones</th><th>PTL calls</th><th>PTL tickets<br><span style="font-weight:400;opacity:.85">open / closed</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">16-31 Aug cycle</span></th><th>Bonus paid<br><span style="font-weight:400;opacity:.85">1-15 Sep cycle</span></th><th>Last bonus<br><span style="font-weight:400;opacity:.85">paid</span></th><th style="text-align:left">Action</th><th style="text-align:left">Customers still down</th></tr></thead>
@@ -275,12 +285,11 @@ This week <b>70.5%</b>, since launch <b>72.5%</b> — <b style="color:var(--bad)
 <tr class="tot"><td class="tot" style="text-align:left"><b>These 1 together</b></td><td class="tot"><b>62</b></td><td class="tot"><b>0 enrolled</b></td><td class="tot g"><b>14 / 14 (100.0%)</b></td><td class="tot b"><b>6 / 8 (75.0%)</b></td><td class="tot"></td><td class="tot"></td><td class="tot" style="text-align:left"><b>2 customers still down</b></td><td class="tot"><b>0</b></td><td class="tot"></td><td class="tot"><b>₹0</b></td><td class="tot"><b>₹0</b></td><td class="tot" style="text-align:left"><b>With transition team</b></td><td class="tot"></td></tr>
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">Bonus paid is what actually reached the CSP's settlement wallet (BONUS_CREDIT on the payment-settlement ledger, current to the hour): the 16-31 Aug cycle is the credit dated 1 Sep, the 1-15 Sep cycle the credit dated 16 Sep. The analytics bonus tables stopped feeding in June, so this reads the ledger the money moved through. <b>1 of these 1 have had nothing credited in either cycle.</b> Across the estate the 1-15 Sep cycle has credited 288 CSPs so far against 278 for the cycle before.</p>
-</section>
-<section>
-<h2>CSPs that were failing and have come back</h2>
+<div style="margin-top:26px">
+<h3 style="font-size:15.5px;margin:0 0 5px">The other way: CSPs that were failing and have come back</h3>
 <p class="sub">The mirror of the table above, held to the same test and the same volumes: a CSP that had <b>at least 8 cases before 21 Sep and was resolving half or fewer of them</b>, then took at least 3 this week and cleared 80% — a week too good to come from the rate it was running at, not a lucky 2 out of 2. <b>No CSP cleared it this week.</b> Nobody on the failing list had both the volume and the week to show a real turn — which is its own answer when the meeting asks whether the push is working.</p>
 
-</section>
+</div></section>
 <div class="notes">Source: live Firebase behind hp-customer-tracker-production.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = breached &amp; open cases not yet refunded (Finance sheet / Cx Action), amounts auto-computed pro-rata. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (27 Sep). A reopen is a within-48hr resolution of ours that came back afterwards, taken from Kapture's own event log (TICKET_LOGS, EVENT_NAME = TICKET_REOPENED, latest event per ticket). The model's FIRST_REOPENED_TIME and TIMES_REOPENED columns are not used: the first is only a ticket's first-ever reopen and the second counts duplicated log rows, so a single reopen reads as 95. Kapture reopens dated on or before our resolution are excluded - those are usually why the case reached this tracker at all.</div>
 </div>
 <button id="fabBtn" title="Add an action item or a comment">&#128172; Add action item / comment</button>
