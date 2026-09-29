@@ -235,7 +235,7 @@ function row(label, count, total, indent, bold) {
       const aiText =
         `📋 *Weekly Meeting — Action Items* (${open.length} open · ${doneN} done)\n` +
         (open.length ? aiLines.join('\n') : 'All items closed ✅') +
-        `\n\n👉 Update your item's status here: https://hp-customer-tracker-production.up.railway.app/ → Action Items tab`;
+        `\n\n👉 Update your item's status here: https://hp-customer-tracker-production-a471.up.railway.app/ → Action Items tab`;
       const res2 = await httpRequest('POST', 'https://slack.com/api/chat.postMessage', {
         channel: SLACK_CHANNEL,
         username: "Shariq's Slack Agent",
