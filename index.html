@@ -1264,7 +1264,7 @@ function makeProofCell(ticket, field, orig, icon) {
   const lostTs = (url.match(/_(?:rec|shot)_(\d{13})_/) || [])[1];
   const isLost = isUrl && /hp-customer-tracker-production\.up\.railway\.app/.test(url) && (!lostTs || Number(lostTs) < 1790677000000);
   const view = isLost
-    ? '<span class="badge badge-red" title="This file was lost on the server on 29 Sep. Click the cell to upload it again from your phone.">&#x26A0; lost \u2014 re-upload</span>'
+    ? '<span class="badge badge-red" title="Uploaded ' + (lostTs ? new Date(Number(lostTs)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '') + '. The file was lost in the 29 Sep server storage failure; the upload itself is on record in the audit trail.">' + icon + ' uploaded' + (lostTs ? ' ' + new Date(Number(lostTs)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : '') + ' · file lost</span>'
     : isUrl
     ? '<a href="' + esc(url) + '" class="badge badge-green" style="text-decoration:none" onclick="event.stopPropagation();event.preventDefault();openProofViewer(\'' + esc(url) + '\')">' + icon + ' Proof</a>'
     : '<span style="color:var(--muted)">—</span>';
@@ -1306,7 +1306,7 @@ function showProofMissing(url) {
   const ov = document.getElementById('proofViewer');
   if (!ov) return;
   ov.innerHTML = '<div style="padding:26px 30px;background:var(--surface,#1c1c28);border-radius:12px;max-width:520px;line-height:1.5"><div style="font-size:15px;margin-bottom:10px">&#x26A0; This proof file is no longer on the server</div>' +
-    '<div style="font-size:13px;color:var(--muted)">Files uploaded before 29 Sep 2026, 4 pm were stored on a server without permanent storage and were lost when it redeployed. If you still have the recording or screenshot, click the cell and upload it again — uploads now go to permanent storage.</div></div>' +
+    '<div style="font-size:13px;color:var(--muted)">This proof was uploaded on ' + ((url.match(/_(?:rec|shot)_([0-9]{13})_/) || [])[1] ? new Date(Number((url.match(/_(?:rec|shot)_([0-9]{13})_/) || [])[1])).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'record') + ' and the upload is on record in the audit trail. The file itself was lost in the 29 Sep 2026 server storage failure and cannot be recovered. Proofs uploaded after that date are on permanent storage.</div></div>' +
     '<button onclick="closeProofViewer()" style="background:#fff;color:#222;border:none;border-radius:20px;padding:8px 26px;font-weight:700;cursor:pointer;font-size:14px;margin-top:12px">&#x2715; Close</button>';
 }
 function proofEscHandler(e) { if (e.key === 'Escape') closeProofViewer(); }
