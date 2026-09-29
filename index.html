@@ -3035,8 +3035,12 @@ function renderReports() {
     const matured = list.filter(r => caseStartTs(r) > 0 && (nowTs - caseStartTs(r)) >= TAT_LIMIT_MS);
     const w = matured.filter(r => {
       if (getStatus(r) === 'Unresolved') return false;
-      // NET of reopened: a resolution later reopened doesn't count
-      if (Number(r[26]) > 0 || effectiveVal(r, 18) === 'reopened-cron') return false;
+      // Same rule as the weekly doc (Shariq, 28-29 Sep): resolved inside the
+      // 48 hrs and still resolved. A case that came back down and stayed down
+      // is already Unresolved above. 'reopened-cron' is an INTAKE label (the
+      // ticket was already reopened in Kapture when the cron pulled it), not
+      // a resolution of ours that came back, so it must not be excluded -
+      // doing so understated September by ~5 pp.
       const s = caseStartTs(r), rt = Number(r[20]) || 0;
       if (rt > 0) return (rt - s) <= TAT_LIMIT_MS;
       return !!effectiveVal(r, 14);
