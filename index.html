@@ -1269,6 +1269,10 @@ function makeProofCell(ticket, field, orig, icon) {
 // <audio>/<video> element — no download, no leaving the page.
 function openProofViewer(url) {
   closeProofViewer();
+  // Proofs saved before 29 Sep 2026 16:06 lived on a service without a volume
+  // and were lost at a deploy. Check first, and say so, rather than opening a
+  // player that silently fails.
+  fetch(url, { method: 'HEAD' }).then(r => { if (!r.ok) showProofMissing(url); }).catch(() => {});
   const ext = (url.match(/\.([a-z0-9]{1,5})(?:\?|$)/i) || [,''])[1].toLowerCase();
   let body;
   if (['jpg','jpeg','png','webp','gif','heic'].includes(ext)) {
@@ -1290,6 +1294,13 @@ function openProofViewer(url) {
   ov.addEventListener('click', function(e) { if (e.target === ov) closeProofViewer(); });
   document.addEventListener('keydown', proofEscHandler);
   document.body.appendChild(ov);
+}
+function showProofMissing(url) {
+  const ov = document.getElementById('proofViewer');
+  if (!ov) return;
+  ov.innerHTML = '<div style="padding:26px 30px;background:var(--surface,#1c1c28);border-radius:12px;max-width:520px;line-height:1.5"><div style="font-size:15px;margin-bottom:10px">&#x26A0; This proof file is no longer on the server</div>' +
+    '<div style="font-size:13px;color:var(--muted)">Files uploaded before 29 Sep 2026, 4 pm were stored on a server without permanent storage and were lost when it redeployed. If you still have the recording or screenshot, click the cell and upload it again — uploads now go to permanent storage.</div></div>' +
+    '<button onclick="closeProofViewer()" style="background:#fff;color:#222;border:none;border-radius:20px;padding:8px 26px;font-weight:700;cursor:pointer;font-size:14px;margin-top:12px">&#x2715; Close</button>';
 }
 function proofEscHandler(e) { if (e.key === 'Escape') closeProofViewer(); }
 function closeProofViewer() {
@@ -1319,7 +1330,11 @@ function editProof(ticket, field, td) {
     try {
       // Uploads always go to the Railway server — the GitHub Pages copy of the
       // dashboard has no backend, so a relative URL there 404s with an HTML page.
-      const UPLOAD_BASE = /railway\.app$/.test(location.hostname) || location.hostname === 'localhost' ? '' : 'https://hp-customer-tracker-production.up.railway.app';
+      // The ONLY service with the persistent volume is the '-a471' one. The plain
+      // 'hp-customer-tracker-production' host is a duplicate service with no volume:
+      // it kept every upload on the container disk and lost them all at each
+      // deploy (found 29 Sep 2026). Always upload here, whatever host the page is on.
+      const UPLOAD_BASE = location.hostname === 'hp-customer-tracker-production-a471.up.railway.app' || location.hostname === 'localhost' ? '' : 'https://hp-customer-tracker-production-a471.up.railway.app';
       const res = await fetch(UPLOAD_BASE + '/upload-proof?ticket=' + encodeURIComponent(ticket) + '&field=' + field + '&name=' + encodeURIComponent(f.name), {
         method: 'POST', headers: { 'content-type': f.type || 'application/octet-stream' }, body: f,
       });
