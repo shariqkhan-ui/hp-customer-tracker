@@ -748,7 +748,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
     
     
     <div class="sheet-panel"><div class="sheet-title"><span>Total complaints sent for resolution</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetComplaints','complaints-for-resolution')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetComplaints"></div></div>
-    <div class="sheet-panel"><div class="sheet-title"><span>Resolved within 48 hrs (flag live 29 Jul — matured cases only)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheet48','resolved-within-48hrs')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheet48"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>Resolution — same basis as the weekly doc (Monday weeks by date matured; flag live 29 Jul)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheet48','resolved-within-48hrs')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheet48"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Engineer assignment TAT % (Case added &#x2192; Engineer assigned)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAssignTat','engineer-assignment-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAssignTat"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>NQT team revert TAT % (Engineer assigned &#x2192; Remarks updated)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRevertTat','nqt-revert-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRevertTat"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Cx closure TAT % (Engineer closed &#x2192; Cx action)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetCxTat','cx-closure-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetCxTat"></div>
@@ -2984,6 +2984,7 @@ function renderReports() {
   // then this month's weekly slices, then MTD.
   const periods = buildPeriods();
   const perCases = periods.map(p => rows.filter(r => { const ts = rowStartTsAny(r); return ts >= p.from && ts <= p.to; }));
+  const periodsAll = periods, perCasesAll = perCases;
 
   const startOf  = rowStartTsAny;
   const assignTs = r => Number(r[21]) || 0;
@@ -2992,7 +2993,8 @@ function renderReports() {
   const GOOD = '#D5EAD8', YEL = '#FFF2CC', ORG = '#FCE4D6', PNK = '#F8CBD0', ROSE = '#FADBD8';
   const heatBad = v => v >= 25 ? PNK : v >= 15 ? ORG : v >= 8 ? YEL : null;
 
-  function sheetTable(elId, rowLabel, rowSpecs, cellFn) {
+  function sheetTable(elId, rowLabel, rowSpecs, cellFn, periodsX, perCasesX) {
+    const periods = periodsX || periodsAll, perCases = perCasesX || perCasesAll;
     let html = '<table class="sheet-table"><thead><tr><th class="rowh">' + esc(rowLabel) + '</th>' +
       periods.map(p => '<th' + (p.cls ? ' class="total"' : '') + '>' + esc(p.label) + '</th>').join('') + '</tr></thead><tbody>';
     rowSpecs.forEach((spec, ri) => {
@@ -3044,38 +3046,57 @@ function renderReports() {
   sheetTable('sheetComplaints', 'Category', catSpecs, (spec, list) =>
     ({ text: spec.gtot ? numFmt(list.length) : withPct(list.filter(r => catOf(r) === spec.key).length, list.length || 1) }));
 
-  // 1.5 Resolved within 48 hrs — the flag metric (live 29 Jul), matured only
-  const m48 = list => {
-    const nowTs = Date.now();
-    const matured = list.filter(r => caseStartTs(r) > 0 && (nowTs - caseStartTs(r)) >= TAT_LIMIT_MS);
-    const w = matured.filter(r => {
-      if (getStatus(r) === 'Unresolved') return false;
-      // Same rule as the weekly doc (Shariq, 28-29 Sep): resolved inside the
-      // 48 hrs and still resolved. A case that came back down and stayed down
-      // is already Unresolved above. 'reopened-cron' is an INTAKE label (the
-      // ticket was already reopened in Kapture when the cron pulled it), not
-      // a resolution of ours that came back, so it must not be excluded -
-      // doing so understated September by ~5 pp.
-      const s = caseStartTs(r), rt = Number(r[20]) || 0;
-      if (rt > 0) return (rt - s) <= TAT_LIMIT_MS;
-      return !!effectiveVal(r, 14);
-    }).length;
-    const u = matured.filter(r => getStatus(r) === 'Unresolved').length;
-    return { m: matured.length, w, u };
+  // 1.5 Resolved within 48 hrs — the SAME basis as the weekly doc (recap.html):
+  // Monday-anchored IST weeks, cohorted by the week the case MATURED (added
+  // + 48 hrs), the three completed weeks before this one, then since launch
+  // up to yesterday. Rows read exactly as the doc's week-wise table.
+  const docPeriods = (() => {
+    const day = 86400000;
+    const nowD = new Date(now);
+    const todayMid = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).getTime();
+    const dow = (nowD.getDay() + 6) % 7;                 // Monday = 0
+    const thisMon = todayMid - dow * day;
+    const fmt = t => { const d = new Date(t); return d.getDate() + ' ' + d.toLocaleString('en', { month: 'short' }); };
+    const out = [];
+    for (let i = 3; i >= 1; i--) {
+      const from = thisMon - i * 7 * day, to = from + 7 * day;
+      out.push({ label: 'Week ' + i + ' (' + fmt(from) + ' – ' + fmt(to - day) + ')', from, to });
+    }
+    out.push({ label: 'Since launch (' + fmt(TAT_LAUNCH_TS) + ' – ' + fmt(todayMid - day) + ')', from: TAT_LAUNCH_TS, to: todayMid, cls: 'grand' });
+    return out;
+  })();
+  const maturedAtR = r => { const t = caseStartTs(r); return t > 0 ? t + TAT_LIMIT_MS : 0; };
+  const docCases = docPeriods.map(p => rows.filter(r => { const m = maturedAtR(r); return m > 0 && m >= p.from && m < p.to; }));
+  const w48ok = r => {
+    if (getStatus(r) === 'Unresolved') return false;
+    const s0 = caseStartTs(r), rt = Number(r[20]) || 0;
+    if (rt > 0) return (rt - s0) <= TAT_LIMIT_MS;
+    return !!effectiveVal(r, 14);
   };
+  const docStats = (list, p) => {
+    const m = list.length;
+    const res = list.filter(r => getStatus(r) !== 'Unresolved').length;
+    const net = list.filter(w48ok).length;                                   // resolved inside 48 hrs and still resolved
+    const reop = rows.filter(r => { const t = Number(r[26]) || 0; return t >= p.from && t < p.to; }).length; // came back down in the week
+    const unres = list.filter(r => getStatus(r) === 'Unresolved').length;
+    return { m, res, net, reop, unres };
+  };
+  const pctTxt = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '-';
   sheetTable('sheet48', 'Metric', [
-    { label: 'Matured cases (completed 48-hr window)' },
-    { label: 'Resolved ≤ 48 hrs' },
-    { label: 'Resolution within 48 hrs %', good: true },
-    { label: 'Unresolved matured %', bad: true }
-  ], (spec, list) => {
-    const s = m48(list);
-    if (!s.m) return { text: '-' };
-    if (spec.label.startsWith('Matured')) return { text: numFmt(s.m) };
-    if (spec.label.startsWith('Resolved ≤')) return { text: numFmt(s.w) };
-    if (spec.good) { const v = s.w / s.m * 100; return { text: v.toFixed(1) + '%', bg: v >= 80 ? GOOD : v >= 70 ? YEL : ORG }; }
-    const v = s.u / s.m * 100; return { text: v.toFixed(1) + '%', bg: v >= 30 ? PNK : v >= 20 ? ORG : null };
-  });
+    { label: 'Cases matured — crossed 48 hrs', k: 'm' },
+    { label: 'Resolved', k: 'res', of: 'm' },
+    { label: 'Net resolved (resolved inside 48 hrs and still resolved)', k: 'net', of: 'm', good: true },
+    { label: 'Reopened (came back down in this week)', k: 'reop', of: 'net' },
+    { label: 'Unresolved', k: 'unres', of: 'm', bad: true }
+  ], (spec, list, pi) => {
+    const st = docStats(list, docPeriods[pi]);
+    if (!st.m) return { text: '-' };
+    const v = st[spec.k];
+    if (!spec.of) return { text: numFmt(v) };
+    const pc = v / st[spec.of] * 100;
+    const bg = spec.good ? (pc >= 80 ? GOOD : pc >= 70 ? YEL : ORG) : spec.bad ? (pc >= 30 ? PNK : pc >= 20 ? ORG : null) : null;
+    return { text: numFmt(v) + ' <span style="font-size:10px;color:#8a8a8a">(' + pctTxt(v, st[spec.of]) + ')</span>', bg };
+  }, docPeriods, docCases);
 
   // 2+3. TAT % tables
   const BUCKETS = [
