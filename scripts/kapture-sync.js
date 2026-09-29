@@ -683,7 +683,7 @@ async function auditIntake(apiKey, qualified) {
 async function purgeClosedAfterReopen(apiKey) {
   const all = await fbGet('/cases') || {};
   const mine = Object.entries(all).filter(([k, c]) =>
-    !k.startsWith('__') && c && c.ticket_no && String(c.source || '') === 'reopened-log-cron');
+    !k.startsWith('__') && c && c.ticket_no && ['reopened-log-cron', 'csp-resolved-cron'].includes(String(c.source || '')));
   if (!mine.length) return;
   const worked = c => String(c.remarks || '').trim() || String(c.engineer_remarks || '').trim() ||
     String(c.cx_action || '').trim() || String(c.refund_action || '').trim() ||
@@ -706,7 +706,8 @@ async function purgeClosedAfterReopen(apiKey) {
       FROM PUBLIC.T_TICKETS_NEW t
       LEFT JOIN ev ON ev.TID = t.TICKET_ID
       WHERE REGEXP_REPLACE(t.KAPTURE_TICKET_ID,'[^0-9]','') IN (${ch.map(x => "'" + x + "'").join(',')})
-        AND (t.STATUS <> 'OPEN' OR (ev.LAST_CLOSE IS NOT NULL AND ev.LAST_CLOSE > ev.LAST_REOPEN))`, apiKey);
+        AND (t.STATUS <> 'OPEN' OR (ev.LAST_CLOSE IS NOT NULL AND ev.LAST_CLOSE > ev.LAST_REOPEN))
+        AND NOT (t.STATUS = 'RESOLVED' AND t.SUB_STATUS = 'RESOLVED')`, apiKey);
     rows.forEach(r => { const d = String(r.TK || '').replace(/\D/g, ''); if (d) closed.add(d); });
   }
   let removed = 0, kept = 0;
@@ -1300,6 +1301,21 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     .replace('AND t.CREATED_TIME < DATEADD(HOUR, -72, CURRENT_TIMESTAMP())',
       'AND t.CREATED_TIME BETWEEN DATEADD(HOUR, -96, CURRENT_TIMESTAMP()) AND DATEADD(HOUR, -72, CURRENT_TIMESTAMP())');
 
+  // ── Step 2d SQL: reopened, then marked resolved AGAIN by the CSP, PFT not closed ──
+  // Per Shariq (29 Sep, after Manas's list of 49): the commonest pattern the
+  // tracker never saw is ticket raised -> CSP marks resolved within hours ->
+  // customer reopens -> CSP marks resolved again -> PFT closure outstanding.
+  // Kapture shows it as Status Pending / sub-status Resolved. It is never OPEN
+  // at a cron run past 72 hrs, so the live-open path misses it, and the model
+  // path is blind (IS_RESOLVED frozen at 1). This path takes exactly that:
+  // internet ticket, reopened at least once, live status RESOLVED/RESOLVED,
+  // crossing 72 hrs in the last day. Same exclusions as every other path.
+  const cspResolvedSql = reopenLogSql
+    .replace(`      WHERE LAST_REOPEN IS NOT NULL
+        AND (LAST_CLOSE IS NULL OR LAST_CLOSE < LAST_REOPEN)`,
+             `      WHERE LAST_REOPEN IS NOT NULL`)
+    .replace("WHERE t.STATUS = 'OPEN'", "WHERE t.STATUS = 'RESOLVED' AND t.SUB_STATUS = 'RESOLVED'");
+
   // ── Step 2b: LIVE-open tickets the model path can't see ──
   let liveAdded = 0, liveSkipped = 0, liveEnriched = 0, liveTicketsAll = [];
   if (!BACKFILL_CHAT) {
@@ -1330,6 +1346,21 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
     }
   }
 
+  // ── Step 2d: reopened, CSP re-resolved, PFT closure pending ──
+  let cspResAdded = 0, cspResSkipped = 0, cspResEnriched = 0, cspResTicketsAll = [];
+  if (!BACKFILL_CHAT) {
+    log('Running reopened-then-CSP-resolved query (PFT closure pending)…');
+    try {
+      const cspResTickets = await queryMetabase(cspResolvedSql, apiKey);
+      cspResTicketsAll = cspResTickets;
+      log(`Qualifying reopened-then-CSP-resolved tickets: ${cspResTickets.length}`);
+      ({ added: cspResAdded, skipped: cspResSkipped, enriched: cspResEnriched } =
+        await addTicketsToFirebase(cspResTickets, 'csp-resolved-cron'));
+    } catch (e) {
+      console.error('ERROR querying Metabase (reopened-then-CSP-resolved):', e.message);
+    }
+  }
+
   // Straight after intake, so a case the CSP closed since the last run does not
   // sit in the tracker for a day before anyone notices.
   try { await purgeClosedAfterReopen(apiKey); } catch (e) { log('WARN: reopened-case cleanup failed — ' + e.message); }
@@ -1338,13 +1369,13 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // tracker. This is the guard against a silent miss.
   let auditSnap = null;
   try {
-    auditSnap = await auditIntake(apiKey, [].concat(internetTicketsAll, chatTickets || [], liveTicketsAll, reLogTicketsAll));
+    auditSnap = await auditIntake(apiKey, [].concat(internetTicketsAll, chatTickets || [], liveTicketsAll, reLogTicketsAll, cspResTicketsAll));
   } catch (e) { log('WARN: intake audit failed — ' + e.message); }
 
-  const added    = internetAdded + chatAdded + liveAdded + reopenAdded + reLogAdded;
-  const skipped  = internetSkipped + chatSkipped + liveSkipped + reopenSkipped + reLogSkipped;
-  const enriched = internetEnriched + chatEnriched + liveEnriched + reopenEnriched + reLogEnriched;
-  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded}, live-open ${liveAdded}, reopened ${reopenAdded}, reopened-log ${reLogAdded})  Enriched: ${enriched}  Skipped: ${skipped}`);
+  const added    = internetAdded + chatAdded + liveAdded + reopenAdded + reLogAdded + cspResAdded;
+  const skipped  = internetSkipped + chatSkipped + liveSkipped + reopenSkipped + reLogSkipped + cspResSkipped;
+  const enriched = internetEnriched + chatEnriched + liveEnriched + reopenEnriched + reLogEnriched + cspResEnriched;
+  log(`Sync complete. Added: ${added} (internet ${internetAdded}, chat ${chatAdded}, live-open ${liveAdded}, reopened ${reopenAdded}, reopened-log ${reLogAdded}, csp-resolved ${cspResAdded})  Enriched: ${enriched}  Skipped: ${skipped}`);
 
   // ── Step 2.5: Mirror the Finance refund sheet into /refund_sheet ──
   // Failure here must never break the ticket sync.
@@ -1378,6 +1409,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       if (liveAdded > 0)     parts.push(`${liveAdded} live-open`);
       if (reopenAdded > 0)   parts.push(`${reopenAdded} reopened`);
       if (reLogAdded > 0)    parts.push(`${reLogAdded} reopened-log`);
+      if (cspResAdded > 0)   parts.push(`${cspResAdded} CSP-resolved, PFT pending`);
       if (auditSnap && auditSnap.rule_misses > 0)
         parts.push(`⚠️ ${auditSnap.rule_misses} qualified but missing — ${auditSnap.misses.slice(0, 5).map(m => m.ticket).join(', ')}`);
       const breakdown = parts.length ? ` (${parts.join(', ')})` : '';

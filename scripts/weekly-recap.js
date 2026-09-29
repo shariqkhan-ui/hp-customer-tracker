@@ -596,7 +596,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // of them makes a case refunded; the reconciliation section below counts
   // each refund against its best source so the fallback's size is visible.
   const isDone = c => !!sheetEntry(c) || trim(c.cx_action) === 'Refund Done' || trim(c.refund_action) === 'Refund Done' || hubPaid(c);
-  const cameInAsReopen = c => String(c.source) === 'reopened-cron';
+  const cameInAsReopen = c => ['reopened-cron', 'reopened-log-cron', 'csp-resolved-cron'].includes(String(c.source));
   const RES_REMARKS = ['resolved by old partner', 'resolved by old csp'];
   const isResRemark = c => RES_REMARKS.includes(trim(c.remarks).toLowerCase()) || trim(c.migration_date) !== '';
   const stats = list => {
