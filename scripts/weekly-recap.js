@@ -524,7 +524,10 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // flight). REJECTED and PENDING are not a refund.
   const hubPaid = c => { const h = hubOf(c); return !!h && h.st === 'APPROVED'; };
   const ptl = await ptlCallsByPartner(periods);
-  const kReop = await kaptureReopens('2026-07-29');
+  // Kapture's reopen event log is no longer used by any number on the page
+  // (reopens are the tracker's own stamp) and the query on TICKET_LOGS can hang
+  // for many minutes, so it is not fetched.
+  const kReop = null;
   const kWho = await (async () => {
     const key = process.env.METABASE_API_KEY;
     if (!key) return {};
@@ -1546,12 +1549,14 @@ ${['Refund pending \u2014 no reason recorded', 'Parked with a reason recorded', 
   // Only what is still open. Closed items were being carried week after week
   // long after they were done; they stay in the tracker's Action Items tab,
   // which is the record, and come back here the moment one is reopened.
+  // Open items, plus anything closed since the start of the week under
+  // review, so the meeting sees what got done before it drops off the page.
   const aiItems = Object.entries(aiRaw || {})
-    .filter(([, v]) => v && v.item && trim(v.status) !== 'Done')
+    .filter(([, v]) => v && v.item && (trim(v.status) !== 'Done' || (Number(v.updated_at) || 0) >= periods[LW].from))
     .sort((a, b) => (a[1].created_at || 0) - (b[1].created_at || 0));
   const aiHtml = `<section>
-<h2>Pending action items</h2>
-<p class="sub">Still open, live from the tracker's Action Items tab. Items that have been closed are not repeated here — the tab holds the full record.</p>
+<h2>Action items</h2>
+<p class="sub">Open items, plus those closed since ${fmtD(periods[LW].from)}, live from the tracker's Action Items tab. Older closed items are not repeated here — the tab holds the full record.</p>
 <div class="tablewrap"><table>
 <thead><tr><th style="width:26px">#</th><th style="text-align:left">Action item</th><th>Owner</th><th>Due</th><th>Status</th><th style="text-align:left">Where it landed</th></tr></thead>
 <tbody>
@@ -1562,7 +1567,7 @@ ${aiItems.length ? aiItems.map(([, v], i) =>
   `<td style="font-weight:400">${escA(v.due) || '—'}</td>` +
   `<td class="${v.status === 'Done' ? 'g' : 'b'}">${escA(v.status || 'Open')}</td>` +
   `<td style="text-align:left;white-space:normal;font-weight:400">${escA(v.notes) || '<i style="color:var(--muted)">no closing note yet</i>'}</td></tr>`
-).join(String.fromCharCode(10)) : '<tr><td colspan="6" style="text-align:left">Nothing open — every action item from the last meeting is closed.</td></tr>'}
+).join(String.fromCharCode(10)) : '<tr><td colspan="6" style="text-align:left">Nothing open, and nothing closed this week.</td></tr>'}
 </tbody></table></div>
 </section>`;
 
