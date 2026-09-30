@@ -70,7 +70,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 /* >48h drill-down: hide Migration Date (14) — not relevant to the breached
    raw-data view. (Engineer Remarks and Migration Status columns were removed
    from the table entirely on 11 Aug; data kept in Firebase/CSV.) */
-.main-tbl.exp48-mode th:nth-child(16), .main-tbl.exp48-mode td:nth-child(16) { display: none; }
+.main-tbl.exp48-mode th:nth-child(17), .main-tbl.exp48-mode td:nth-child(17) { display: none; }
 
 /* ── Main tabs ── */
 .main-tabs { display:flex; gap:8px; margin:14px 0 4px; flex-wrap:wrap; }
@@ -680,6 +680,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>TAT</th>
             <th>48h TAT &#x23F3;</th>
             <th>Ground Remarks &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
+            <th title="Cx team: flag a case the NQT side marked resolved that the customer says is not. It reads Unresolved and goes back to NQT.">Cx Verdict &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
             <th title="NQT customer-confirmation proof: paste the call recording link (Drive/WhatsApp)">&#x1F399; Call Recording &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x2B06; click to upload</span></th>
             <th title="NQT customer-confirmation proof: paste the screenshot / chat proof link">&#x1F4CE; Screenshot &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x2B06; click to upload</span></th>
             <th>Engineer Name &nbsp;<span style="color:var(--primary-light);font-size:10px;font-weight:400;text-transform:none">&#x270F; click to edit</span></th>
@@ -701,6 +702,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
             <th></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('remarks',this.value)"></th>
+            <th><input class="col-filter" placeholder="Not Resolved" oninput="setColFilter('cxVerdict',this.value)"></th>
             <th></th>
             <th></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('engineer',this.value)"></th>
@@ -1023,12 +1025,14 @@ function dbRowToArray(r) {
     r.proof_screenshot    || '', // 32 — URL of the confirmation screenshot / chat proof
     r.refund_action       || '', // 33 — Refund Action tab status (Deepakshi's flag: Refund Done / Ping up / DNP3 …)
     r.refund_action_note  || '', // 34 — free note (e.g. ping-up date/time from the historical sheet)
-    r.last_ping_at        || 0   // 35 — router's most recent successful ping (ms), stamped by cron
+    r.last_ping_at        || 0,  // 35 — router's most recent successful ping (ms), stamped by cron
+    r.cx_verdict          || '', // 36 — Cx team's verdict: 'Not Resolved' overrides a resolved remark (30 Sep 2026, Manas)
+    r.cx_verdict_at       || 0   // 37 — Unix ms when the Cx verdict was last set
   ];
 }
 
 // Map edit field name → Supabase column name
-const DB_COL = { remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action', refund_amount: 'refund_amount', device_picked_up: 'device_picked_up', proof_recording: 'proof_recording', proof_screenshot: 'proof_screenshot', refund_action: 'refund_action', refund_action_note: 'refund_action_note' };
+const DB_COL = { cx_verdict: 'cx_verdict', remarks: 'remarks', engineer: 'engineer', migration_date: 'migration_date', owner: 'owner', migration_status: 'migration_status', engineer_remarks: 'engineer_remarks', cx_action: 'cx_action', refund_amount: 'refund_amount', device_picked_up: 'device_picked_up', proof_recording: 'proof_recording', proof_screenshot: 'proof_screenshot', refund_action: 'refund_action', refund_action_note: 'refund_action_note' };
 
 let allRows = [], visRows = [], charts = {};
 
@@ -1106,7 +1110,7 @@ function effectiveVal(r, col) { return String(r[col] == null ? '' : r[col]).trim
 
 
 // ── Save edit: patch allRows in memory + write to Firebase ──
-const EDIT_COL = { remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17, engineer_remarks: 22, cx_action: 23, refund_amount: 24, device_picked_up: 27 };
+const EDIT_COL = { cx_verdict: 36, remarks: 8, engineer: 10, migration_date: 14, owner: 15, migration_status: 17, engineer_remarks: 22, cx_action: 23, refund_amount: 24, device_picked_up: 27 };
 async function saveToSheet(ticket, field, value) {
   const dbCol = DB_COL[field];
   if (!dbCol) return;
@@ -1150,6 +1154,11 @@ async function saveToSheet(ticket, field, value) {
   const row = allRows.find(r => (r[1]||'').trim() === ticket);
   if (ci !== undefined && row) row[ci] = value;
 
+  if (field === 'cx_verdict') {
+    const now = Date.now();
+    try { await fbPut('/cases/' + ticketKey(ticket) + '/cx_verdict_at', now); } catch(e) {}
+    if (row) row[37] = now;
+  }
   // Save event timestamp for auditable fields
   if (field === 'remarks' || field === 'engineer') {
     const now = Date.now();
@@ -1424,6 +1433,38 @@ function startEdit(td) {
         td.innerHTML = cellInner(cur);
         td.onclick = () => startEdit(td);
       }
+    });
+    return;
+  }
+
+  // Cx Verdict: the Cx team overrules a resolved remark. Setting it makes the
+  // case read Unresolved (getStatus) and hands it back to NQT (owner).
+  if (field === 'cx_verdict') {
+    const sel = document.createElement('select');
+    sel.className = 'edit-input';
+    sel.innerHTML = '<option value="">\u2014 Clear \u2014</option>' +
+      CX_VERDICT_OPTS.map(function(o) { return '<option value="' + esc(o) + '"' + (o === cur ? ' selected' : '') + '>' + esc(o) + '</option>'; }).join('');
+    td.innerHTML = '';
+    td.appendChild(sel);
+    sel.focus();
+    let done = false;
+    async function commitVerdict() {
+      if (done) return; done = true;
+      const nv = sel.value;
+      addAuditEntry(ticket, field, cur, nv);
+      await saveToSheet(ticket, field, nv);
+      if (nv === 'Not Resolved') {
+        const row = allRows.find(r => (r[1]||'').trim() === ticket);
+        if (row && getOwner(row) !== 'NQT') { addAuditEntry(ticket, 'owner', getOwner(row), 'NQT'); await saveToSheet(ticket, 'owner', 'NQT'); }
+      }
+      applyFilters();
+    }
+    sel.addEventListener('change', commitVerdict);
+    sel.addEventListener('blur', function() {
+      if (!done) { td.className = 'edit-cell'; td.innerHTML = cxVerdictBadge(cur); td.onclick = () => startEdit(td); }
+    });
+    sel.addEventListener('keydown', function(e) {
+      if (e.key === 'Escape') { done = true; td.className = 'edit-cell'; td.innerHTML = cxVerdictBadge(cur); td.onclick = () => startEdit(td); }
     });
     return;
   }
@@ -1772,6 +1813,10 @@ function rowMigDk(r) {
 
 // ── Status Logic ──
 function getStatus(r) {
+  // Cx team's verdict (30 Sep 2026, per Manas / Shariq): the NQT side marked
+  // it resolved, the customer says it is not. The case reads Unresolved and
+  // is parked back with NQT until the remark is set again.
+  if (effectiveVal(r, 36).trim() === 'Not Resolved') return 'Unresolved';
   if (effectiveVal(r, 14).trim() !== '') return 'Migrated';
   const g = effectiveVal(r, 8).toLowerCase();
   if (isOldCspResolved(g)) return 'Ping Up';
@@ -2137,6 +2182,7 @@ function applyColFilters() {
     if (!chk(r[7],              'tat'))      return false;
     if (!chk(getOwner(r),       'owner'))    return false;
     if (!chk(effectiveVal(r,8), 'remarks'))    return false;
+    if (!chk(effectiveVal(r,36),'cxVerdict'))  return false;
     if (!chk(effectiveVal(r,10),'engineer'))   return false;
     if (!chk(effectiveVal(r,23),'cxAction'))   return false;
     if (!chk(r[0],              'caseAdded'))return false;
@@ -3415,6 +3461,19 @@ function makeCxActionCell(ticket, val, defaultPending) {
   return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="cx_action" data-orig="' + esc(val) + '" onclick="startEdit(this)" style="min-width:120px;white-space:nowrap">' + cxActionBadgeCell(val, defaultPending) + '</td>';
 }
 
+// ── Cx Verdict cell (Cx team overrules a resolved remark) ──
+const CX_VERDICT_OPTS = ['Not Resolved'];
+function cxVerdictBadge(val, ts) {
+  const v = (val || '').trim();
+  const when = ts ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(ts) + '</div>' : '';
+  return (v === 'Not Resolved'
+    ? '<span class="badge badge-red">&#x26A0; Not Resolved</span>' + when
+    : '<span style="color:var(--muted)">&#x2014;</span>') + '<span class="edit-hint">&#x270F;</span>';
+}
+function makeCxVerdictCell(ticket, val, ts) {
+  return '<td class="edit-cell" data-ticket="' + esc(ticket) + '" data-field="cx_verdict" data-orig="' + esc(val) + '" onclick="startEdit(this)" style="min-width:120px;white-space:nowrap">' + cxVerdictBadge(val, ts) + '</td>';
+}
+
 // ── Migration Status cell helpers ──
 const MIG_STATUS_OPTS = ['Proceed with migration', 'Hold migration'];
 function migStatusBadgeCell(val) {
@@ -3472,6 +3531,7 @@ function renderTable(allTableRows) {
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
       makeTatClockCell(r) +
       makeEditCell(ticket, 'remarks',  (r[8]||'').trim(), r[20] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[20]) + '</div>' : '') +
+      makeCxVerdictCell(ticket, (r[36]||'').trim(), r[37]) +
       makeProofCell(ticket, 'proof_recording', r[31], '&#x1F399;') +
       makeProofCell(ticket, 'proof_screenshot', r[32], '&#x1F4CE;') +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
@@ -3507,7 +3567,7 @@ function renderTable(allTableRows) {
 function downloadCSV() {
   const headers = [
     '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Customer Name','CSP',
-    'Sub-category','TAT','48h TAT','Cx Action','Ground Remarks','Call Recording Proof','Screenshot Proof','Remarks Updated At','Engineer','Engineer Assigned At',
+    'Sub-category','TAT','48h TAT','Cx Action','Ground Remarks','Cx Verdict','Call Recording Proof','Screenshot Proof','Remarks Updated At','Engineer','Engineer Assigned At',
     'Engineer Remarks','Owner','Pending Since','Migration Date','Status','Kapture Status','Ticket URL',
     'Col12','Col13'
   ];
@@ -3530,6 +3590,7 @@ function downloadCSV() {
       tatClockText(r),
       (r[23]||'').trim(),
       (r[8]||'').trim(),
+      (r[36]||'').trim(),
       (r[31]||'').trim(),
       (r[32]||'').trim(),
       fmtTs(r[20]),
@@ -4013,7 +4074,7 @@ function renderAuditLog(log) {
   document.getElementById('auditCount').textContent = log.length + ' edit(s) recorded';
   if (!log.length) { tbody.innerHTML = ''; empty.style.display = 'block'; return; }
   empty.style.display = 'none';
-  const FIELD_LABEL = { remarks: 'Ground Remarks', engineer: 'Engineer Name', migration_date: 'Migration Date', engineer_remarks: 'Engineer Remarks', owner: 'Owner', migration_status: 'Migration Status', cx_action: 'Cx Action', refund_amount: 'Refund Amount', device_picked_up: 'Device Picked Up', case_added: 'Case Added (manual)' };
+  const FIELD_LABEL = { cx_verdict: 'Cx Verdict', remarks: 'Ground Remarks', engineer: 'Engineer Name', migration_date: 'Migration Date', engineer_remarks: 'Engineer Remarks', owner: 'Owner', migration_status: 'Migration Status', cx_action: 'Cx Action', refund_amount: 'Refund Amount', device_picked_up: 'Device Picked Up', case_added: 'Case Added (manual)' };
   tbody.innerHTML = log.map(function(e) {
     const dt = new Date(e.ts).toLocaleString('en-IN');
     return '<tr style="border-bottom:1px solid #1a0018">' +

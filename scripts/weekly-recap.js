@@ -372,6 +372,7 @@ function parseDate(s) {
 const trim = v => (v == null ? '' : String(v)).trim();
 const PING = ['ping up', 'internet working', 'internet up', 'speed up', 'link up'];
 function getStatus(c) {
+  if (trim(c.cx_verdict) === 'Not Resolved') return 'Unresolved';   // Cx team overrules a resolved remark (30 Sep)
   if (trim(c.migration_date) !== '') return 'Migrated';
   const g = trim(c.remarks).toLowerCase();
   if (g === 'resolved by old partner' || g === 'resolved by old csp') return 'Ping Up';

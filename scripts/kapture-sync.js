@@ -610,9 +610,10 @@ async function auditIntake(apiKey, qualified) {
     if (k.startsWith('__') || !c || !c.ticket_no) return;
     have.add(dgt(c.ticket_no));
     const g = String(c.remarks || '').trim().toLowerCase();
-    const resolved = String(c.migration_date || '').trim() !== '' ||
+    const resolved = String(c.cx_verdict || '').trim() !== 'Not Resolved' && (
+      String(c.migration_date || '').trim() !== '' ||
       g === 'resolved by old partner' || g === 'resolved by old csp' ||
-      PINGKW.some(kw => g.includes(kw));
+      PINGKW.some(kw => g.includes(kw)));
     if (resolved) return;
     const m = String(c.mobile || '').replace(/\D/g, '').slice(-10);
     if (m.length === 10) openMob.add(m);
@@ -699,7 +700,7 @@ async function purgeClosedAfterReopen(apiKey) {
   const mine = Object.entries(all).filter(([k, c]) =>
     !k.startsWith('__') && c && c.ticket_no && ['reopened-log-cron', 'csp-resolved-cron'].includes(String(c.source || '')));
   if (!mine.length) return;
-  const worked = c => String(c.remarks || '').trim() || String(c.engineer_remarks || '').trim() ||
+  const worked = c => String(c.remarks || '').trim() || String(c.engineer_remarks || '').trim() || String(c.cx_verdict || '').trim() ||
     String(c.cx_action || '').trim() || String(c.refund_action || '').trim() ||
     String(c.migration_date || '').trim() || String(c.proof_recording || '').trim() ||
     String(c.proof_screenshot || '').trim();
