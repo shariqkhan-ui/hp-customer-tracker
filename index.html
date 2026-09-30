@@ -70,7 +70,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
 /* >48h drill-down: hide Migration Date (14) — not relevant to the breached
    raw-data view. (Engineer Remarks and Migration Status columns were removed
    from the table entirely on 11 Aug; data kept in Firebase/CSV.) */
-.main-tbl.exp48-mode th:nth-child(17), .main-tbl.exp48-mode td:nth-child(17) { display: none; }
+.main-tbl.exp48-mode th:nth-child(18), .main-tbl.exp48-mode td:nth-child(18) { display: none; }
 
 /* ── Main tabs ── */
 .main-tabs { display:flex; gap:8px; margin:14px 0 4px; flex-wrap:wrap; }
@@ -676,6 +676,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th>Mobile</th>
             <th>Customer Name</th>
             <th>CSP</th>
+            <th>City</th>
             <th>Sub-category</th>
             <th>TAT</th>
             <th>48h TAT &#x23F3;</th>
@@ -698,6 +699,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('mobile',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('name',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('partner',this.value)"></th>
+            <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('city',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('subcat',this.value)"></th>
             <th><input class="col-filter" placeholder="Search..." oninput="setColFilter('tat',this.value)"></th>
             <th></th>
@@ -1027,7 +1029,9 @@ function dbRowToArray(r) {
     r.refund_action_note  || '', // 34 — free note (e.g. ping-up date/time from the historical sheet)
     r.last_ping_at        || 0,  // 35 — router's most recent successful ping (ms), stamped by cron
     r.cx_verdict          || '', // 36 — Cx team's verdict: 'Not Resolved' overrides a resolved remark (30 Sep 2026, Manas)
-    r.cx_verdict_at       || 0   // 37 — Unix ms when the Cx verdict was last set
+    r.cx_verdict_at       || 0,  // 37 — Unix ms when the Cx verdict was last set
+    r.city                || '', // 38 — CSP's city from hierarchy_base (stamped by cron, 30 Sep 2026)
+    r.region              || ''  // 39 — Delhi/NCR | Mumbai | Bharat, from hierarchy_base CLUSTER
   ];
 }
 
@@ -2178,6 +2182,7 @@ function applyColFilters() {
     if (!chk(r[3],              'mobile'))   return false;
     if (!chk(r[5],              'name'))     return false;
     if (!chk(r[6],              'partner'))  return false;
+    if (!chk((r[38]||'') + ' ' + (r[39]||''), 'city')) return false;
     if (!chk(r[4],              'subcat'))   return false;
     if (!chk(r[7],              'tat'))      return false;
     if (!chk(getOwner(r),       'owner'))    return false;
@@ -3527,6 +3532,7 @@ function renderTable(allTableRows) {
       '<td>' + esc((r[3]||'').trim() || '—') + '</td>' +
       '<td>' + esc((r[5]||'').trim() || '—') + '</td>' +
       '<td style="font-size:12px">' + esc((r[6]||'').trim() || '—') + '</td>' +
+      '<td style="font-size:12px">' + (r[38] ? esc(String(r[38]).trim()) + (r[39] ? '<div style="font-size:10px;color:var(--muted)">' + esc(String(r[39])) + '</div>' : '') : '<span style="color:var(--muted)">—</span>') + '</td>' +
       '<td>' + esc((r[4]||'').trim() || '—') + '</td>' +
       '<td style="font-size:11px;color:var(--yellow)">' + esc((r[7]||'').trim() || '—') + '</td>' +
       makeTatClockCell(r) +
@@ -3566,7 +3572,7 @@ function renderTable(allTableRows) {
 // ── Download CSV ──
 function downloadCSV() {
   const headers = [
-    '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Customer Name','CSP',
+    '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Customer Name','CSP','City','Region',
     'Sub-category','TAT','48h TAT','Cx Action','Ground Remarks','Cx Verdict','Call Recording Proof','Screenshot Proof','Remarks Updated At','Engineer','Engineer Assigned At',
     'Engineer Remarks','Owner','Pending Since','Migration Date','Status','Kapture Status','Ticket URL',
     'Col12','Col13'
@@ -3585,6 +3591,8 @@ function downloadCSV() {
       (r[3]||'').trim(),
       (r[5]||'').trim(),
       (r[6]||'').trim(),
+      (r[38]||'').trim(),
+      (r[39]||'').trim(),
       (r[4]||'').trim(),
       (r[7]||'').trim(),
       tatClockText(r),

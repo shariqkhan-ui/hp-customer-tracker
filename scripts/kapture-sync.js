@@ -515,6 +515,36 @@ async function syncHubRefunds(apiKey) {
       (dupeSkipped ? `, ${dupeSkipped} same-customer duplicate${dupeSkipped === 1 ? '' : 's'} left alone` : '') + '.');
 }
 
+// ── City per case, from the partner hierarchy ────────────────────────────────
+// Per Shariq (30 Sep 2026): a City column next to the CSP in the Cases table.
+// hierarchy_base CITY is the CSP's city (Delhi covers NCR; 'Meerut_City' style
+// names are cleaned); CLUSTER gives the doc's region: Delhi/NCR, Mumbai, or
+// Bharat for every UP city. Stamped once per case and re-tried while empty.
+async function syncCity(apiKey) {
+  const all = await fbGet('/cases') || {};
+  const norm = v => String(v || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  const targets = Object.entries(all).filter(([k, c]) =>
+    !k.startsWith('__') && c && c.ticket_no && String(c.partner || '').trim() && !String(c.city || '').trim());
+  if (!targets.length) { log('City stamp: nothing to do.'); return; }
+  const rows = await queryMetabase(
+    `SELECT DISTINCT PARTNER_NAME, CITY, CLUSTER FROM hierarchy_base WHERE dedup_flag = 1 AND PARTNER_NAME IS NOT NULL`, apiKey);
+  const byName = {};
+  rows.forEach(r => {
+    const k = norm(r.PARTNER_NAME); if (!k || byName[k]) return;
+    const city = String(r.CITY || '').replace(/_/g, ' ').replace(/\s*city$/i, '').trim();
+    const cl = String(r.CLUSTER || '').trim().toLowerCase();
+    byName[k] = { city, region: cl === 'delhi' ? 'Delhi/NCR' : cl === 'mumbai' ? 'Mumbai' : cl ? 'Bharat' : '' };
+  });
+  let stamped = 0, unknown = 0;
+  for (const [key, c] of targets) {
+    const h = byName[norm(c.partner)];
+    if (!h || !h.city) { unknown++; continue; }
+    await fbPatch('/cases/' + key, { city: h.city, region: h.region });
+    stamped++;
+  }
+  log(`City stamp: ${stamped} case(s) stamped from hierarchy_base, ${unknown} CSP(s) not in the hierarchy.`);
+}
+
 async function syncLastPing(apiKey) {
   const all = await fbGet('/cases') || {};
   const targets = Object.entries(all).filter(([k, c]) => {
@@ -1427,6 +1457,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   try { await syncDevicePickup(apiKey); } catch (e) { log('WARN: device pickup sync failed — ' + e.message); }
   try { await purgeWiomNetQueue(apiKey); } catch (e) { log('WARN: Wiom Net purge failed — ' + e.message); }
   try { await syncLastPing(apiKey); } catch (e) { log('WARN: last-ping stamp failed — ' + e.message); }
+  try { await syncCity(apiKey); } catch (e) { log('WARN: city stamp failed — ' + e.message); }
 
   // ── Step 2.9: Wiom Hub refund verdict (t_plan_refund_request) ──
   try { await syncHubRefunds(apiKey); } catch (e) { log('WARN: Wiom Hub refund sync failed — ' + e.message); }
