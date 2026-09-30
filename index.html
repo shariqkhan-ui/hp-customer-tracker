@@ -748,7 +748,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
     
     
     <div class="sheet-panel"><div class="sheet-title"><span>Total complaints sent for resolution</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetComplaints','complaints-for-resolution')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetComplaints"></div></div>
-    <div class="sheet-panel"><div class="sheet-title"><span>Resolution — same basis as the weekly doc (Monday weeks by date matured; flag live 29 Jul)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheet48','resolved-within-48hrs')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheet48"></div></div>
+    <div class="sheet-panel"><div class="sheet-title"><span>Resolution — same columns and basis as the weekly doc (Monday weeks, by the week the case matured)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheet48','resolved-within-48hrs')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheet48"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Engineer assignment TAT % (Case added &#x2192; Engineer assigned)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetAssignTat','engineer-assignment-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetAssignTat"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>NQT team revert TAT % (Engineer assigned &#x2192; Remarks updated)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetRevertTat','nqt-revert-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetRevertTat"></div></div>
     <div class="sheet-panel"><div class="sheet-title"><span>Cx closure TAT % (Engineer closed &#x2192; Cx action)</span><button class="sheet-csv-btn" onclick="downloadSheetCSV('sheetCxTat','cx-closure-tat-pct')">&#x2B07; CSV</button></div><div class="sheet-scroll" id="sheetCxTat"></div>
@@ -2989,8 +2989,31 @@ function renderReports() {
   const now = Date.now();
   // ── Period columns (see buildPeriods): two completed months as totals,
   // then this month's weekly slices, then MTD.
-  const periods = buildPeriods();
+  // ── Period columns = the weekly doc's (recap.html), so the two never
+  // disagree: Monday-anchored IST weeks, the three completed weeks before
+  // this one, then since launch up to the last Sunday. Case-count tables
+  // (complaints, TAT, remarks, avg TAT) cohort by the day the case was ADDED,
+  // as the doc's "added that week" does; the resolution and refund tables
+  // cohort by the week the case MATURED (added + 48 hrs), as the doc's
+  // week-wise and refund tables do. (Shariq, 30 Sep 2026.)
+  const periods = (() => {
+    const day = 86400000;
+    const nowD = new Date(now);
+    const todayMid = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).getTime();
+    const thisMon = todayMid - ((nowD.getDay() + 6) % 7) * day;
+    const fmt = t => { const d = new Date(t); return d.getDate() + ' ' + d.toLocaleString('en', { month: 'short' }); };
+    const out = [];
+    for (let i = 3; i >= 1; i--) {
+      const from = thisMon - i * 7 * day, to = from + 7 * day;
+      out.push({ label: 'Week ' + i + ' (' + fmt(from) + ' – ' + fmt(to - day) + ')', from, to: to - 1 });
+    }
+    out.push({ label: 'Since launch (' + fmt(TAT_LAUNCH_TS) + ' – ' + fmt(thisMon - day) + ')', from: TAT_LAUNCH_TS, to: thisMon - 1, cls: 'grand' });
+    return out;
+  })();
   const perCases = periods.map(p => rows.filter(r => { const ts = rowStartTsAny(r); return ts >= p.from && ts <= p.to; }));
+  const maturedAtR = r => { const t = caseStartTs(r); return t > 0 ? t + TAT_LIMIT_MS : 0; };
+  const docPeriods = periods;
+  const docCases = periods.map(p => rows.filter(r => { const m = maturedAtR(r); return m > 0 && m >= p.from && m <= p.to; }));
   const periodsAll = periods, perCasesAll = perCases;
 
   const startOf  = rowStartTsAny;
@@ -3057,23 +3080,6 @@ function renderReports() {
   // Monday-anchored IST weeks, cohorted by the week the case MATURED (added
   // + 48 hrs), the three completed weeks before this one, then since launch
   // up to yesterday. Rows read exactly as the doc's week-wise table.
-  const docPeriods = (() => {
-    const day = 86400000;
-    const nowD = new Date(now);
-    const todayMid = new Date(nowD.getFullYear(), nowD.getMonth(), nowD.getDate()).getTime();
-    const dow = (nowD.getDay() + 6) % 7;                 // Monday = 0
-    const thisMon = todayMid - dow * day;
-    const fmt = t => { const d = new Date(t); return d.getDate() + ' ' + d.toLocaleString('en', { month: 'short' }); };
-    const out = [];
-    for (let i = 3; i >= 1; i--) {
-      const from = thisMon - i * 7 * day, to = from + 7 * day;
-      out.push({ label: 'Week ' + i + ' (' + fmt(from) + ' – ' + fmt(to - day) + ')', from, to });
-    }
-    out.push({ label: 'Since launch (' + fmt(TAT_LAUNCH_TS) + ' – ' + fmt(todayMid - day) + ')', from: TAT_LAUNCH_TS, to: todayMid, cls: 'grand' });
-    return out;
-  })();
-  const maturedAtR = r => { const t = caseStartTs(r); return t > 0 ? t + TAT_LIMIT_MS : 0; };
-  const docCases = docPeriods.map(p => rows.filter(r => { const m = maturedAtR(r); return m > 0 && m >= p.from && m < p.to; }));
   const w48ok = r => {
     if (getStatus(r) === 'Unresolved') return false;
     const s0 = caseStartTs(r), rt = Number(r[20]) || 0;
@@ -3084,7 +3090,7 @@ function renderReports() {
     const m = list.length;
     const res = list.filter(r => getStatus(r) !== 'Unresolved').length;
     const net = list.filter(w48ok).length;                                   // resolved inside 48 hrs and still resolved
-    const reop = rows.filter(r => { const t = Number(r[26]) || 0; return t >= p.from && t < p.to; }).length; // came back down in the week
+    const reop = rows.filter(r => { const t = Number(r[26]) || 0; return t >= p.from && t <= p.to; }).length; // came back down in the week
     const unres = list.filter(r => getStatus(r) === 'Unresolved').length;
     return { m, res, net, reop, unres };
   };
@@ -3143,7 +3149,7 @@ function renderReports() {
   // cases sit in the same table so the whole refund picture is on one screen.
   {
     const isRefundedR = r => effectiveVal(r, 23) === 'Refund Done' || (r[33] || '').trim() === 'Refund Done' || !!sheetEntryFor(r);
-    const breached = list => list.filter(r => getStatus(r) === 'Unresolved' && isTatExpired(r));
+    const breached = list => list.filter(r => getStatus(r) === 'Unresolved');   // every case in a matured cohort has crossed 48 hrs
     // Mirrors raEffective on the Refund Action tab, in the same order: a
     // manual entry wins, then a router that pinged after the complaint (the
     // line came back, so nothing is owed), then a computed ₹0, then pending.
@@ -3182,7 +3188,7 @@ function renderReports() {
       const unpaid = br.filter(r => !isRefundedR(r));
       const n = unpaid.filter(ROWS[spec.idx][1]).length;
       return { text: n ? numFmt(n) : '-', bg: spec.idx === 0 && n ? '#FBE3F2' : null };
-    });
+    }, docPeriods, docCases);
   }
 
   // 4+5. Migration team remarks — counts and %
