@@ -167,7 +167,21 @@ async function queryMetabase(sql, apiKey) {
     { 'x-api-key': apiKey }
   );
 
+  // 30 Sep 2026: Metabase answered 401 "Unauthenticated" (plain text) to a
+  // revoked key. httpRequest resolved the text, `result.error` was undefined
+  // and every intake path read "0 qualifying tickets" while the Wiom Net purge
+  // deleted 12 cases on an empty Hub lookup. A response that is not a dataset
+  // must throw, so every caller's catch fires and nothing is deleted.
+  if (typeof result !== 'object' || result === null) {
+    throw new Error('Metabase returned a non-JSON response: ' + String(result).slice(0, 120));
+  }
   if (result.error) throw new Error('Metabase query error: ' + result.error);
+  if (result.status && result.status !== 'completed') {
+    throw new Error('Metabase query status ' + result.status + ': ' + String(result.error || result.message || '').slice(0, 200));
+  }
+  if (!result.data || !Array.isArray(result.data.rows)) {
+    throw new Error('Metabase response has no dataset: ' + JSON.stringify(result).slice(0, 200));
+  }
 
   const cols = (result.data?.cols || []).map(c => c.name);
   const rows = result.data?.rows || [];
@@ -1025,6 +1039,27 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
 
   log(`Starting Kapture → High Pain Tracker sync via Metabase…${BACKFILL_CHAT ? '  [CHAT BACKFILL MODE — no age cap, Slack silent]' : ''}`);
   const today = todayStr();
+
+  // ── Step 0: Metabase must actually answer before anything else runs ──
+  // A dead key used to look like "no tickets" for hours. Now the run stops
+  // here and says so on Slack, so it is fixed in minutes, not discovered days
+  // later from a missing-cases complaint.
+  try {
+    await queryMetabase('SELECT 1 AS OK', apiKey);
+  } catch (e) {
+    const msg = `❌ *High Pain Tracker sync did NOT run* — Metabase rejected the API key or returned no data (${e.message.slice(0, 160)}). No cases were added or removed. Fix: generate a new API key in Metabase (Admin → Settings → Authentication → API keys) and set METABASE_API_KEY on the Railway service kapture-sync-cron.`;
+    log(msg);
+    const slackToken = process.env.SLACK_BOT_TOKEN;
+    if (slackToken && !BACKFILL_CHAT) {
+      try {
+        await httpRequest('POST', 'https://slack.com/api/chat.postMessage',
+          { channel: 'C0AHDR8H4CC', username: "Shariq's Slack Agent",
+            icon_url: 'https://raw.githubusercontent.com/shariqkhan-ui/hp-customer-tracker/master/shariq-agent.jpg', text: msg },
+          { 'Authorization': 'Bearer ' + slackToken });
+      } catch (e2) { log('ERROR sending Slack alert: ' + e2.message); }
+    }
+    process.exit(2);
+  }
 
   // ── Step 1: Query SERVICE_TICKET_MODEL via Metabase ──────────────────────
   // Table: PUBLIC.SERVICE_TICKET_MODEL (Metabase table ID 5599, DB 113)
