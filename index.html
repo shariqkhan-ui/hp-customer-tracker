@@ -3007,6 +3007,14 @@ function renderReports() {
       const from = thisMon - i * 7 * day, to = from + 7 * day;
       out.push({ label: 'Week ' + i + ' (' + fmt(from) + ' – ' + fmt(to - day) + ')', from, to: to - 1 });
     }
+    // Month columns (Shariq, 30 Sep): the two completed months and this
+    // month to yesterday, on the same cohort rules as the week columns.
+    const y = nowD.getFullYear(), mo = nowD.getMonth();
+    const mon = (yy, mm) => new Date(yy, mm, 1).toLocaleString('en', { month: 'short' });
+    const mEnd = (yy, mm) => new Date(yy, mm + 1, 1).getTime() - 1;
+    out.push({ label: 'MTD-2 (' + mon(y, mo - 2) + ')', from: new Date(y, mo - 2, 1).getTime(), to: mEnd(y, mo - 2), cls: 'total' });
+    out.push({ label: 'MTD-1 (' + mon(y, mo - 1) + ')', from: new Date(y, mo - 1, 1).getTime(), to: mEnd(y, mo - 1), cls: 'total' });
+    out.push({ label: 'MTD (1 – ' + fmt(todayMid - day) + ')', from: new Date(y, mo, 1).getTime(), to: todayMid - 1, cls: 'total' });
     out.push({ label: 'Since launch (' + fmt(TAT_LAUNCH_TS) + ' – ' + fmt(thisMon - day) + ')', from: TAT_LAUNCH_TS, to: thisMon - 1, cls: 'grand' });
     return out;
   })();
