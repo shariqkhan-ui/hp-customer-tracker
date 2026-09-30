@@ -590,8 +590,8 @@ async function syncActiveLine(apiKey) {
       const alt = (r.ALT_MOB && r.ALT_MOB.length === 10 && r.ALT_MOB !== r.PRIMARY_MOB) ? r.ALT_MOB : '';
       for (const t of (byT[tk] || [])) {
         const patch = { line_checked: true };
-        if (alt) patch.alt_mobile = alt;
         const cur = dg(t.c.mobile).slice(-10);
+        if (alt) patch.alt_mobile = (cur === alt) ? r.PRIMARY_MOB : alt;   // a case already on the alternate keeps the ticket's number as the other line
         const pPlan = plan[cur] || plan[r.PRIMARY_MOB] || { end: 0, nas: '' };
         const aPlan = alt ? (plan[alt] || { end: 0, nas: '' }) : null;
         if (alt && aPlan.end >= now && pPlan.end < now && cur !== alt) {
