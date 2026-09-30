@@ -1031,7 +1031,9 @@ function dbRowToArray(r) {
     r.cx_verdict          || '', // 36 — Cx team's verdict: 'Not Resolved' overrides a resolved remark (30 Sep 2026, Manas)
     r.cx_verdict_at       || 0,  // 37 — Unix ms when the Cx verdict was last set
     r.city                || '', // 38 — CSP's city from hierarchy_base (stamped by cron, 30 Sep 2026)
-    r.region              || ''  // 39 — Delhi/NCR | Mumbai | Bharat, from hierarchy_base CLUSTER
+    r.region              || '', // 39 — Delhi/NCR | Mumbai | Bharat, from hierarchy_base CLUSTER
+    r.alt_mobile          || '', // 40 — the customer's other number (Kapture alternate_number); when line_swapped, the dead number the ticket was raised on
+    r.line_swapped        || false // 41 — sync moved the case onto the live line (30 Sep 2026)
   ];
 }
 
@@ -2179,7 +2181,7 @@ function applyColFilters() {
   const chk = (val, key) => !f[key] || String(val).toLowerCase().includes(f[key]);
   const filtered = visRows.filter(r => {
     const ticket = (r[1]||'').trim();
-    if (!chk(r[3],              'mobile'))   return false;
+    if (!chk((r[3]||'') + ' ' + (r[40]||''), 'mobile'))   return false;
     if (!chk(r[5],              'name'))     return false;
     if (!chk(r[6],              'partner'))  return false;
     if (!chk((r[38]||'') + ' ' + (r[39]||''), 'city')) return false;
@@ -3529,7 +3531,7 @@ function renderTable(allTableRows) {
     const owner = getOwner(r);
     return '<tr>' +
       '<td style="color:var(--muted)">' + (i+1) + '</td>' +
-      '<td>' + esc((r[3]||'').trim() || '—') + '</td>' +
+      '<td>' + esc((r[3]||'').trim() || '—') + (r[40] ? '<div style="font-size:10px;color:var(--muted)" title="' + (r[41] ? 'Ticket was raised on this number, which has no live plan; the case is on the live line above' : 'Alternate number on the Kapture ticket') + '">' + (r[41] ? '&#x21C4; ticket no. ' : 'alt ') + esc(String(r[40])) + '</div>' : '') + '</td>' +
       '<td>' + esc((r[5]||'').trim() || '—') + '</td>' +
       '<td style="font-size:12px">' + esc((r[6]||'').trim() || '—') + '</td>' +
       '<td style="font-size:12px">' + (r[38] ? esc(String(r[38]).trim()) + (r[39] ? '<div style="font-size:10px;color:var(--muted)">' + esc(String(r[39])) + '</div>' : '') : '<span style="color:var(--muted)">—</span>') + '</td>' +
@@ -3572,7 +3574,7 @@ function renderTable(allTableRows) {
 // ── Download CSV ──
 function downloadCSV() {
   const headers = [
-    '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Customer Name','CSP','City','Region',
+    '#','Case Added On','Added At (Time)','Source','Ticket No','Mobile','Alt Mobile','Customer Name','CSP','City','Region',
     'Sub-category','TAT','48h TAT','Cx Action','Ground Remarks','Cx Verdict','Call Recording Proof','Screenshot Proof','Remarks Updated At','Engineer','Engineer Assigned At',
     'Engineer Remarks','Owner','Pending Since','Migration Date','Status','Kapture Status','Ticket URL',
     'Col12','Col13'
@@ -3589,6 +3591,7 @@ function downloadCSV() {
       src,
       (r[1]||'').trim(),
       (r[3]||'').trim(),
+      (r[40]||'').trim(),
       (r[5]||'').trim(),
       (r[6]||'').trim(),
       (r[38]||'').trim(),

@@ -545,6 +545,70 @@ async function syncCity(apiKey) {
   log(`City stamp: ${stamped} case(s) stamped from hierarchy_base, ${unknown} CSP(s) not in the hierarchy.`);
 }
 
+// ── Which line is the ticket really about? ───────────────────────────────────
+// Ticket 8790407879865 (30 Sep 2026): the customer had two accounts. Kapture
+// raised the ticket on the deactivated number and kept the live one only as
+// EXTRA_DATA.alternate_number, so the tracker showed the dead number, the
+// ping check looked at the wrong router, and the team closed it on the wrong
+// line. For every new case this reads the alternate number, checks which of
+// the two has a live plan in HOME_ROUTER_PLAN_INFO, and when the primary is
+// dead and the alternate is live it swaps the case onto the live line and
+// remembers that line's NAS so the ping stamp follows it. Checked once per case.
+async function syncActiveLine(apiKey) {
+  const all = await fbGet('/cases') || {};
+  const targets = Object.entries(all).filter(([k, c]) =>
+    !k.startsWith('__') && c && c.ticket_no && !c.line_checked &&
+    (Number(c.added_at) || Number(c.owner_assigned_at) || 0) >= TAT_LAUNCH_MS);
+  if (!targets.length) { log('Active-line check: nothing to do.'); return; }
+  const dg = v => String(v || '').replace(/\D/g, '');
+  const byT = {};
+  targets.forEach(([k, c]) => { const d = dg(c.ticket_no); if (d.length >= 6) (byT[d] = byT[d] || []).push({ key: k, c }); });
+  const digs = Object.keys(byT);
+  let swapped = 0, checked = 0;
+  for (let i = 0; i < digs.length; i += 400) {
+    const ch = digs.slice(i, i + 400);
+    const rows = await queryMetabase(
+      `SELECT REGEXP_REPLACE(KAPTURE_TICKET_ID,'[^0-9]','') TK,
+              RIGHT(REGEXP_REPLACE(CAST(MOBILE AS STRING),'[^0-9]',''),10) PRIMARY_MOB,
+              RIGHT(REGEXP_REPLACE(COALESCE(EXTRA_DATA:alternate_number::string,''),'[^0-9]',''),10) ALT_MOB
+       FROM PUBLIC.T_TICKETS_NEW
+       WHERE REGEXP_REPLACE(KAPTURE_TICKET_ID,'[^0-9]','') IN (${ch.map(x => "'" + x + "'").join(',')})`, apiKey);
+    const withAlt = rows.filter(r => r.ALT_MOB && r.ALT_MOB.length === 10 && r.PRIMARY_MOB && r.ALT_MOB !== r.PRIMARY_MOB);
+    const plan = {};
+    if (withAlt.length) {
+      const mobs = [...new Set(withAlt.flatMap(r => [r.PRIMARY_MOB, r.ALT_MOB]))];
+      const prow = await queryMetabase(
+        `SELECT RIGHT(REGEXP_REPLACE(MOBILE,'[^0-9]',''),10) M, MAX(PLAN_END_TIME) PLAN_END, MAX(NAS_ID) NAS
+         FROM DYNAMODB.HOME_ROUTER_PLAN_INFO
+         WHERE RIGHT(REGEXP_REPLACE(MOBILE,'[^0-9]',''),10) IN (${mobs.map(m => "'" + m + "'").join(',')})
+         GROUP BY 1`, apiKey);
+      prow.forEach(r => { plan[String(r.M)] = { end: Date.parse(String(r.PLAN_END || '')) || 0, nas: r.NAS ? String(r.NAS) : '' }; });
+    }
+    const now = Date.now();
+    for (const r of rows) {
+      const tk = String(r.TK || '');
+      const alt = (r.ALT_MOB && r.ALT_MOB.length === 10 && r.ALT_MOB !== r.PRIMARY_MOB) ? r.ALT_MOB : '';
+      for (const t of (byT[tk] || [])) {
+        const patch = { line_checked: true };
+        if (alt) patch.alt_mobile = alt;
+        const cur = dg(t.c.mobile).slice(-10);
+        const pPlan = plan[cur] || plan[r.PRIMARY_MOB] || { end: 0, nas: '' };
+        const aPlan = alt ? (plan[alt] || { end: 0, nas: '' }) : null;
+        if (alt && aPlan.end >= now && pPlan.end < now && cur !== alt) {
+          patch.mobile = alt; patch.alt_mobile = cur; patch.line_swapped = true; patch.last_ping_at = null;
+          if (aPlan.nas) patch.nas_id = aPlan.nas;
+          patch.mobile_note = 'Ticket raised on ' + cur + ' (no live plan); the live line is ' + alt + ' (alternate number on the ticket). Swapped by the sync.';
+          await fbPost('/cases/__audit__', { user_name: 'Active-line sync', ticket_no: tk, field: 'mobile', old_value: cur, new_value: alt, ts: new Date().toISOString() }).catch(() => {});
+          swapped++;
+        }
+        await fbPatch('/cases/' + t.key, patch);
+        checked++;
+      }
+    }
+  }
+  log(`Active-line check: ${checked} case(s) checked, ${swapped} moved to the live line (alternate number on the ticket).`);
+}
+
 async function syncLastPing(apiKey) {
   const all = await fbGet('/cases') || {};
   const targets = Object.entries(all).filter(([k, c]) => {
@@ -557,9 +621,34 @@ async function syncLastPing(apiKey) {
     const d = String(c.ticket_no).replace(/\D/g, '');
     if (d.length >= 6) (byDig[d] = byDig[d] || []).push({ key: k, c });
   });
-  const digs = Object.keys(byDig);
+  let digs = Object.keys(byDig);
   let stamped = 0;
   const seen = new Set();
+  // Cases the active-line check moved onto another number carry that line's
+  // NAS; their pings come from that router, not the ticket's device.
+  const byNas = {};
+  Object.entries(byDig).forEach(([tk, list]) => {
+    list.forEach(t => { if (t.c.nas_id) (byNas[String(t.c.nas_id)] = byNas[String(t.c.nas_id)] || []).push({ tk, t }); });
+  });
+  const nasKeys = Object.keys(byNas);
+  if (nasKeys.length) {
+    const rows = await queryMetabase(
+      `SELECT TO_VARCHAR(p.NASID) NAS, MAX(p.DATE || ' ' || p.START_TIME) LAST_PING
+       FROM S3.ROUTER_PING_HOURLY_DATA_V2 p
+       WHERE TO_VARCHAR(p.NASID) IN (${nasKeys.map(x => "'" + x + "'").join(',')}) AND p.PING_COUNT > 0
+         AND p.DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
+       GROUP BY 1`, apiKey);
+    for (const r of rows) {
+      const lp = String(r.LAST_PING || '').trim(); const ms = Date.parse(lp.replace(' ', 'T') + ':00+05:30');
+      if (!ms) continue;
+      for (const { tk, t } of (byNas[String(r.NAS)] || [])) {
+        seen.add(tk);
+        if (Number(t.c.last_ping_at) !== ms) { await fbPatch('/cases/' + t.key, { last_ping_at: ms }); stamped++; }
+      }
+    }
+    const swappedTks = new Set(Object.values(byNas).flat().map(x => x.tk));
+    digs = digs.filter(d => !swappedTks.has(d));
+  }
   const applyRows = async rows => {
     for (const r of rows) {
       const tk = String(r.TK || '').trim();
@@ -1456,6 +1545,7 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // ── Step 2.8: Device pickup from the recovery model ──
   try { await syncDevicePickup(apiKey); } catch (e) { log('WARN: device pickup sync failed — ' + e.message); }
   try { await purgeWiomNetQueue(apiKey); } catch (e) { log('WARN: Wiom Net purge failed — ' + e.message); }
+  try { await syncActiveLine(apiKey); } catch (e) { log('WARN: active-line check failed — ' + e.message); }
   try { await syncLastPing(apiKey); } catch (e) { log('WARN: last-ping stamp failed — ' + e.message); }
   try { await syncCity(apiKey); } catch (e) { log('WARN: city stamp failed — ' + e.message); }
 
