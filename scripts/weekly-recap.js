@@ -785,7 +785,9 @@ ${ledgerRows}
   // Reopens are an EVENT: counted in the week they came back, against the
   // resolutions marked in that same week.
   function reopStats(r) {
-    const back = era.filter(c => { const t = reopTs(c); return t >= r.from && t < r.to; });
+    // From 28 Sep (Shariq, 6 Oct) a reopen counts only while the case is still down;
+    // a case resolved again after its reopen is not counted. Earlier weeks keep the published count.
+    const back = era.filter(c => { const t = reopTs(c); return t >= r.from && t < r.to && !(t >= NET_LIM_FROM && getStatus(c) !== 'Unresolved'); });
     const resMarked = era.filter(c => { const t = Number(c.remarks_updated_at) || 0; return t >= r.from && t < r.to && isResRemark(c); });
     const intake = era.filter(c => { const t = startTs(c); return t >= r.from && t < r.to && cameInAsReopen(c); });
     return { reopWeek: back.length, resWeek: resMarked.length, intake: intake.length };
@@ -1274,7 +1276,7 @@ ${Object.entries(lwTally).sort((a, b) => b[1] - a[1]).map(([k, n]) =>
   // The tracker's tab reads it the other way and pulls in reopens from the
   // week before, which double-reports them: the 12 Sep reopen on ticket
   // 788875570106 was already in last Monday's doc.
-  const lwReopCases = era.filter(c => { const t = reopTs(c); return t >= lwFrom && t < lwTo; });
+  const lwReopCases = era.filter(c => { const t = reopTs(c); return t >= lwFrom && t < lwTo && !(t >= NET_LIM_FROM && getStatus(c) !== 'Unresolved'); });
   // The field team writes each reopen up in the RCA sheet the day they work
   // it, so the sheet's own "Added At" date is what scopes this to the week.
   // Matching on the tracker cohort instead would miss reopens on cases
