@@ -1802,6 +1802,26 @@ ${row('Refunds paid on cases that had already recovered', s => s.recPaidN.toLoca
 ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('en-IN'))}
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">A further ${S.slice(0, 3).map(x => x.intake).join(' / ')} cases (Week 3 / Week 2 / Week 1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
+${(() => {
+  // Age at resolution (Shariq, 6 Oct): hours from the case entering the
+  // tracker to the resolving remark, for every resolved case in each column.
+  // The 48-52 hr band is the near miss - resolved, but just outside the promise.
+  const hrsOf = c => { const st = startTs(c), rt = Number(c.remarks_updated_at) || 0; if (rt > 0 && st > 0) return (rt - st) / 3600000; const md = parseDate(c.migration_date); return md ? (md.getTime() + 86399000 - st) / 3600000 : null; };
+  const BANDS = [['\u2264 24 hrs', 0, 24], ['24 \u2013 48 hrs', 24, 48], ['48 \u2013 52 hrs <span style="font-weight:400;color:var(--muted)">(just missed)</span>', 48, 52], ['52 \u2013 72 hrs', 52, 72], ['72 \u2013 96 hrs', 72, 96], ['96 hrs +', 96, 1e9]];
+  const cols = periods.map(pp => inRange(pp).filter(c => getStatus(c) !== 'Unresolved').map(hrsOf).filter(h => h !== null));
+  const cell = (list, lo, hi) => { const n = list.filter(h => h >= lo && h < hi).length; return `<td>${n.toLocaleString('en-IN')} <span style="color:var(--muted)">(${pct(n, list.length)})</span></td>`; };
+  const med = list => { if (!list.length) return '\u2014'; const a = [...list].sort((x, y) => x - y); return a[Math.floor(a.length / 2)].toFixed(1) + ' hrs'; };
+  const near = inRange(periods[LW]).filter(c => getStatus(c) !== 'Unresolved').map(c => ({ c, h: hrsOf(c) })).filter(x => x.h !== null && x.h >= 48 && x.h < 52).sort((x, y) => x.h - y.h);
+  return `<p class="sub" style="margin-top:14px"><b>Age at resolution</b> \u2014 hours from the case entering the tracker to the resolving remark, for the resolved cases in each column. Everything from 48 hrs on is outside the promise; 48 \u2013 52 hrs is the near miss.</p>
+<div class="tablewrap"><table>
+<thead><tr><th>Hours to resolution</th>${periods.map(pp => `<th>${pp.key}<br><span style="font-weight:400;font-size:12px">${pp.label}</span></th>`).join('')}</tr></thead>
+<tbody>
+${BANDS.map(([lab, lo, hi]) => `<tr><td style="text-align:left">${lab}</td>${cols.map(l => cell(l, lo, hi)).join('')}</tr>`).join('\n')}
+<tr><td style="text-align:left"><b>Resolved cases</b></td>${cols.map(l => `<td><b>${l.length.toLocaleString('en-IN')}</b></td>`).join('')}</tr>
+<tr><td style="text-align:left">Median</td>${cols.map(l => `<td>${med(l)}</td>`).join('')}</tr>
+</tbody></table></div>
+${near.length ? `<p class="sub" style="margin-top:8px">Near misses in ${periods[LW].key} (resolved between 48 and 52 hrs): ${near.map(x => `<a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(x.c.ticket_no))}?query=${escR(trim(x.c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(x.c.ticket_no))}</a> <span style="color:var(--muted)">${x.h.toFixed(1)} h \u00b7 ${escR(trim(x.c.partner))}</span>`).join(', ')}.</p>` : ''}`;
+})()}
 </section>
 ${reopSnapHtml}
 ${refundsHtml()}
