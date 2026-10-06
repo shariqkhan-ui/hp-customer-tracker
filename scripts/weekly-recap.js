@@ -16,9 +16,6 @@ const FIREBASE_DB = 'https://high-pain-cx-management-default-rtdb.asia-southeast
 const LAUNCH = Date.parse('2026-07-29T00:00:00+05:30');
 const LIM = 48 * 3600000;
 const NET_LIM = 52 * 3600000;   // window for the net-resolved test from the week of 28 Sep 2026 (Shariq, 6 Oct); not stated on the page
-// Cases that matured before 28 Sep keep the earlier 48-hr test, so published weeks do not move (Shariq, 6 Oct).
-const NET_LIM_FROM = Date.UTC(2026, 8, 28) - IST;
-const netLimFor = c => (maturedAt(c) >= NET_LIM_FROM ? NET_LIM : LIM);
 const IST = 5.5 * 3600000;
 const SLACK_USER = 'U04TL31PC1Y'; // Shariq
 const DOC_URL = 'https://shariqkhan-ui.github.io/hp-customer-tracker/recap.html';
@@ -404,6 +401,9 @@ const isMatured = c => { const t = clockTs(c); return t > 0 && (Date.now() - t) 
 const maturedAt = c => { const t = clockTs(c); return t > 0 ? t + LIM : 0; };
 // Router pinged AFTER the complaint -> the line came back, nothing owed.
 const pingedAfter = c => Number(c.last_ping_at) > 0 && Number(c.last_ping_at) > startTs(c);
+// Cases that matured before 28 Sep 2026 keep the earlier 48-hr test, so published weeks do not move (Shariq, 6 Oct).
+const NET_LIM_FROM = Date.UTC(2026, 8, 28) - IST;
+const netLimFor = c => (maturedAt(c) >= NET_LIM_FROM ? NET_LIM : LIM);
 function resolvedWithin48(c) {
   if (getStatus(c) === 'Unresolved') return false;
   const s = startTs(c), rt = Number(c.remarks_updated_at) || 0;
