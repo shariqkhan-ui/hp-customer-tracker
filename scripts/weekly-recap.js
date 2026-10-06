@@ -472,7 +472,7 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   const istNow = new Date(NOW + IST);
   const istMs = (y, m, day) => Date.UTC(y, m, day) - IST;
   const istMidnight = istMs(istNow.getUTCFullYear(), istNow.getUTCMonth(), istNow.getUTCDate());
-  const CUT = istMidnight; // start of today — cases received up to yesterday
+  const CUT = NOW; // this moment — every case that has matured up to now counts, today included (Shariq, 6 Oct)
   const cutLabel = fmtD(CUT - 1);
   function sliceOf(ts) {
     const d = new Date(ts + IST);
@@ -1804,7 +1804,7 @@ ${refundsHtml()}
 ${whyHtml}
 ${stoppedHtml}
 ${cityHtml}
-<div class="notes">Source: live Firebase behind hp-customer-tracker-production-a471.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = refund-eligible, not refunded, and no reason recorded; amounts pro-rata on the plan days left, or the Wiom Hub amount where it paid. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the end of yesterday (${cutLabel}). A reopen is a resolution of ours that came back down, as stamped by the tracker (reopened_at), counted in the week it came back. Net resolved = resolved inside 48 hrs and still resolved; a case that came back down and stayed down is not counted. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production-a471.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = refund-eligible, not refunded, and no reason recorded; amounts pro-rata on the plan days left, or the Wiom Hub amount where it paid. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the moment the doc is generated, so cases that matured today are in. A reopen is a resolution of ours that came back down, as stamped by the tracker (reopened_at), counted in the week it came back. Net resolved = resolved inside 48 hrs and still resolved; a case that came back down and stayed down is not counted. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
 </div>
 ${commentBox}
 ${commentScript}

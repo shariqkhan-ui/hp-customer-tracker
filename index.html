@@ -3067,8 +3067,8 @@ function renderReports() {
     const mEnd = (yy, mm) => new Date(yy, mm + 1, 1).getTime() - 1;
     out.push({ label: 'MTD-2 (' + mon(y, mo - 2) + ')', from: new Date(y, mo - 2, 1).getTime(), to: mEnd(y, mo - 2), cls: 'total' });
     out.push({ label: 'MTD-1 (' + mon(y, mo - 1) + ')', from: new Date(y, mo - 1, 1).getTime(), to: mEnd(y, mo - 1), cls: 'total' });
-    out.push({ label: 'MTD (1 – ' + fmt(todayMid - day) + ')', from: new Date(y, mo, 1).getTime(), to: todayMid - 1, cls: 'total' });
-    out.push({ label: 'Since launch (' + fmt(TAT_LAUNCH_TS) + ' – ' + fmt(thisMon - day) + ')', from: TAT_LAUNCH_TS, to: thisMon - 1, cls: 'grand' });
+    out.push({ label: 'MTD (1 – ' + fmt(todayMid) + ')', from: new Date(y, mo, 1).getTime(), to: now, cls: 'total' });
+    out.push({ label: 'Since launch (' + fmt(TAT_LAUNCH_TS) + ' – ' + fmt(todayMid) + ')', from: TAT_LAUNCH_TS, to: now, cls: 'grand' });
     return out;
   })();
   const perCases = periods.map(p => rows.filter(r => { const ts = rowStartTsAny(r); return ts >= p.from && ts <= p.to; }));
