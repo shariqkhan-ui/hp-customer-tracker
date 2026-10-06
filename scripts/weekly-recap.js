@@ -797,7 +797,7 @@ ${ledgerRows}
   // arithmetic a reader can check from the table.
   const S = periods.map(pp => {
     const x = Object.assign(stats(inRange(pp)), reopStats(pp));
-    x.resNet = x.wNet;   // within the promise window, net of reopened (rule from 28 Sep); earlier weeks = published figure
+    x.resNet = x.w48g;   // resolved within the promise window and still resolved; no separate reopen deduction (Shariq, 6 Oct)
     return x;
   });
 
@@ -813,7 +813,7 @@ ${ledgerRows}
     const all = inRange(pp);
     const by = {};
     const reopIn = f => era.filter(c => { const t = reopTs(c); return t >= pp.from && t < pp.to && f(c); }).length;
-    const net = (x, f) => { x.resNet = x.wNet; return x; };
+    const net = (x, f) => { x.resNet = x.w48g; return x; };
     CITIES.forEach(k => { by[k] = net(stats(all.filter(c => cityOf(c) === k)), c => cityOf(c) === k); });
     by.unmapped = net(stats(all.filter(c => !cityOf(c))), c => !cityOf(c));
     by.all = net(stats(all), () => true);
@@ -829,7 +829,7 @@ ${ledgerRows}
 <tr><td style="text-align:left;padding-left:20px">Unresolved</td>${cityByP.map(by => cityCell(by[key].unresM, by[key].m, 'b')).join('')}</tr>`;
   const cityHtml = cspCity ? `<section>
 <h2>Resolution status, city-wise</h2>
-<p class="sub">The same matured-case arithmetic as the week-wise table, cut by the CSP's city from the partner hierarchy. Delhi/NCR includes Ghaziabad, Noida, Faridabad and Gurgaon; Bharat is every UP city (Meerut, Agra, Bareilly, Lucknow, Prayagraj, Gorakhpur). Net resolved is the cases resolved within the promise window, net of reopened, exactly as in the week-wise table.</p>
+<p class="sub">The same matured-case arithmetic as the week-wise table, cut by the CSP's city from the partner hierarchy. Delhi/NCR includes Ghaziabad, Noida, Faridabad and Gurgaon; Bharat is every UP city (Meerut, Agra, Bareilly, Lucknow, Prayagraj, Gorakhpur). Net resolved is the cases resolved within the promise window and still resolved, exactly as in the week-wise table.</p>
 <div class="tablewrap"><table>
 <thead><tr><th style="text-align:left">City</th>${cityCols}</tr></thead>
 <tbody>
@@ -1814,7 +1814,7 @@ This week resolved <b>${pct(sLW.res, sLW.m)}</b>, net resolved <b>${pct(sLW.resN
 ${aiHtml}
 <section>
 <h2>Week-wise numbers</h2>
-<p class="sub">Counted in the week each case's 48-hour window closed. <b>Resolved</b> is the overall rate, whenever the case was closed. <b>Net resolved</b> is the cases resolved within the promise window, net of reopened: a reopened case is not counted. Net is what every headline on this page carries, and every column including the earlier weeks is on that basis, so the trend is like-for-like. Cases maturing after ${cutLabel} are not in yet.</p>
+<p class="sub">Counted in the week each case's 48-hour window closed. <b>Resolved</b> is the overall rate, whenever the case was closed. <b>Net resolved</b> is the cases resolved within the promise window that are still resolved. Net is what every headline on this page carries, and every column including the earlier weeks is on that basis, so the trend is like-for-like. Cases maturing after ${cutLabel} are not in yet.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>Metric</th>${cols}</tr></thead>
 <tbody>
@@ -1822,7 +1822,7 @@ ${row('<b>Cases matured — crossed 48 hrs</b>', s => s.m.toLocaleString('en-IN'
 ${row('Resolved', s => s.res.toLocaleString('en-IN') + ' (' + pct(s.res, s.m) + ')')}
 ${row('<span style="font-weight:400;color:var(--muted)">— of those, resolved late</span>', s => '<span style="color:var(--muted)">' + (s.res - s.w48g).toLocaleString('en-IN') + ' (' + pct(s.res - s.w48g, s.m) + ')</span>')}
 ${row('<span style="font-weight:400;color:var(--muted)">— of those, reopened</span>', s => '<span style="color:var(--muted)">' + s.reopWeek.toLocaleString('en-IN') + '</span>')}
-${row('<b>Net resolved</b> <span style="font-weight:400;color:var(--muted)">(resolved within the promise window, net of reopened)</span>', s => s.resNet.toLocaleString('en-IN') + ' (' + pct(s.resNet, s.m) + ')', 'g')}
+${row('<b>Net resolved</b> <span style="font-weight:400;color:var(--muted)">(resolved within the promise window and still resolved)</span>', s => s.resNet.toLocaleString('en-IN') + ' (' + pct(s.resNet, s.m) + ')', 'g')}
 ${row('<b>Unresolved</b>', s => s.unresM.toLocaleString('en-IN') + ' (' + pct(s.unresM, s.m) + ')', 'b')}
 ${row('— of those, the line came back on later', s => s.cameBack.toLocaleString('en-IN') + ' (' + pct(s.cameBack, s.unresM) + ')')}
 ${row('<b>Refund-eligible</b> <span style="font-weight:400;color:var(--muted)">(still down, no ping since the complaint)</span>', s => s.elig.toLocaleString('en-IN') + ' (' + pct(s.elig, s.m) + ')', 'b')}
@@ -1857,7 +1857,7 @@ ${refundsHtml()}
 ${whyHtml}
 ${stoppedHtml}
 ${cityHtml}
-<div class="notes">Source: live Firebase behind hp-customer-tracker-production-a471.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = refund-eligible, not refunded, and no reason recorded; amounts pro-rata on the plan days left, or the Wiom Hub amount where it paid. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the moment the doc is generated, so cases that matured today are in. A reopen is a resolution of ours that was reopened, as stamped by the tracker (reopened_at), counted in the week it reopened. Net resolved = resolved within the promise window, net of reopened. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production-a471.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = refund-eligible, not refunded, and no reason recorded; amounts pro-rata on the plan days left, or the Wiom Hub amount where it paid. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the moment the doc is generated, so cases that matured today are in. A reopen is a resolution of ours that was reopened, as stamped by the tracker (reopened_at), counted in the week it reopened. Net resolved = resolved within the promise window and still resolved. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
 </div>
 ${commentBox}
 ${commentScript}
