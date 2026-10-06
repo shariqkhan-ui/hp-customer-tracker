@@ -3144,7 +3144,7 @@ function renderReports() {
   const w48ok = r => {
     if (getStatus(r) === 'Unresolved') return false;
     const s0 = caseStartTs(r), rt = Number(r[20]) || 0;
-    if (rt > 0) return (rt - s0) <= TAT_LIMIT_MS;
+    if (rt > 0) return (rt - s0) <= TAT_LIMIT_MS + 4 * 3600000;   // same window as the weekly doc's net-resolved test (6 Oct 2026)
     return !!effectiveVal(r, 14);
   };
   const docStats = (list, p) => {
@@ -3159,7 +3159,7 @@ function renderReports() {
   sheetTable('sheet48', 'Metric', [
     { label: 'Cases matured — crossed 48 hrs', k: 'm' },
     { label: 'Resolved', k: 'res', of: 'm' },
-    { label: 'Net resolved (resolved inside 48 hrs and still resolved)', k: 'net', of: 'm', good: true },
+    { label: 'Net resolved (resolved within the promise window and still resolved)', k: 'net', of: 'm', good: true },
     { label: 'Reopened (came back down in this week)', k: 'reop', of: 'net' },
     { label: 'Unresolved', k: 'unres', of: 'm', bad: true }
   ], (spec, list, pi) => {

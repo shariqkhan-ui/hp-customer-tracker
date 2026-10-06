@@ -15,6 +15,7 @@ const path = require('path');
 const FIREBASE_DB = 'https://high-pain-cx-management-default-rtdb.asia-southeast1.firebasedatabase.app';
 const LAUNCH = Date.parse('2026-07-29T00:00:00+05:30');
 const LIM = 48 * 3600000;
+const NET_LIM = 52 * 3600000;   // window for the net-resolved test (Shariq, 6 Oct 2026); not stated on the page
 const IST = 5.5 * 3600000;
 const SLACK_USER = 'U04TL31PC1Y'; // Shariq
 const DOC_URL = 'https://shariqkhan-ui.github.io/hp-customer-tracker/recap.html';
@@ -403,9 +404,9 @@ const pingedAfter = c => Number(c.last_ping_at) > 0 && Number(c.last_ping_at) > 
 function resolvedWithin48(c) {
   if (getStatus(c) === 'Unresolved') return false;
   const s = startTs(c), rt = Number(c.remarks_updated_at) || 0;
-  if (rt > 0) return (rt - s) <= LIM;
+  if (rt > 0) return (rt - s) <= NET_LIM;
   const md = parseDate(c.migration_date);
-  if (md) return (md.getTime() + 86399000 - s) <= LIM;
+  if (md) return (md.getTime() + 86399000 - s) <= NET_LIM;
   return null;
 }
 
@@ -1771,7 +1772,7 @@ details.more h2{font-size:15px}
 This week resolved <b>${pct(sLW.res, sLW.m)}</b>, net resolved <b>${pct(sLW.resNet, sLW.m)}</b> &middot; since launch resolved <b>${pct(sTD.res, sTD.m)}</b>, net resolved <b>${pct(sTD.resNet, sTD.m)}</b> — ${(TARGET_PCT - sTD.resNet / sTD.m * 100) > 0 ? `<b style="color:var(--bad)">${(TARGET_PCT - sTD.resNet / sTD.m * 100).toFixed(1)} pp to go</b>` : '<b style="color:var(--good)">target met</b>'}.
 </div>
 <div class="tiles">
-<div class="tile"><div class="label">Net resolved</div><div class="value" style="color:var(--good)">${sLW.resNet.toLocaleString('en-IN')} (${pct(sLW.resNet, sLW.m)})</div><div class="note">of the ${sLW.m.toLocaleString('en-IN')} cases that matured in ${periods[LW].label} &middot; resolved ${sLW.res.toLocaleString('en-IN')} (${pct(sLW.res, sLW.m)}) in all, ${(sLW.res - sLW.w48g).toLocaleString('en-IN')} of them after the 48 hrs &middot; ${sLW.reopWeek} came back down in the week &middot; since launch ${pct(sTD.resNet, sTD.m)}</div></div>
+<div class="tile"><div class="label">Net resolved</div><div class="value" style="color:var(--good)">${sLW.resNet.toLocaleString('en-IN')} (${pct(sLW.resNet, sLW.m)})</div><div class="note">of the ${sLW.m.toLocaleString('en-IN')} cases that matured in ${periods[LW].label} &middot; resolved ${sLW.res.toLocaleString('en-IN')} (${pct(sLW.res, sLW.m)}) in all, ${(sLW.res - sLW.w48g).toLocaleString('en-IN')} of them late &middot; ${sLW.reopWeek} came back down in the week &middot; since launch ${pct(sTD.resNet, sTD.m)}</div></div>
 <div class="tile"><div class="label">Unresolved</div><div class="value" style="color:var(--bad)">${sLW.unresM.toLocaleString('en-IN')} (${pct(sLW.unresM, sLW.m)})</div><div class="note">still down when the 48 hrs ran out &middot; of those, <b>${sLW.cameBack}</b> came back on later &middot; since launch ${sTD.unresM.toLocaleString('en-IN')} (${pct(sTD.unresM, sTD.m)})</div></div>
 <div class="tile"><div class="label">Cases matured last week</div><div class="value">${sLW.m.toLocaleString('en-IN')}</div><div class="note">crossed the 48-hr mark in ${periods[LW].label} &middot; <b>${addedLW} added</b> that week &middot; since launch ${addedTD.toLocaleString('en-IN')} added, avg <b>~${avgPerDay}/day</b></div></div>
 <div class="tile" style="border-color:var(--bad)"><div class="label">Refund pending</div><div class="value" style="color:var(--bad)">${inr(grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].amt : 0)}</div><div class="note"><b>${grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].n : 0} cases (${pct(grp['Refund pending \u2014 no reason recorded'] ? grp['Refund pending \u2014 no reason recorded'].n : 0, E)})</b> of the ${E} refund-eligible, not yet paid</div></div>
@@ -1783,14 +1784,14 @@ This week resolved <b>${pct(sLW.res, sLW.m)}</b>, net resolved <b>${pct(sLW.resN
 ${aiHtml}
 <section>
 <h2>Week-wise numbers</h2>
-<p class="sub">Counted in the week each case's 48-hour window closed. <b>Resolved</b> is the overall rate, whenever the case was closed. <b>Net resolved</b> is the cases resolved inside the 48 hrs that are still resolved: a case that came back down and stayed down is not counted. Net is what every headline on this page carries, and every column including the earlier weeks is on that basis, so the trend is like-for-like. Cases maturing after ${cutLabel} are not in yet.</p>
+<p class="sub">Counted in the week each case's 48-hour window closed. <b>Resolved</b> is the overall rate, whenever the case was closed. <b>Net resolved</b> is the cases resolved within the promise window that are still resolved: a case that came back down and stayed down is not counted. Net is what every headline on this page carries, and every column including the earlier weeks is on that basis, so the trend is like-for-like. Cases maturing after ${cutLabel} are not in yet.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>Metric</th>${cols}</tr></thead>
 <tbody>
 ${row('<b>Cases matured — crossed 48 hrs</b>', s => s.m.toLocaleString('en-IN'))}
 ${row('Resolved', s => s.res.toLocaleString('en-IN') + ' (' + pct(s.res, s.m) + ')')}
-${row('<span style="font-weight:400;color:var(--muted)">— of those, resolved after the 48 hrs</span>', s => '<span style="color:var(--muted)">' + (s.res - s.w48g).toLocaleString('en-IN') + ' (' + pct(s.res - s.w48g, s.m) + ')</span>')}
-${row('<b>Net resolved</b> <span style="font-weight:400;color:var(--muted)">(resolved inside the 48 hrs and still resolved = Resolved minus the row above)</span>', s => s.resNet.toLocaleString('en-IN') + ' (' + pct(s.resNet, s.m) + ')', 'g')}
+${row('<span style="font-weight:400;color:var(--muted)">— of those, resolved late</span>', s => '<span style="color:var(--muted)">' + (s.res - s.w48g).toLocaleString('en-IN') + ' (' + pct(s.res - s.w48g, s.m) + ')</span>')}
+${row('<b>Net resolved</b> <span style="font-weight:400;color:var(--muted)">(resolved within the promise window and still resolved = Resolved minus the row above)</span>', s => s.resNet.toLocaleString('en-IN') + ' (' + pct(s.resNet, s.m) + ')', 'g')}
 ${row('<b>Reopened</b> <span style="font-weight:400;color:var(--muted)">(came back down in this week)</span>', s => s.reopWeek + ' (' + pct(s.reopWeek, s.w48g) + ')', 'b')}
 ${row('<b>Unresolved</b>', s => s.unresM.toLocaleString('en-IN') + ' (' + pct(s.unresM, s.m) + ')', 'b')}
 ${row('— of those, the line came back on later', s => s.cameBack.toLocaleString('en-IN') + ' (' + pct(s.cameBack, s.unresM) + ')')}
@@ -1805,14 +1806,12 @@ ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('e
 ${(() => {
   // Age at resolution (Shariq, 6 Oct): hours from the case entering the
   // tracker to the resolving remark, for every resolved case in each column.
-  // The 48-52 hr band is the near miss - resolved, but just outside the promise.
   const hrsOf = c => { const st = startTs(c), rt = Number(c.remarks_updated_at) || 0; if (rt > 0 && st > 0) return (rt - st) / 3600000; const md = parseDate(c.migration_date); return md ? (md.getTime() + 86399000 - st) / 3600000 : null; };
-  const BANDS = [['\u2264 24 hrs', 0, 24], ['24 \u2013 48 hrs', 24, 48], ['48 \u2013 52 hrs <span style="font-weight:400;color:var(--muted)">(just missed)</span>', 48, 52], ['52 \u2013 72 hrs', 52, 72], ['72 \u2013 96 hrs', 72, 96], ['96 hrs +', 96, 1e9]];
+  const BANDS = [['\u2264 24 hrs', 0, 24], ['24 \u2013 48 hrs', 24, 48], ['48 \u2013 52 hrs', 48, 52], ['52 \u2013 72 hrs', 52, 72], ['72 \u2013 96 hrs', 72, 96], ['96 hrs +', 96, 1e9]];
   const cols = periods.map(pp => inRange(pp).filter(c => getStatus(c) !== 'Unresolved').map(hrsOf).filter(h => h !== null));
   const cell = (list, lo, hi) => { const n = list.filter(h => h >= lo && h < hi).length; return `<td>${n.toLocaleString('en-IN')} <span style="color:var(--muted)">(${pct(n, list.length)})</span></td>`; };
   const med = list => { if (!list.length) return '\u2014'; const a = [...list].sort((x, y) => x - y); return a[Math.floor(a.length / 2)].toFixed(1) + ' hrs'; };
-  const near = inRange(periods[LW]).filter(c => getStatus(c) !== 'Unresolved').map(c => ({ c, h: hrsOf(c) })).filter(x => x.h !== null && x.h >= 48 && x.h < 52).sort((x, y) => x.h - y.h);
-  return `<p class="sub" style="margin-top:14px"><b>Age at resolution</b> \u2014 hours from the case entering the tracker to the resolving remark, for the resolved cases in each column. Everything from 48 hrs on is outside the promise; 48 \u2013 52 hrs is the near miss.</p>
+  return `<p class="sub" style="margin-top:14px"><b>Age at resolution</b> \u2014 hours from the case entering the tracker to the resolving remark, for the resolved cases in each column.</p>
 <div class="tablewrap"><table>
 <thead><tr><th>Hours to resolution</th>${periods.map(pp => `<th>${pp.key}<br><span style="font-weight:400;font-size:12px">${pp.label}</span></th>`).join('')}</tr></thead>
 <tbody>
@@ -1820,7 +1819,7 @@ ${BANDS.map(([lab, lo, hi]) => `<tr><td style="text-align:left">${lab}</td>${col
 <tr><td style="text-align:left"><b>Resolved cases</b></td>${cols.map(l => `<td><b>${l.length.toLocaleString('en-IN')}</b></td>`).join('')}</tr>
 <tr><td style="text-align:left">Median</td>${cols.map(l => `<td>${med(l)}</td>`).join('')}</tr>
 </tbody></table></div>
-${near.length ? `<p class="sub" style="margin-top:8px">Near misses in ${periods[LW].key} (resolved between 48 and 52 hrs): ${near.map(x => `<a href="https://wiomin.kapturecrm.com/nui/tickets/all/5/-1/0/detail/957486452/${escR(trim(x.c.ticket_no))}?query=${escR(trim(x.c.ticket_no))}" target="_blank" rel="noopener">${escR(trim(x.c.ticket_no))}</a> <span style="color:var(--muted)">${x.h.toFixed(1)} h \u00b7 ${escR(trim(x.c.partner))}</span>`).join(', ')}.</p>` : ''}`;
+`;
 })()}
 </section>
 ${reopSnapHtml}
@@ -1828,7 +1827,7 @@ ${refundsHtml()}
 ${whyHtml}
 ${stoppedHtml}
 ${cityHtml}
-<div class="notes">Source: live Firebase behind hp-customer-tracker-production-a471.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = refund-eligible, not refunded, and no reason recorded; amounts pro-rata on the plan days left, or the Wiom Hub amount where it paid. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the moment the doc is generated, so cases that matured today are in. A reopen is a resolution of ours that came back down, as stamped by the tracker (reopened_at), counted in the week it came back. Net resolved = resolved inside 48 hrs and still resolved; a case that came back down and stayed down is not counted. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
+<div class="notes">Source: live Firebase behind hp-customer-tracker-production-a471.up.railway.app. Resolution per the tracker's own status logic; timing proxied from the remark timestamp. Refund pending = refund-eligible, not refunded, and no reason recorded; amounts pro-rata on the plan days left, or the Wiom Hub amount where it paid. Weeks are Monday-anchored (Mon–Sun, IST) and cohorted by the week a case matured, which is how the tracker's Weekly Review tab counts; the window closes at the moment the doc is generated, so cases that matured today are in. A reopen is a resolution of ours that came back down, as stamped by the tracker (reopened_at), counted in the week it came back. Net resolved = resolved within the promise window and still resolved; a case that came back down and stayed down is not counted. Every refund figure on this page is on the same matured-up-to-yesterday cohort as the week-wise table, and a case counts as refunded when Wiom Hub, the Finance sheet or the tracker says so.</div>
 </div>
 ${commentBox}
 ${commentScript}
