@@ -15,7 +15,10 @@ const path = require('path');
 const FIREBASE_DB = 'https://high-pain-cx-management-default-rtdb.asia-southeast1.firebasedatabase.app';
 const LAUNCH = Date.parse('2026-07-29T00:00:00+05:30');
 const LIM = 48 * 3600000;
-const NET_LIM = 52 * 3600000;   // window for the net-resolved test (Shariq, 6 Oct 2026); not stated on the page
+const NET_LIM = 52 * 3600000;   // window for the net-resolved test from the week of 28 Sep 2026 (Shariq, 6 Oct); not stated on the page
+// Cases that matured before 28 Sep keep the earlier 48-hr test, so published weeks do not move (Shariq, 6 Oct).
+const NET_LIM_FROM = Date.UTC(2026, 8, 28) - IST;
+const netLimFor = c => (maturedAt(c) >= NET_LIM_FROM ? NET_LIM : LIM);
 const IST = 5.5 * 3600000;
 const SLACK_USER = 'U04TL31PC1Y'; // Shariq
 const DOC_URL = 'https://shariqkhan-ui.github.io/hp-customer-tracker/recap.html';
@@ -404,9 +407,10 @@ const pingedAfter = c => Number(c.last_ping_at) > 0 && Number(c.last_ping_at) > 
 function resolvedWithin48(c) {
   if (getStatus(c) === 'Unresolved') return false;
   const s = startTs(c), rt = Number(c.remarks_updated_at) || 0;
-  if (rt > 0) return (rt - s) <= NET_LIM;
+  const lim = netLimFor(c);
+  if (rt > 0) return (rt - s) <= lim;
   const md = parseDate(c.migration_date);
-  if (md) return (md.getTime() + 86399000 - s) <= NET_LIM;
+  if (md) return (md.getTime() + 86399000 - s) <= lim;
   return null;
 }
 

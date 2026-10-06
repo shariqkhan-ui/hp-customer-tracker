@@ -3144,7 +3144,9 @@ function renderReports() {
   const w48ok = r => {
     if (getStatus(r) === 'Unresolved') return false;
     const s0 = caseStartTs(r), rt = Number(r[20]) || 0;
-    if (rt > 0) return (rt - s0) <= TAT_LIMIT_MS + 4 * 3600000;   // same window as the weekly doc's net-resolved test (6 Oct 2026)
+    // Same window as the weekly doc's net-resolved test: wider from the week of 28 Sep 2026; earlier cohorts keep the 48-hr test so published weeks do not move.
+    const lim = (s0 + TAT_LIMIT_MS) >= NET_FROM_TS ? TAT_LIMIT_MS + 4 * 3600000 : TAT_LIMIT_MS;
+    if (rt > 0) return (rt - s0) <= lim;
     return !!effectiveVal(r, 14);
   };
   const docStats = (list, p) => {
@@ -3357,6 +3359,7 @@ const TAT_LIMIT_MS = 48 * 3600000;
 // (29 Jul 2026 IST). Older cases show no clock and are excluded from the
 // "Unresolved > 48 Hrs" bucket — otherwise every legacy case reads as expired.
 const TAT_LAUNCH_TS = new Date('2026-07-29T00:00:00+05:30').getTime();
+const NET_FROM_TS = new Date('2026-09-28T00:00:00+05:30').getTime();
 function caseStartTs(r) {
   let ts = Number(r[19]) || Number(r[16]) || 0;
   if (!ts) {
