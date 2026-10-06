@@ -829,7 +829,7 @@ ${ledgerRows}
 <tr><td style="text-align:left;padding-left:20px">Unresolved</td>${cityByP.map(by => cityCell(by[key].unresM, by[key].m, 'b')).join('')}</tr>`;
   const cityHtml = cspCity ? `<section>
 <h2>Resolution status, city-wise</h2>
-<p class="sub">The same matured-case arithmetic as the week-wise table, cut by the CSP's city from the partner hierarchy. Delhi/NCR includes Ghaziabad, Noida, Faridabad and Gurgaon; Bharat is every UP city (Meerut, Agra, Bareilly, Lucknow, Prayagraj, Gorakhpur). Net resolved is the cases resolved inside the 48 hrs and still resolved, exactly as in the week-wise table.</p>
+<p class="sub">The same matured-case arithmetic as the week-wise table, cut by the CSP's city from the partner hierarchy. Delhi/NCR includes Ghaziabad, Noida, Faridabad and Gurgaon; Bharat is every UP city (Meerut, Agra, Bareilly, Lucknow, Prayagraj, Gorakhpur). Net resolved is the cases resolved within the promise window, net of reopened, exactly as in the week-wise table.</p>
 <div class="tablewrap"><table>
 <thead><tr><th style="text-align:left">City</th>${cityCols}</tr></thead>
 <tbody>
