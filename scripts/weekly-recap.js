@@ -483,15 +483,14 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
     for (let i = 0; i < 4; i++) { if (day >= ranges[i][0] && day <= ranges[i][1]) { wi = i + 1; a = ranges[i][0]; b = ranges[i][1]; break; } }
     return { id: y * 10000 + m * 100 + wi, key: MN2[m] + ' W' + wi, from: istMs(y, m, a), to: istMs(y, m, b + 1) };
   }
-  // Review weeks, oldest first. These are set by hand because the review's
-  // weeks are not uniform 7-day blocks - edit WEEKS to change them. Each entry
-  // is [label, first day inclusive, first day AFTER the window]. The current
-  // part-week is deliberately absent: only completed weeks are compared.
-  const WEEKS = [
-    ['Week 3', istMs(2026, 8, 7), istMs(2026, 8, 14)],
-    ['Week 2', istMs(2026, 8, 14), istMs(2026, 8, 21)],
-    ['Week 1', istMs(2026, 8, 21), istMs(2026, 8, 28)],
-  ];
+  // Review weeks, oldest first: the three completed Monday-to-Sunday weeks
+  // before the week the doc is generated in. Rolls on its own every Monday
+  // (6 Oct 2026: the hand-set September windows had not moved, so the 5 Oct
+  // doc still showed 7-27 Sep). Each entry is [label, first day inclusive,
+  // first day AFTER the window]. The current part-week is deliberately absent.
+  const DAY = 86400000;
+  const thisMon = istMidnight - ((istNow.getUTCDay() + 6) % 7) * DAY;   // Monday 00:00 IST of the current week
+  const WEEKS = [3, 2, 1].map(i => ['Week ' + i, thisMon - i * 7 * DAY, thisMon - (i - 1) * 7 * DAY]);
   const periods = WEEKS.map(([key, from, to]) => ({ key, from, to }))
     .concat([{ key: 'Since launch', from: LAUNCH, to: CUT }]);
   periods.forEach(pp => { pp.to = Math.min(pp.to, CUT); pp.label = fmtD(pp.from) + ' – ' + fmtD(pp.to - 1); });
@@ -573,7 +572,25 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // Bonus is credited on the 1st and the 16th, so the credit DATE is the payout date,
   // not the earning window: the 16-31 Aug cycle lands on 1 Sep and the 1-15 Sep
   // cycle lands on 16 Sep. Windowing by earning dates shifts every figure a cycle early.
-  const PAY_CYCLES = [['16-31 Aug', '2026-09-01', '2026-09-02'], ['1-15 Sep', '2026-09-16', '2026-09-17']];
+  // Rolled from the cut date: the two most recent credit dates (1st / 16th)
+  // on or before the cut, each with its earning window as the label.
+  const PAY_CYCLES = (() => {
+    const out = [];
+    const d = new Date(CUT + IST);
+    let y = d.getUTCFullYear(), m = d.getUTCMonth(), day = d.getUTCDate();
+    const MN3 = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const iso = (yy, mm, dd) => new Date(Date.UTC(yy, mm, dd)).toISOString().slice(0, 10);
+    const push = (yy, mm, credit) => {           // credit day 1 => earned 16-end of previous month; 16 => earned 1-15 of this month
+      if (credit === 16) out.push(['1-15 ' + MN3[mm], iso(yy, mm, 16), iso(yy, mm, 17)]);
+      else { const pm = (mm + 11) % 12, py = mm === 0 ? yy - 1 : yy; out.push(['16-' + new Date(Date.UTC(py, pm + 1, 0)).getUTCDate() + ' ' + MN3[pm], iso(yy, mm, 1), iso(yy, mm, 2)]); }
+    };
+    while (out.length < 2) {
+      if (day > 16) { push(y, m, 16); day = 16; }
+      else if (day > 1) { push(y, m, 1); day = 1; }
+      else { m -= 1; if (m < 0) { m = 11; y -= 1; } day = 31; }
+    }
+    return out.reverse();
+  })();
   const cspPay = await cspPayout(PAY_CYCLES);
   era = era.filter(c => startTs(c) < CUT);
 
