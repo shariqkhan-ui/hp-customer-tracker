@@ -490,7 +490,10 @@ const pct = (a, b) => b ? (a / b * 100).toFixed(1) + '%' : '—';
   // first day AFTER the window]. The current part-week is deliberately absent.
   const DAY = 86400000;
   const thisMon = istMidnight - ((istNow.getUTCDay() + 6) % 7) * DAY;   // Monday 00:00 IST of the current week
-  const WEEKS = [3, 2, 1].map(i => ['Week ' + i, thisMon - i * 7 * DAY, thisMon - (i - 1) * 7 * DAY]);
+  // Week 1 runs to the end of yesterday (Shariq, 6 Oct: "for this week too
+  // till 5th Oct"): on the Monday cron that is Mon-Sun; on a Tuesday run the
+  // Monday just gone is included too.
+  const WEEKS = [3, 2, 1].map(i => ['Week ' + i, thisMon - i * 7 * DAY, i === 1 ? Math.max(thisMon, istMidnight) : thisMon - (i - 1) * 7 * DAY]);
   const periods = WEEKS.map(([key, from, to]) => ({ key, from, to }))
     .concat([{ key: 'Since launch', from: LAUNCH, to: CUT }]);
   periods.forEach(pp => { pp.to = Math.min(pp.to, CUT); pp.label = fmtD(pp.from) + ' – ' + fmtD(pp.to - 1); });
