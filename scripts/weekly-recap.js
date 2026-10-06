@@ -1798,26 +1798,6 @@ ${row('Refunds paid on cases that had already recovered', s => s.recPaidN.toLoca
 ${row('CSPs contributing to the unresolved cases', s => s.csps.toLocaleString('en-IN'))}
 </tbody></table></div>
 <p class="sub" style="margin-top:10px">A further ${S.slice(0, 3).map(x => x.intake).join(' / ')} cases (Week 3 / Week 2 / Week 1) arrived already reopened in Kapture. That is an intake label, not a resolution of ours that came back, so it is excluded from the reopened rate above.</p>
-${(() => {
-  // Where the week's resolution came from, by how the case entered. The
-  // CSP-resolved path (live from 29 Sep) brings in cases the CSP already
-  // claims fixed and they resolve at ~90%, which lifts the blended rate; the
-  // standard intake is the like-for-like number against earlier weeks.
-  const srcLabel = { 'cron': 'standard intake', 'live-open-cron': 'live-open', 'manual': 'added by hand', 'reopened-cron': 'arrived reopened', 'reopened-log-cron': 'reopened (event log)', 'csp-resolved-cron': 'CSP-resolved, PFT pending (new path)', 'chat-cron': 'chat' };
-  const split = pp => {
-    const list = inRange(pp), by = {};
-    list.forEach(c => { const k = String(c.source || 'cron'); (by[k] = by[k] || { n: 0, r: 0 }).n++; if (getStatus(c) !== 'Unresolved') by[k].r++; });
-    return by;
-  };
-  const lw = split(periods[LW]), wb = split(periods[LW - 1]);
-  const keys = Object.keys(lw).sort((x, y) => lw[y].n - lw[x].n);
-  const core = k => k !== 'csp-resolved-cron';
-  const sum = (by, f) => Object.entries(by).filter(([k]) => f(k)).reduce((a, [, v]) => ({ n: a.n + v.n, r: a.r + v.r }), { n: 0, r: 0 });
-  const cLW = sum(lw, core), cWB = sum(wb, core);
-  return `<p class="sub" style="margin-top:6px"><b>Where ${periods[LW].key}'s resolution comes from.</b> ` +
-    keys.map(k => `${srcLabel[k] || k}: ${lw[k].r} of ${lw[k].n} (${pct(lw[k].r, lw[k].n)})`).join(' · ') +
-    `. Leaving out the new CSP-resolved path, the like-for-like rate is <b>${pct(cLW.r, cLW.n)}</b> (${cLW.r} of ${cLW.n}) against ${pct(cWB.r, cWB.n)} the week before.</p>`;
-})()}
 </section>
 ${reopSnapHtml}
 ${refundsHtml()}
