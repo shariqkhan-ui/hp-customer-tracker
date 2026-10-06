@@ -3143,6 +3143,8 @@ function renderReports() {
   // up to yesterday. Rows read exactly as the doc's week-wise table.
   const w48ok = r => {
     if (getStatus(r) === 'Unresolved') return false;
+    // net of reopened from the week of 28 Sep 2026, as the weekly doc
+    if (maturedAtR(r) >= NET_FROM_TS && Number(r[26]) > 0) return false;
     const s0 = caseStartTs(r), rt = Number(r[20]) || 0;
     // Same window as the weekly doc's net-resolved test: wider from the week of 28 Sep 2026; earlier cohorts keep the 48-hr test so published weeks do not move.
     const lim = (s0 + TAT_LIMIT_MS) >= NET_FROM_TS ? TAT_LIMIT_MS + 4 * 3600000 : TAT_LIMIT_MS;
@@ -3161,7 +3163,7 @@ function renderReports() {
   sheetTable('sheet48', 'Metric', [
     { label: 'Cases matured — crossed 48 hrs', k: 'm' },
     { label: 'Resolved', k: 'res', of: 'm' },
-    { label: 'Net resolved (resolved within the promise window and still resolved)', k: 'net', of: 'm', good: true },
+    { label: 'Net resolved (resolved within the promise window, net of reopened)', k: 'net', of: 'm', good: true },
     { label: 'Reopened (came back down in this week)', k: 'reop', of: 'net' },
     { label: 'Unresolved', k: 'unres', of: 'm', bad: true }
   ], (spec, list, pi) => {
