@@ -505,7 +505,7 @@ async function syncHubRefunds(apiKey) {
     const patch = { refund_action: 'Refund Done', refund_action_note: note };
     if (t.c.refund_amount === '' || t.c.refund_amount == null || Number(t.c.refund_amount) === 0) patch.refund_amount = t.h.amt;
     await fbPatch('/cases/' + t.key, patch);
-    await fbPost('/cases/__audit__', {
+    await fbPost('/audit_log', {
       user_name: 'Wiom Hub sync', ticket_no: String(t.c.ticket_no), field: 'refund_action',
       old_value: prev, new_value: 'Refund Done \u00b7 ' + note, ts: new Date().toISOString(),
     }).catch(e => log('WARN: Hub refund audit write failed — ' + e.message));
@@ -598,7 +598,7 @@ async function syncActiveLine(apiKey) {
           patch.mobile = alt; patch.alt_mobile = cur; patch.line_swapped = true; patch.last_ping_at = null;
           if (aPlan.nas) patch.nas_id = aPlan.nas;
           patch.mobile_note = 'Ticket raised on ' + cur + ' (no live plan); the live line is ' + alt + ' (alternate number on the ticket). Swapped by the sync.';
-          await fbPost('/cases/__audit__', { user_name: 'Active-line sync', ticket_no: tk, field: 'mobile', old_value: cur, new_value: alt, ts: new Date().toISOString() }).catch(() => {});
+          await fbPost('/audit_log', { user_name: 'Active-line sync', ticket_no: tk, field: 'mobile', old_value: cur, new_value: alt, ts: new Date().toISOString() }).catch(() => {});
           swapped++;
         }
         await fbPatch('/cases/' + t.key, patch);

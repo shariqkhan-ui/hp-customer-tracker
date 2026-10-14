@@ -663,6 +663,7 @@ table.main-tbl tbody tr:hover { background: #220020; }
       <h3>Customer Records</h3>
       <div style="display:flex;align-items:center;gap:10px;">
         <span class="pill" id="rowCount">0 records</span>
+        <button class="pill" id="loadOlderBtn" onclick="loadOlderRows()" title="Cases from before 29 Jul 2026 (the 48-hr flag went live that day) are not loaded by default, to keep the page quick. Click to load them for the filters and reports." style="cursor:pointer">Load cases before 29 Jul</button>
         <button class="btn btn-primary" onclick="openAddCase()" style="font-size:12px;padding:6px 12px;">&#x2795; Add Case</button>
         <button class="btn" onclick="openBulkAdd()" style="font-size:12px;padding:6px 12px;">&#x1F4CB; Bulk Add</button>
         <button class="btn btn-primary" onclick="downloadCSV()" style="font-size:12px;padding:6px 12px;">&#x2B07; Download CSV</button>
@@ -985,6 +986,8 @@ function mergeRows(liveRows) {
 async function loadOlderRows() {
   if (olderLoaded || olderLoading) return;
   olderLoading = true;
+  const btn = document.getElementById('loadOlderBtn');
+  if (btn) { btn.disabled = true; btn.textContent = 'Loading older cases\u2026'; }
   try {
     const raw = await fbGetQ('/cases', OLDER_QUERY);
     olderRows = rowsFrom(raw);
@@ -994,7 +997,13 @@ async function loadOlderRows() {
     buildDupeSet(allRows);
     populateDropdowns(); applyFilters();
     document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
-  } catch (e) { console.warn('older cases not loaded:', e.message); }
+    if (btn) btn.style.display = 'none';
+    toast('Older cases loaded \u2014 ' + olderRows.length + ' from before 29 Jul', 'success');
+  } catch (e) {
+    console.warn('older cases not loaded:', e.message);
+    if (btn) { btn.disabled = false; btn.textContent = 'Load cases before 29 Jul'; }
+    toast('Could not load older cases: ' + e.message, 'error');
+  }
   olderLoading = false;
 }
 async function fbGetQ(path, query) {
@@ -1902,7 +1911,6 @@ async function loadData() {
 
     const rawData = await fbGetQ('/cases', LIVE_QUERY) || {};
     mergeRows(rowsFrom(rawData));
-    setTimeout(loadOlderRows, 0);
     buildDupeSet(allRows);
     document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
     populateDropdowns();
@@ -1939,7 +1947,7 @@ function setupRealtime() {
   function connect() {
     if (evtSource) { try { evtSource.close(); } catch(e) {} }
     evtSource = new EventSource(FIREBASE_DB + '/cases.json?alt=sse&orderBy=%22added_at%22&startAt=' + LIVE_FROM);
-    evtSource.onopen = function() { clearTimeout(sseTimer); sseConnected = true; setTimeout(loadOlderRows, 0); };
+    evtSource.onopen = function() { clearTimeout(sseTimer); sseConnected = true; };
 
     // First 'put' event delivers the full cases snapshot for initial load
     evtSource.addEventListener('put', function(e) {
@@ -4075,13 +4083,12 @@ async function saveViewerPin() {
   } catch(e) { toast('Error saving viewer PIN: ' + e.message, 'error'); }
 }
 // ── Audit log ──
-// Written under /cases/__audit__ — NOT /audit_log: that node was made
-// write-protected around 7 Mar 2026, and every audit write since then failed
-// silently (5 months of edits unrecorded). /cases stays writable, and keys
-// starting with "__" are already excluded from case loading.
+// Written under /audit_log (writable again since 14 Oct 2026; the rows that
+// had accumulated under /cases/__audit__ were moved there the same day so the
+// case node stays small). Readers still merge both paths.
 function addAuditEntry(ticket, field, oldVal, newVal) {
   if (String(oldVal||'').trim() === String(newVal||'').trim()) return;
-  fbPost('/cases/__audit__', {
+  fbPost('/audit_log', {
     user_name: getUser(), ticket_no: String(ticket||''),
     field: String(field||''), old_value: String(oldVal||''), new_value: String(newVal||''),
     ts: new Date().toISOString()
