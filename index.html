@@ -962,6 +962,46 @@ const FIREBASE_DB = 'https://high-pain-cx-management-default-rtdb.asia-southeast
 function ticketKey(t) { return String(t).replace(/[.#$\[\]\/]/g, '_'); }
 
 // Generic REST helpers
+// ── Fast load (14 Oct 2026) ───────────────────────────────────────────────
+// The store holds 21k+ cases (18 MB); only the 48-hr-flag era (from 29 Jul)
+// is worked. The page loads that slice first via an indexed query on
+// added_at, renders, then fetches the older cases in the background so every
+// filter and report still sees the full history. The live stream carries the
+// flag-era slice only, and the REST fallback fires only if the stream fails
+// to connect - not while it is still delivering, which used to download the
+// whole store twice on a slow link.
+const LIVE_FROM = new Date('2026-07-29T00:00:00+05:30').getTime();
+const LIVE_QUERY  = '?orderBy=%22added_at%22&startAt=' + LIVE_FROM;
+const OLDER_QUERY = '?orderBy=%22added_at%22&endAt=' + (LIVE_FROM - 1);
+let olderRows = [], olderLoaded = false, olderLoading = false;
+function rowsFrom(raw) {
+  return Object.entries(raw || {}).filter(function(e) { return !String(e[0]).startsWith('__') && e[1] && e[1].ticket_no; }).map(function(e) { return dbRowToArray(e[1]); });
+}
+function mergeRows(liveRows) {
+  const seen = new Set(liveRows.map(function(r) { return ticketKey(r[1] || ''); }));
+  allRows = liveRows.concat(olderRows.filter(function(r) { return !seen.has(ticketKey(r[1] || '')); }));
+  allRows.sort(function(a, b) { return rowTs(b) - rowTs(a); });
+}
+async function loadOlderRows() {
+  if (olderLoaded || olderLoading) return;
+  olderLoading = true;
+  try {
+    const raw = await fbGetQ('/cases', OLDER_QUERY);
+    olderRows = rowsFrom(raw);
+    olderLoaded = true;
+    const live = allRows.filter(function(r) { return rowTs(r) >= LIVE_FROM; });
+    mergeRows(live);
+    buildDupeSet(allRows);
+    populateDropdowns(); applyFilters();
+    document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
+  } catch (e) { console.warn('older cases not loaded:', e.message); }
+  olderLoading = false;
+}
+async function fbGetQ(path, query) {
+  const r = await fetch(FIREBASE_DB + path + '.json' + (query || ''));
+  if (!r.ok) throw new Error('Firebase GET failed: HTTP ' + r.status);
+  return r.json();
+}
 async function fbGet(path) {
   const r = await fetch(FIREBASE_DB + path + '.json');
   if (!r.ok) throw new Error('Firebase GET failed: HTTP ' + r.status);
@@ -1860,10 +1900,9 @@ async function loadData() {
     document.getElementById('lastUpdated').textContent = 'Loading\u2026';
     document.getElementById('errorBanner').style.display = 'none';
 
-    const rawData = await fbGet('/cases') || {};
-    allRows = Object.entries(rawData).filter(function(e) { return !String(e[0]).startsWith('__'); }).map(function(e) { return dbRowToArray(e[1]); }).filter(function(r) { return r[1]; });
-    allRows.sort(function(a, b) { return rowTs(b) - rowTs(a); });
-
+    const rawData = await fbGetQ('/cases', LIVE_QUERY) || {};
+    mergeRows(rowsFrom(rawData));
+    setTimeout(loadOlderRows, 0);
     buildDupeSet(allRows);
     document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
     populateDropdowns();
@@ -1891,15 +1930,16 @@ function setupRealtime() {
   var sseReady = false;
   // Fallback: if SSE doesn't deliver data within 8s (blocked network), use REST polling
   var sseTimer = setTimeout(function() {
-    if (!realtimeReady) {
-      console.warn('SSE timeout — falling back to REST polling');
+    if (!sseConnected && !realtimeReady) {
+      console.warn('SSE did not connect — falling back to REST');
       loadData();
     }
   }, 8000);
 
   function connect() {
     if (evtSource) { try { evtSource.close(); } catch(e) {} }
-    evtSource = new EventSource(FIREBASE_DB + '/cases.json?alt=sse');
+    evtSource = new EventSource(FIREBASE_DB + '/cases.json?alt=sse&orderBy=%22added_at%22&startAt=' + LIVE_FROM);
+    evtSource.onopen = function() { clearTimeout(sseTimer); sseConnected = true; setTimeout(loadOlderRows, 0); };
 
     // First 'put' event delivers the full cases snapshot for initial load
     evtSource.addEventListener('put', function(e) {
@@ -1912,8 +1952,7 @@ function setupRealtime() {
       if (path === '/') {
         // Full dataset (initial load or full replace)
         var raw = data || {};
-        allRows = Object.entries(raw).filter(function(e) { return !String(e[0]).startsWith('__'); }).map(function(e) { return dbRowToArray(e[1]); }).filter(function(r) { return r[1]; });
-        allRows.sort(function(a, b) { return rowTs(b) - rowTs(a); });
+        mergeRows(rowsFrom(raw));
         buildDupeSet(allRows);
         document.getElementById('lastUpdated').textContent = 'Updated [Firebase LIVE \u2713] ' + allRows.length + ' cases \u2014 ' + new Date().toLocaleTimeString();
         if (!realtimeReady) {
