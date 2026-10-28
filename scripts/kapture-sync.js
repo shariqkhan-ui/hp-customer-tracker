@@ -1503,7 +1503,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
 
   // ── Step 2d: reopened, CSP re-resolved, PFT closure pending ──
   let cspResAdded = 0, cspResSkipped = 0, cspResEnriched = 0, cspResTicketsAll = [];
-  if (!BACKFILL_CHAT) {
+  // Paused per Shariq (28 Oct): closed (RESOLVED) cases must not be added to the tracker.
+  const ADD_CSP_RESOLVED = false;
+  if (!BACKFILL_CHAT && ADD_CSP_RESOLVED) {
     log('Running reopened-then-CSP-resolved query (PFT closure pending)…');
     try {
       const cspResTickets = await queryMetabase(cspResolvedSql, apiKey);
