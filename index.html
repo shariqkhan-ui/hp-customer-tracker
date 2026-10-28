@@ -2300,8 +2300,11 @@ function renderAll() {
   const eligR = unresRows.length;
   const doneR = unresRows.filter(isRefunded).length;
   const restR = unresRows.filter(r => !isRefunded(r));
-  const parkR = restR.filter(isParked).length;
-  const pendR = restR.length - parkR;
+  // Same rule as the Refund Action tab and the Refund Done tab: pending =
+  // raEffective says 'Refund Pending' (no manual reason, no ping after the
+  // ticket, amount not ₹0). Everything else not refunded is parked.
+  const pendR = restR.filter(r => raEffective(r).v === 'Refund Pending').length;
+  const parkR = restR.length - pendR;
   const rpct = n => eligR ? Math.round(n / eligR * 100) + '%' : '—';
   document.getElementById('sRSplit').innerHTML =
     '<span style="color:var(--text)">Eligible ' + eligR + '</span>' +
@@ -3001,13 +3004,8 @@ function renderRefundTab() {
   // refunds from before the flag are out of scope for this tab.
   const base = filtered.filter(r => rowStartTsAny(r) >= TAT_LAUNCH_TS);
   const done = base.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetEntryFor(r));
-  // Pending = owes a refund but not yet refunded: breached the 48h TAT
-  // ("Need to Refund to Customer") or explicitly marked Refund Pending —
-  // and absent from the Finance sheet / not marked Done.
-  const pend = base.filter(r => {
-    if (sheetEntryFor(r) || effectiveVal(r, 23) === 'Refund Done') return false;
-    return effectiveVal(r, 23) === 'Refund Pending' || (getStatus(r) === 'Unresolved' && isTatExpired(r));
-  });
+  // Same rule as the Refund Action tab and the status-bar card.
+  const pend = base.filter(r => getStatus(r) === 'Unresolved' && isTatExpired(r) && raEffective(r).v === 'Refund Pending');
   const amtOf = r => (r[24] !== '' && r[24] != null) ? Number(r[24]) : (sheetEntryFor(r) ? Number(sheetEntryFor(r).a) || 0 : 0);
   const sum = list => list.reduce((a, r) => a + amtOf(r), 0);
   setText('rfDoneCount', done.length);
