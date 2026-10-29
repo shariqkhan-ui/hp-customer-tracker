@@ -1162,6 +1162,9 @@ function isCaseNeedsAction(r) {
 // String() guard: numeric fields (e.g. refund_amount from the cron) crashed
 // .trim() and silently killed whole render passes like Reports.
 function effectiveVal(r, col) { return String(r[col] == null ? '' : r[col]).trim(); }
+// One 'refunded' test for every surface: Cx Action Done, Refund Action Done (also set
+// by the Wiom Hub sync), or a Finance-sheet entry.
+function isRefundDone(r) { return effectiveVal(r, 23) === 'Refund Done' || effectiveVal(r, 33) === 'Refund Done' || !!sheetEntryFor(r); }
 
 
 // ── Save edit: patch allRows in memory + write to Firebase ──
@@ -3003,7 +3006,7 @@ function renderRefundTab() {
   // Only flag-era cases (added on/after the 29 Jul 48h launch) — legacy
   // refunds from before the flag are out of scope for this tab.
   const base = filtered.filter(r => rowStartTsAny(r) >= TAT_LAUNCH_TS);
-  const done = base.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetEntryFor(r));
+  const done = base.filter(isRefundDone);
   // Same rule as the Refund Action tab and the status-bar card.
   const pend = base.filter(r => getStatus(r) === 'Unresolved' && isTatExpired(r) && raEffective(r).v === 'Refund Pending');
   const amtOf = r => (r[24] !== '' && r[24] != null) ? Number(r[24]) : (sheetEntryFor(r) ? Number(sheetEntryFor(r).a) || 0 : 0);
@@ -3018,7 +3021,7 @@ function renderRefundTab() {
   setText('rfPickPct', done.length ? '(' + Math.round(picked / done.length * 100) + '%)' : '');
   // One-time baseline: the pre-29 Jul world, shown separately (not counted above)
   const preBase = filtered.filter(r => { const t = rowStartTsAny(r); return t > 0 && t < TAT_LAUNCH_TS; });
-  const preDone = preBase.filter(r => effectiveVal(r, 23) === 'Refund Done' || sheetEntryFor(r));
+  const preDone = preBase.filter(isRefundDone);
   const preAmt  = preDone.reduce((a, r) => a + amtOf(r), 0);
   const prePicked = preDone.filter(r => effectiveVal(r, 27) === 'Yes').length;
   document.getElementById('rfBaseline').innerHTML = preDone.length
@@ -3591,7 +3594,7 @@ function renderTable(allTableRows) {
       makeProofCell(ticket, 'proof_recording', r[31], '&#x1F399;') +
       makeProofCell(ticket, 'proof_screenshot', r[32], '&#x1F4CE;') +
       makeEditCell(ticket, 'engineer', (r[10]||'').trim(), r[21] ? '<div style="font-size:10px;color:var(--muted);margin-top:2px">' + fmtTsAgo(r[21]) + '</div>' : '') +
-      makeCxActionCell(ticket, (r[23]||'').trim(), st === 'Unresolved') +
+      makeCxActionCell(ticket, (r[23]||'').trim() || (isRefundDone(r) ? 'Refund Done' : ''), st === 'Unresolved') +
       makeOwnerCell(ticket, owner) +
       '<td style="font-size:12px;font-weight:700;color:' + pendingSinceColor(r) + ';white-space:nowrap">' + getPendingSince(r) + '</td>' +
       (function() {
