@@ -424,8 +424,10 @@ async function syncKaptureResolution(apiKey) {
 // Complements the Finance-sheet Router Recovered stamping; never unsets 'Yes'.
 // ── Router last-ping stamp (drives Refund Action "Ping up" classification) ───
 // For breached flag-era cases: look up the device's most recent successful
-// ping (S3.ROUTER_PING_HOURLY_DATA_V2 via SERVICE_TICKET_MODEL.DEVICE_ID) and
-// stamp last_ping_at (ms). The dashboard classifies a case as "Ping up" when
+// ping (PROD_DB.DBT.DIM_CX_ROUTER_LAST_PING via SERVICE_TICKET_MODEL.DEVICE_ID) and
+// stamp last_ping_at (ms). That dbt table holds each router's latest pinged hour of
+// S3.ROUTER_PING_HOURLY_DATA_V2 (rebuilt hourly); reading it instead of the raw feed
+// returns the same MAX(DATE || ' ' || START_TIME) per key at a fraction of the scan. The dashboard classifies a case as "Ping up" when
 // this is newer than the ticket creation time.
 // ── Wiom Hub refunds ────────────────────────────────────────────────────────
 // t_plan_refund_request is where a refund is actually raised, approved and
@@ -633,10 +635,10 @@ async function syncLastPing(apiKey) {
   const nasKeys = Object.keys(byNas);
   if (nasKeys.length) {
     const rows = await queryMetabase(
-      `SELECT TO_VARCHAR(p.NASID) NAS, MAX(p.DATE || ' ' || p.START_TIME) LAST_PING
-       FROM S3.ROUTER_PING_HOURLY_DATA_V2 p
-       WHERE TO_VARCHAR(p.NASID) IN (${nasKeys.map(x => "'" + x + "'").join(',')}) AND p.PING_COUNT > 0
-         AND p.DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
+      `SELECT p.NASID NAS, MAX(p.LAST_PING_DATE || ' ' || p.LAST_PING_START_TIME) LAST_PING
+       FROM PROD_DB.DBT.DIM_CX_ROUTER_LAST_PING p
+       WHERE p.NASID IN (${nasKeys.map(x => "'" + x + "'").join(',')})
+         AND p.LAST_PING_DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
        GROUP BY 1`, apiKey);
     for (const r of rows) {
       const lp = String(r.LAST_PING || '').trim(); const ms = Date.parse(lp.replace(' ', 'T') + ':00+05:30');
@@ -671,10 +673,10 @@ async function syncLastPing(apiKey) {
         SELECT KAPTURE_TICKET_ID TK, MAX(DEVICE_ID) DEV FROM PUBLIC.SERVICE_TICKET_MODEL
         WHERE KAPTURE_TICKET_ID IN (${ch.map(x => "'" + x + "'").join(',')}) GROUP BY 1
       )
-      SELECT d.TK, MAX(p.DATE || ' ' || p.START_TIME) LAST_PING
+      SELECT d.TK, MAX(p.LAST_PING_DATE || ' ' || p.LAST_PING_START_TIME) LAST_PING
       FROM dev d
-      JOIN S3.ROUTER_PING_HOURLY_DATA_V2 p
-        ON p.DEVICEID = d.DEV AND p.PING_COUNT > 0 AND p.DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
+      JOIN PROD_DB.DBT.DIM_CX_ROUTER_LAST_PING p
+        ON p.DEVICEID = d.DEV AND p.LAST_PING_DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
       GROUP BY 1`, apiKey));
   }
   // Fallback: live-open/chat/manual cases missing from SERVICE_TICKET_MODEL —
@@ -690,10 +692,10 @@ async function syncLastPing(apiKey) {
         WHERE REGEXP_REPLACE(KAPTURE_TICKET_ID,'[^0-9]','') IN (${ch.map(x => "'" + x + "'").join(',')})
         GROUP BY 1
       )
-      SELECT t.TK, MAX(p.DATE || ' ' || p.START_TIME) LAST_PING
+      SELECT t.TK, MAX(p.LAST_PING_DATE || ' ' || p.LAST_PING_START_TIME) LAST_PING
       FROM t
-      JOIN S3.ROUTER_PING_HOURLY_DATA_V2 p
-        ON TO_VARCHAR(p.NASID) = TO_VARCHAR(t.NAS) AND p.PING_COUNT > 0 AND p.DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
+      JOIN PROD_DB.DBT.DIM_CX_ROUTER_LAST_PING p
+        ON p.NASID = TO_VARCHAR(t.NAS) AND p.LAST_PING_DATE >= TO_CHAR(DATEADD(DAY, -45, CURRENT_DATE()), 'YYYY-MM-DD')
       GROUP BY 1`, apiKey));
   }
   log(`Last-ping stamp: updated ${stamped} case(s) (${missing.length} resolved via NAS fallback pool).`);
