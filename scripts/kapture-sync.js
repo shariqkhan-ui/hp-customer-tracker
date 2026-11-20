@@ -1187,29 +1187,28 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // Table: PUBLIC.SERVICE_TICKET_MODEL (Metabase table ID 5599, DB 113)
   const sql = `
     WITH nmob AS (
+      -- Names per 10-digit mobile come from the dbt table DIM_CX_CUSTOMER_MOBILE_PROFILE (hourly),
+      -- one column per source with the same filters these CTEs used; it replaces re-scanning
+      -- the three customer tables (incl. the 14M-row T_WG_CUSTOMER_AUDIT) on every run.
       -- Customer name is resolved by the last 10 digits of mobile (so a stored
       -- '+91'/leading-zero/whitespace mismatch can't make the join miss), deduped
       -- to one name per mobile. Names come from three sources in priority order via
       -- COALESCE below: the legacy COMBINED table first, then the installs model
       -- (near-complete), then the active base — because COMBINED_T_WG_CUSTOMER alone
       -- covers <1% of these customers.
-      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB,
-             MAX(NAME) AS CNAME
-      FROM COMBINED_T_WG_CUSTOMER
-      WHERE MOBILE IS NOT NULL AND NAME IS NOT NULL AND TRIM(NAME) != ''
-      GROUP BY 1
+      SELECT MOBILE10 AS MOB, COMBINED_NAME_NONBLANK AS CNAME
+      FROM PROD_DB.DBT.DIM_CX_CUSTOMER_MOBILE_PROFILE
+      WHERE COMBINED_NAME_NONBLANK IS NOT NULL
     ),
     n_inst AS (
-      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(CUSTOMER_NAME) AS CNAME
-      FROM STG_INVENTORY_MODEL_CUSTOMER_INSTALLS
-      WHERE MOBILE IS NOT NULL AND CUSTOMER_NAME IS NOT NULL AND TRIM(CUSTOMER_NAME) != ''
-      GROUP BY 1
+      SELECT MOBILE10 AS MOB, INSTALLS_NAME_NONBLANK AS CNAME
+      FROM PROD_DB.DBT.DIM_CX_CUSTOMER_MOBILE_PROFILE
+      WHERE INSTALLS_NAME_NONBLANK IS NOT NULL
     ),
     n_actv AS (
-      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(CUSTOMER_NAME) AS CNAME
-      FROM ACTIVE_CUST
-      WHERE MOBILE IS NOT NULL AND CUSTOMER_NAME IS NOT NULL AND TRIM(CUSTOMER_NAME) != ''
-      GROUP BY 1
+      SELECT MOBILE10 AS MOB, ACTIVE_NAME_NONBLANK AS CNAME
+      FROM PROD_DB.DBT.DIM_CX_CUSTOMER_MOBILE_PROFILE
+      WHERE ACTIVE_NAME_NONBLANK IS NOT NULL
     )
     SELECT
       stm.KAPTURE_TICKET_ID,
@@ -1321,10 +1320,9 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
   // Lookups are GROUP BY'd to one row per key so they never fan out the tickets.
   const chatSql = `
     WITH pmob AS (
-      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(CURRENT_PARTNER_NAME) AS PNAME
-      FROM CUSTOMER_ENRICHED_DBT
-      WHERE MOBILE IS NOT NULL AND CURRENT_PARTNER_NAME IS NOT NULL
-      GROUP BY 1
+      SELECT MOBILE10 AS MOB, CURRENT_PARTNER_NAME AS PNAME
+      FROM PROD_DB.DBT.DIM_CX_CUSTOMER_MOBILE_PROFILE
+      WHERE CURRENT_PARTNER_NAME IS NOT NULL
     ),
     pacct AS (
       SELECT PARTNER_ACCOUNT_ID AS ACCT, MAX(PARTNER_NAME) AS PNAME
@@ -1333,22 +1331,19 @@ async function addTicketsToFirebase(tickets, sourceLabel) {
       GROUP BY 1
     ),
     nmob AS (
-      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(NAME) AS CNAME
-      FROM COMBINED_T_WG_CUSTOMER
-      WHERE MOBILE IS NOT NULL AND NAME IS NOT NULL AND TRIM(NAME) != ''
-      GROUP BY 1
+      SELECT MOBILE10 AS MOB, COMBINED_NAME_NONBLANK AS CNAME
+      FROM PROD_DB.DBT.DIM_CX_CUSTOMER_MOBILE_PROFILE
+      WHERE COMBINED_NAME_NONBLANK IS NOT NULL
     ),
     n_inst AS (
-      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(CUSTOMER_NAME) AS CNAME
-      FROM STG_INVENTORY_MODEL_CUSTOMER_INSTALLS
-      WHERE MOBILE IS NOT NULL AND CUSTOMER_NAME IS NOT NULL AND TRIM(CUSTOMER_NAME) != ''
-      GROUP BY 1
+      SELECT MOBILE10 AS MOB, INSTALLS_NAME_NONBLANK AS CNAME
+      FROM PROD_DB.DBT.DIM_CX_CUSTOMER_MOBILE_PROFILE
+      WHERE INSTALLS_NAME_NONBLANK IS NOT NULL
     ),
     n_actv AS (
-      SELECT RIGHT(REGEXP_REPLACE(MOBILE, '[^0-9]', ''), 10) AS MOB, MAX(CUSTOMER_NAME) AS CNAME
-      FROM ACTIVE_CUST
-      WHERE MOBILE IS NOT NULL AND CUSTOMER_NAME IS NOT NULL AND TRIM(CUSTOMER_NAME) != ''
-      GROUP BY 1
+      SELECT MOBILE10 AS MOB, ACTIVE_NAME_NONBLANK AS CNAME
+      FROM PROD_DB.DBT.DIM_CX_CUSTOMER_MOBILE_PROFILE
+      WHERE ACTIVE_NAME_NONBLANK IS NOT NULL
     )
     SELECT
       t.KAPTURE_TICKET_ID,
